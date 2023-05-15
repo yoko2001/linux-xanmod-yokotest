@@ -37,6 +37,8 @@
 #include "internal.h"
 #include "swap.h"
 
+#include <trace/events/lru_gen.h>
+
 struct madvise_walk_private {
 	struct mmu_gather *tlb;
 	bool pageout;
@@ -385,6 +387,7 @@ static int madvise_prio_pte_range(pmd_t *pmd,
 		}else{
 			SetPageSwapPrio1(page);
 		}
+		trace_page_set_swapprio(page);
 huge_unlock:
 		spin_unlock(ptl);
 		return 0;
@@ -429,6 +432,7 @@ regular_page:
 		}else{
 			SetPageSwapPrio1(page);
 		}	
+		trace_page_set_swapprio(page);
 	}
 	arch_leave_lazy_mmu_mode();
 	pte_unmap_unlock(orig_pte, ptl);
@@ -1341,6 +1345,10 @@ madvise_behavior_valid(int behavior)
 #ifdef CONFIG_MEMORY_FAILURE
 	case MADV_SOFT_OFFLINE:
 	case MADV_HWPOISON:
+#endif
+#ifdef CONFIG_LRU_GEN
+	case MADV_SWAPPRIO_HIGH:
+	case MADV_SWAPPRIO_LOW:
 #endif
 		return true;
 

@@ -46,9 +46,11 @@ TRACE_EVENT(folio_add_to_swap,
 	),
 
 	/* Flag format is based on page-types.c formatting for pagemap */
-	TP_printk("folio=%p[%s] entry=0x%lx flags=%s%s%s%s%s%s",
+	TP_printk("folio=%p[%s] p1[%d], p2[%d] entry=0x%lx flags=%s%s%s%s%s%s",
 			__entry->folio,
 			folio_test_transhuge(__entry->folio)? "T": "N",
+			folio_test_swapprio1(__entry->folio),
+			folio_test_swapprio2(__entry->folio),
 			__entry->entry,
 			__entry->flags & PAGEMAP_MAPPED		? "M" : " ",
 			__entry->flags & PAGEMAP_ANONYMOUS	? "a" : "f",
@@ -60,15 +62,16 @@ TRACE_EVENT(folio_add_to_swap,
 /*DJL ADD BEGIN*/
 TRACE_EVENT(get_swap_pages_noswap,
 
-	TP_PROTO(int ckpt, int n_ret, int n_goal, int avail_pgs),
+	TP_PROTO(int ckpt, int n_ret, int n_goal, int avail_pgs, int lowbit),
 
-	TP_ARGS(ckpt, n_ret, n_goal, avail_pgs),
+	TP_ARGS(ckpt, n_ret, n_goal, avail_pgs, lowbit),
 
 	TP_STRUCT__entry(
 		__field(int, ckpt)
 		__field(int, n_ret)
 		__field(int, n_goal)
 		__field(int, avail_pgs)
+		__field(int, lowbit)
 	),
 
 	TP_fast_assign(
@@ -76,11 +79,35 @@ TRACE_EVENT(get_swap_pages_noswap,
 		__entry->n_ret	= n_ret;
 		__entry->n_goal	= n_goal;
 		__entry->avail_pgs	= avail_pgs;
+		__entry->lowbit	= lowbit;
 	),
 
 	/* Flag format is based on page-types.c formatting for pagemap */
-	TP_printk("[ckpt%d] try to get %d pages but got %d, avail_pgs is %d",
-			__entry->ckpt, __entry->n_goal, __entry->n_ret, __entry->avail_pgs)
+	TP_printk("[ckpt%d] lowbit[%d], try to get %d pages but got %d, avail_pgs is %d",
+			__entry->ckpt, __entry->lowbit, __entry->n_goal, __entry->n_ret, __entry->avail_pgs)
+);
+
+TRACE_EVENT(find_si_jump_straight_to_next,
+
+	TP_PROTO(int n_goal, struct swap_info_struct *si, int choose),
+
+	TP_ARGS(n_goal, si, choose),
+
+	TP_STRUCT__entry(
+		__field(int, n_goal)
+		__field(struct swap_info_struct *, si)
+		__field(int, choose)
+	),
+
+	TP_fast_assign(
+		__entry->n_goal	= n_goal;
+		__entry->si	= si;
+		__entry->choose	= choose;
+	),
+
+	/* Flag format is based on page-types.c formatting for pagemap */
+	TP_printk(" try to get %d pages looked for swap_info[%p]prio[%d], %s",
+			__entry->n_goal, __entry->si, __entry->si->prio, __entry->choose ? "yes" : "no")
 );
 
 TRACE_EVENT(swap_alloc_cluster,

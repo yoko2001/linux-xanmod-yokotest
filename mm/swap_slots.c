@@ -113,7 +113,7 @@ out:
 static int alloc_swap_slot_cache(unsigned int cpu)
 {
 	struct swap_slots_cache *cache;
-	swp_entry_t *slots, *slots_ret;
+	swp_entry_t *slots, *slots_ret, *slots_low;
 
 	/*
 	 * Do allocation outside swap_slots_cache_mutex
@@ -125,6 +125,12 @@ static int alloc_swap_slot_cache(unsigned int cpu)
 	if (!slots)
 		return -ENOMEM;
 
+/*DJL ADD BEGIN*/
+	slots_low = kvcalloc(SWAP_SLOTS_CACHE_SIZE, sizeof(swp_entry_t),
+			 GFP_KERNEL);
+	if (!slots)
+		return -ENOMEM;
+/*DJL ADD END*/
 	slots_ret = kvcalloc(SWAP_SLOTS_CACHE_SIZE, sizeof(swp_entry_t),
 			     GFP_KERNEL);
 	if (!slots_ret) {
@@ -140,6 +146,9 @@ static int alloc_swap_slot_cache(unsigned int cpu)
 
 		kvfree(slots);
 		kvfree(slots_ret);
+/*DJL ADD BEGIN*/
+		kvfree(slots_low);
+/*DJL ADD END*/
 
 		return 0;
 	}
@@ -152,6 +161,10 @@ static int alloc_swap_slot_cache(unsigned int cpu)
 	cache->nr = 0;
 	cache->cur = 0;
 	cache->n_ret = 0;
+/*DJL ADD BEGIN*/
+	cache->nr_low = 0;
+	cache->cur_low = 0;
+/*DJL ADD END*/
 	/*
 	 * We initialized alloc_lock and free_lock earlier.  We use
 	 * !cache->slots or !cache->slots_ret to know if it is safe to acquire
@@ -161,6 +174,9 @@ static int alloc_swap_slot_cache(unsigned int cpu)
 	mb();
 	cache->slots = slots;
 	cache->slots_ret = slots_ret;
+/*DJL ADD BEGIN*/
+	cache->slots_low = slots_low;
+/*DJL ADD END*/
 	mutex_unlock(&swap_slots_cache_mutex);
 	return 0;
 }
@@ -180,6 +196,17 @@ static void drain_slots_cache_cpu(unsigned int cpu, unsigned int type,
 		if (free_slots && cache->slots) {
 			kvfree(cache->slots);
 			cache->slots = NULL;
+		}
+		mutex_unlock(&cache->alloc_lock);
+	}
+	if ((type & SLOTS_CACHE) && cache->slots_low) {
+		mutex_lock(&cache->alloc_lock);
+		swapcache_free_entries(cache->slots_low + cache->cur_low, cache->nr_low);
+		cache->cur_low = 0;
+		cache->nr_low = 0;
+		if (free_slots && cache->slots_low) {
+			kvfree(cache->slots_low);
+			cache->slots_low = NULL;
 		}
 		mutex_unlock(&cache->alloc_lock);
 	}
@@ -260,13 +287,23 @@ static int refill_swap_slots_cache(struct swap_slots_cache *cache)
 {
 	if (!use_swap_slot_cache)
 		return 0;
+	if (cache->nr == 0){
+		cache->cur = 0;
+		if (swap_slot_cache_active)
+			cache->nr = get_swap_pages(SWAP_SLOTS_CACHE_SIZE,
+						cache->slots, 1, 0); //DJL ADD PARAMETER
 
-	cache->cur = 0;
-	if (swap_slot_cache_active)
-		cache->nr = get_swap_pages(SWAP_SLOTS_CACHE_SIZE,
-					   cache->slots, 1);
-
-	return cache->nr;
+		return cache->nr;		
+	}
+	if (cache->nr_low == 0){
+		cache->cur_low = 0;
+		if (swap_slot_cache_active){
+			cache->nr_low = get_swap_pages(SWAP_SLOTS_CACHE_SIZE,
+						cache->slots_low, 1, 1); //DJL ADD PARAMETER
+		}
+		return cache->nr_low;
+	}
+	return cache->nr;		
 }
 
 void free_swap_slot(swp_entry_t entry)
@@ -308,7 +345,8 @@ swp_entry_t folio_alloc_swap(struct folio *folio)
 
 	if (folio_test_large(folio)) {
 		if (IS_ENABLED(CONFIG_THP_SWAP) && arch_thp_swp_supported())
-			get_swap_pages(1, &entry, folio_nr_pages(folio));
+			get_swap_pages(1, &entry, folio_nr_pages(folio), folio_test_swapprio2(folio));
+			//DJL ADD PARAMETER
 		goto out;
 	}
 
@@ -323,28 +361,52 @@ swp_entry_t folio_alloc_swap(struct folio *folio)
 	 */
 	cache = raw_cpu_ptr(&swp_slots);
 
-	if (likely(check_cache_active() && cache->slots)) {
-		mutex_lock(&cache->alloc_lock);
-		if (cache->slots) {
-repeat:
-			if (cache->nr) {
-				entry = cache->slots[cache->cur];
-				cache->slots[cache->cur++].val = 0;
-				cache->nr--;
-			} else if (refill_swap_slots_cache(cache)) {
-				goto repeat;
+	if (folio_test_swapprio2(folio)){
+		if (likely(check_cache_active() && cache->slots_low)) {
+			mutex_lock(&cache->alloc_lock);
+			if (cache->slots_low) {
+repeat_slow:
+				if (cache->nr_low) {
+					entry = cache->slots_low[cache->cur_low];
+					cache->slots_low[cache->cur_low++].val = 0;
+					cache->nr_low--;
+				} else if (refill_swap_slots_cache(cache)) {
+					goto repeat_slow;
+				}
 			}
+			mutex_unlock(&cache->alloc_lock);
+			if (entry.val)
+				goto out;
 		}
-		mutex_unlock(&cache->alloc_lock);
-		if (entry.val)
-			goto out;
+	}
+	else{
+		if (likely(check_cache_active() && cache->slots)) {
+			mutex_lock(&cache->alloc_lock);
+			if (cache->slots) {
+repeat:
+				if (cache->nr) {
+					entry = cache->slots[cache->cur];
+					cache->slots[cache->cur++].val = 0;
+					cache->nr--;
+				} else if (refill_swap_slots_cache(cache)) {
+					goto repeat;
+				}
+			}
+			mutex_unlock(&cache->alloc_lock);
+			if (entry.val)
+				goto out;
+		}		
 	}
 
-	get_swap_pages(1, &entry, 1);
+	get_swap_pages(1, &entry, 1, folio_test_swapprio2(folio));
 out:
 	if (mem_cgroup_try_charge_swap(folio, entry)) {
 		put_swap_folio(folio, entry);
 		entry.val = 0;
 	}
+	/*DJL ADD BEGIN*/
+	if (entry.val)
+		folio_clear_swapprio2(folio);
+	/*DJL ADD END*/
 	return entry;
 }
