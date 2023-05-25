@@ -38,6 +38,8 @@
 #include "swap.h"
 #include "trace/events/lru_gen.h"
 
+#include <trace/events/lru_gen.h>
+
 struct madvise_walk_private {
 	struct mmu_gather *tlb;
 	bool pageout;
@@ -431,6 +433,7 @@ regular_page:
 		}else{
 			SetPageSwapPrio1(page);
 		}	
+		trace_page_set_swapprio(page);
 	}
 	arch_leave_lazy_mmu_mode();
 	pte_unmap_unlock(orig_pte, ptl);

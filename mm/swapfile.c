@@ -1069,6 +1069,9 @@ int get_swap_pages(int n_goal, swp_entry_t swp_entries[], int entry_size, int sl
 	long avail_pgs;
 	int n_ret = 0;
 	int node;
+	/*DJL ADD BEGIN*/
+	int highprio = -1;
+	/*DJL ADD BEGIN*/
 
 	/* Only single cluster request supported */
 	WARN_ON_ONCE(n_goal > 1 && size == SWAPFILE_CLUSTER);
@@ -1104,11 +1107,11 @@ start_over:
 				goto nextsi;
 			}	
 		}		
+
 		if (!si->highest_bit || !(si->flags & SWP_WRITEOK)) {
 			spin_lock(&swap_avail_lock);
 			if (plist_node_empty(&si->avail_lists[node])) {
 				spin_unlock(&si->lock);
-				trace_get_swap_pages_noswap(1, n_ret, n_goal, avail_pgs);
 				goto nextsi;
 			}
 			WARN(!si->highest_bit,
@@ -1119,21 +1122,34 @@ start_over:
 			     si->type);
 			__del_from_avail_list(si);
 			spin_unlock(&si->lock);
-			trace_get_swap_pages_noswap(2, n_ret, n_goal, avail_pgs);
 			goto nextsi;
 		}
+		/*DJL ADD BEGIN*/
+		//if folio/page's low priority is set, we go straight to the next si
+		//until prio is lower than this one
+		if (lowbit){
+			if (highprio < 0 || highprio <= si->prio){
+				highprio = si->prio;
+				spin_lock(&swap_avail_lock);
+				spin_unlock(&si->lock);
+				trace_find_si_jump_straight_to_next(n_goal, si, 0);
+				goto nextsi;
+			}	
+			trace_find_si_jump_straight_to_next(n_goal, si, 1);
+		}
+		/*DJL ADD END*/
 		if (size == SWAPFILE_CLUSTER) {
-			trace_get_swap_pages_noswap(3, n_ret, n_goal, avail_pgs);
+			trace_get_swap_pages_noswap(3, n_ret, n_goal, avail_pgs, lowbit);
 			if (si->flags & SWP_BLKDEV){
 				n_ret = swap_alloc_cluster(si, swp_entries);
-				trace_get_swap_pages_noswap(5, n_ret, n_goal, avail_pgs);
+				trace_get_swap_pages_noswap(5, n_ret, n_goal, avail_pgs, lowbit);
 			}
 		} else
 			n_ret = scan_swap_map_slots(si, SWAP_HAS_CACHE,
 						    n_goal, swp_entries);
 		spin_unlock(&si->lock);
 		if (n_ret || size == SWAPFILE_CLUSTER){
-			trace_get_swap_pages_noswap(6, n_ret, n_goal, avail_pgs);
+			trace_get_swap_pages_noswap(6, n_ret, n_goal, avail_pgs, lowbit);
 			goto check_out;
 		}
 		pr_debug("scan_swap_map of si %d failed to find offset\n",
@@ -1164,7 +1180,7 @@ check_out:
 				&nr_swap_pages);
 noswap:
 	/*DJL ADD BEGIN*/
-	trace_get_swap_pages_noswap(4, n_ret, n_goal, avail_pgs);
+	trace_get_swap_pages_noswap(4, n_ret, n_goal, avail_pgs, lowbit);
 	/*DJL ADD END*/
 	return n_ret;
 }

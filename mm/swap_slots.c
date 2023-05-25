@@ -116,6 +116,7 @@ static int alloc_swap_slot_cache(unsigned int cpu)
 	struct swap_slots_cache *cache;
 	swp_entry_t *slots, *slots_ret, *slots_slow;
 
+
 	/*
 	 * Do allocation outside swap_slots_cache_mutex
 	 * as kvzalloc could trigger reclaim and folio_alloc_swap,
@@ -126,6 +127,12 @@ static int alloc_swap_slot_cache(unsigned int cpu)
 	if (!slots)
 		return -ENOMEM;
 
+/*DJL ADD BEGIN*/
+	slots_low = kvcalloc(SWAP_SLOTS_CACHE_SIZE, sizeof(swp_entry_t),
+			 GFP_KERNEL);
+	if (!slots)
+		return -ENOMEM;
+/*DJL ADD END*/
 	slots_ret = kvcalloc(SWAP_SLOTS_CACHE_SIZE, sizeof(swp_entry_t),
 			     GFP_KERNEL);
 	if (!slots_ret) {
@@ -152,6 +159,7 @@ static int alloc_swap_slot_cache(unsigned int cpu)
 /*DJL ADD BEGIN*/
 		kvfree(slots_slow);
 /*DJL ADD END*/
+
 		return 0;
 	}
 
@@ -166,6 +174,7 @@ static int alloc_swap_slot_cache(unsigned int cpu)
 /*DJL ADD BEGIN*/
 	cache->nr_slow = 0;
 	cache->cur_slow = 0;
+
 /*DJL ADD END*/
 	/*
 	 * We initialized alloc_lock and free_lock earlier.  We use
@@ -177,6 +186,7 @@ static int alloc_swap_slot_cache(unsigned int cpu)
 	cache->slots = slots;
 	cache->slots_ret = slots_ret;
 	cache->slots_slow = slots_slow;
+
 	mutex_unlock(&swap_slots_cache_mutex);
 	return 0;
 }
@@ -350,7 +360,8 @@ swp_entry_t folio_alloc_swap(struct folio *folio)
 
 	if (folio_test_large(folio)) {
 		if (IS_ENABLED(CONFIG_THP_SWAP) && arch_thp_swp_supported())
-			get_swap_pages(1, &entry, folio_nr_pages(folio), 0);
+			get_swap_pages(1, &entry, folio_nr_pages(folio), folio_test_swapprio2(folio));
+			//DJL ADD PARAMETER
 		goto out;
 	}
 
@@ -374,6 +385,7 @@ swp_entry_t folio_alloc_swap(struct folio *folio)
 					cache->slots_slow[cache->cur_slow++].val = 0;
 					cache->nr_slow--;
 				} else if (refill_swap_slots_slow_cache(cache)) {
+
 					goto repeat_slow;
 				}
 			}
@@ -386,7 +398,8 @@ swp_entry_t folio_alloc_swap(struct folio *folio)
 		if (likely(check_cache_active() && cache->slots)) {
 			mutex_lock(&cache->alloc_lock);
 			if (cache->slots) {
-	repeat:
+
+repeat:
 				if (cache->nr) {
 					entry = cache->slots[cache->cur];
 					cache->slots[cache->cur++].val = 0;
@@ -398,7 +411,7 @@ swp_entry_t folio_alloc_swap(struct folio *folio)
 			mutex_unlock(&cache->alloc_lock);
 			if (entry.val)
 				goto out;
-		}	
+		}		
 	}
 	
 
