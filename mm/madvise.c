@@ -36,6 +36,7 @@
 
 #include "internal.h"
 #include "swap.h"
+#include "trace/events/lru_gen.h"
 
 #include <trace/events/lru_gen.h>
 

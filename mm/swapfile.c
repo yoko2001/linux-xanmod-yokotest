@@ -56,6 +56,7 @@ static void free_swap_count_continuations(struct swap_info_struct *);
 
 static DEFINE_SPINLOCK(swap_lock);
 static unsigned int nr_swapfiles;
+static int high_prio;
 atomic_long_t nr_swap_pages;
 /*
  * Some modules use swappable objects and may try to swap them out under
@@ -1061,18 +1062,7 @@ static void swap_free_cluster(struct swap_info_struct *si, unsigned long idx)
 	swap_range_free(si, offset, SWAPFILE_CLUSTER);
 }
 
-int entry_from_fastest_si(swp_entry_t entry){
-	int node;
-	node = numa_node_id();
-
-	struct swap_info_struct *si = plist_first_entry(&swap_avail_heads[node], struct swap_info_struct, avail_lists[node]);
-	if (!si) return 1;
-	struct swap_info_struct *siofentry = get_swap_device(entry);
-	if (si->prio > siofentry->prio) return 0;
-	return 1;
-}
-
-int get_swap_pages(int n_goal, swp_entry_t swp_entries[], int entry_size, int lowbit)
+int get_swap_pages(int n_goal, swp_entry_t swp_entries[], int entry_size, int slow)
 {
 	unsigned long size = swap_entry_size(entry_size);
 	struct swap_info_struct *si, *next;
@@ -1105,7 +1095,19 @@ start_over:
 		plist_requeue(&si->avail_lists[node], &swap_avail_heads[node]);
 		spin_unlock(&swap_avail_lock);
 		spin_lock(&si->lock);
-		trace_get_swap_pages_noswap(0, n_ret, n_goal, avail_pgs, lowbit);
+		trace_get_swap_pages_noswap(0, n_ret, n_goal, avail_pgs);
+		/*DJL ADD BEGIN*/
+		//if folio/page's low priority is set, we go straight to the next si
+		//until prio is lower than this one
+		if (slow){
+			if (high_prio <= 0 || high_prio <= si->prio){
+				high_prio = si->prio;
+				spin_lock(&swap_avail_lock);
+				spin_unlock(&si->lock);
+				goto nextsi;
+			}	
+		}		
+
 		if (!si->highest_bit || !(si->flags & SWP_WRITEOK)) {
 			spin_lock(&swap_avail_lock);
 			if (plist_node_empty(&si->avail_lists[node])) {
