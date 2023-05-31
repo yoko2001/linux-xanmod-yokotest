@@ -17,6 +17,7 @@
 #include <linux/fs.h>
 #include <linux/mm.h>
 
+#include <trace/events/lru_gen.h>
 /*
  *		Double CLOCK lists
  *
@@ -240,7 +241,7 @@ static void *lru_gen_eviction(struct folio *folio)
 
 	hist = lru_hist_from_seq(min_seq);
 	atomic_long_add(delta, &lrugen->evicted[hist][type][tier]);
-
+	trace_folio_workingset_change(folio, pgdat, mem_cgroup_id(memcg), token, refs, 0);
 	return pack_shadow(mem_cgroup_id(memcg), pgdat, token, refs);
 }
 
@@ -280,6 +281,7 @@ static void lru_gen_refault(struct folio *folio, void *shadow)
 	/* see the comment in folio_lru_refs() */
 	refs = (token & (BIT(LRU_REFS_WIDTH) - 1)) + workingset;
 	tier = lru_tier_from_refs(refs);
+	trace_folio_workingset_change(folio, pgdat, (unsigned short)memcg_id, token, refs, 1);
 
 	atomic_long_add(delta, &lrugen->refaulted[hist][type][tier]);
 	mod_lruvec_state(lruvec, WORKINGSET_REFAULT_BASE + type, delta);

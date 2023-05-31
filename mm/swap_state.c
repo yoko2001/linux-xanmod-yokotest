@@ -732,6 +732,7 @@ static void swap_ra_info(struct vm_fault *vmf,
 			     SWAP_RA_ORDER_CEILING);
 	if (max_win == 1) {
 		ra_info->win = 1;
+		trace_new_swap_ra_info(ra_info->ptes, ra_info->nr_pte, ra_info->offset, ra_info->win);
 		return;
 	}
 
@@ -750,6 +751,7 @@ static void swap_ra_info(struct vm_fault *vmf,
 
 	if (win == 1) {
 		pte_unmap(orig_pte);
+		trace_new_swap_ra_info(ra_info->ptes, ra_info->nr_pte, ra_info->offset, ra_info->win);
 		return;
 	}
 
@@ -775,6 +777,7 @@ static void swap_ra_info(struct vm_fault *vmf,
 		*tpte++ = *pte++;
 #endif
 	pte_unmap(orig_pte);
+	trace_new_swap_ra_info(ra_info->ptes, ra_info->nr_pte, ra_info->offset, ra_info->win);
 }
 
 /**

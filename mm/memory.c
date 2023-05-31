@@ -78,6 +78,7 @@
 #include <linux/vmalloc.h>
 #include <linux/sched/sysctl.h>
 #include <trace/events/kmem.h>
+#include <trace/events/swap.h>
 // #define CREATE_TRACE_POINTS
 // #include <trace/events/memory.h>
 #include <asm/io.h>
@@ -3789,13 +3790,16 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	swapcache = folio;
 
 	if (!folio) {
+		trace_do_swap_page(0);
 		if (data_race(si->flags & SWP_SYNCHRONOUS_IO) &&
 		    __swap_count(entry) == 1) {
+			trace_do_swap_page(1);
 			/* skip swapcache */
 			folio = vma_alloc_folio(GFP_HIGHUSER_MOVABLE, 0,
 						vma, vmf->address, false);
 			page = &folio->page;
 			if (folio) {
+				trace_do_swap_page(2);
 				__folio_set_locked(folio);
 				__folio_set_swapbacked(folio);
 
@@ -3819,6 +3823,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				folio->private = NULL;
 			}
 		} else {
+			trace_do_swap_page(3);
 			page = swapin_readahead(entry, GFP_HIGHUSER_MOVABLE,
 						vmf);
 			if (page)

@@ -5084,7 +5084,7 @@ restart:
 	}
 
 	/*DJL ADD BEGIN*/	
-	trace_mm_page_alloc_slow(order, alloc_flags);
+	trace_mm_page_alloc_slow(order, alloc_flags, 0);
 	/*DJL ADD END*/
 	if (alloc_flags & ALLOC_KSWAPD)
 		wake_all_kswapds(order, gfp_mask, ac);
@@ -5153,6 +5153,9 @@ restart:
 	}
 
 retry:
+	/*DJL ADD BEGIN*/	
+	trace_mm_page_alloc_slow(order, alloc_flags, 1);
+	/*DJL ADD END*/
 	/* Ensure kswapd doesn't accidentally go to sleep as long as we loop */
 	if (alloc_flags & ALLOC_KSWAPD)
 		wake_all_kswapds(order, gfp_mask, ac);

@@ -123,6 +123,51 @@ TRACE_EVENT(scan_swap_map_slots,
 			__entry->ckpt)
 );
 
+TRACE_EVENT(new_swap_ra_info,
+
+	TP_PROTO(pte_t *pte, unsigned long nr_pte, unsigned long offset, unsigned int win),
+
+	TP_ARGS(pte, nr_pte, offset, win),
+
+	TP_STRUCT__entry(
+		__field(pte_t*, pte)
+		__field(unsigned long, nr_pte)
+		__field(unsigned long, offset)
+		__field(unsigned int ,  win)
+	),
+
+	TP_fast_assign(
+		__entry->pte	= pte;
+		__entry->nr_pte	= nr_pte;
+		__entry->offset	= offset;
+		__entry->win	= win;
+	),
+
+	/* Flag format is based on page-types.c formatting for pagemap */
+	TP_printk("new_swap_ra_info ptes[0]=%lu; nr_pte=%lu, offset=%lu, win=%u",
+			(unsigned long)__entry->pte, __entry->nr_pte, 
+			 __entry->offset, __entry->win)
+);
+
+TRACE_EVENT(do_swap_page,
+
+	TP_PROTO(int ckpt),
+
+	TP_ARGS(ckpt),
+
+	TP_STRUCT__entry(
+		__field(int, ckpt)
+	),
+
+	TP_fast_assign(
+		__entry->ckpt	= ckpt;
+	),
+
+	/* Flag format is based on page-types.c formatting for pagemap */
+	TP_printk("do_swap_page ckpt %d",
+			__entry->ckpt)
+);
+
 /*DJL ADD END*/
 #endif /* _TRACE_SWAP_H */
 #include <trace/define_trace.h>

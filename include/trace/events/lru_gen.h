@@ -245,5 +245,64 @@ TRACE_EVENT(page_set_swapprio,
                 PageSwapPrio2(__entry->page))
 );
 
+TRACE_EVENT(folio_delete_from_swap_cache,
+
+	TP_PROTO(struct folio* folio),
+
+	TP_ARGS(folio),
+
+	TP_STRUCT__entry(
+		__field(struct folio* ,folio)
+	),
+
+	TP_fast_assign(
+		__entry->folio	= folio;
+	),
+
+	TP_printk("folio@[%p] prio1[%d],prio2[%d]", 
+                __entry->folio,
+                folio_test_swapprio1(__entry->folio),
+                folio_test_swapprio2(__entry->folio))
+);
+
+TRACE_EVENT(folio_workingset_change,
+
+	TP_PROTO(struct folio* folio, 
+	         struct pglist_data *pgdat, 
+			 unsigned short cgroup_id, 
+			 unsigned long token, 
+			 int refs, 
+			 bool in),
+
+	TP_ARGS(folio, pgdat, cgroup_id, token, refs, in),
+
+	TP_STRUCT__entry(
+		__field(struct folio* ,folio)
+		__field(struct pglist_data*, pgdat)
+		__field(unsigned short, cgroup_id)
+		__field(unsigned long , token)
+		__field(int , refs)
+		__field(bool , in)
+	),
+
+	TP_fast_assign(
+		__entry->folio	= folio;
+		__entry->pgdat	= pgdat;
+		__entry->cgroup_id	= cgroup_id;
+		__entry->token	= token;
+		__entry->refs	= refs;
+		__entry->in	= in;
+	),
+
+	TP_printk("[%s] folio@[%p] {memcg:%d}{pglist[%p]} mins_seq[%ul], ref[%d] p1[%d],p2[%d]", 
+                __entry->in ? "REFAULT" : "EVICT",
+				__entry->folio,
+				(unsigned short)__entry->cgroup_id,
+				__entry->pgdat,
+				(__entry->token >> LRU_REFS_WIDTH),
+				__entry->refs,
+                folio_test_swapprio1(__entry->folio),
+                folio_test_swapprio2(__entry->folio))
+);
 #endif /* _TRACE_LRU_GEN_H */
 #include <trace/define_trace.h>

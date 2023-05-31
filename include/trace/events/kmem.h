@@ -228,21 +228,24 @@ TRACE_EVENT(mm_page_alloc,
 
 TRACE_EVENT(mm_page_alloc_slow,
 
-	TP_PROTO(unsigned int order, unsigned int alloc_flags),
+	TP_PROTO(unsigned int order, unsigned int alloc_flags, int pt),
 
-	TP_ARGS(order, alloc_flags),
+	TP_ARGS(order, alloc_flags, pt),
 
 	TP_STRUCT__entry(
 		__field(	unsigned int,	order		)
 		__field(	unsigned int,	alloc_flags	)
+		__field(	int,	pt		)
 	),
 
 	TP_fast_assign(
 		__entry->order		= order;
 		__entry->alloc_flags	= alloc_flags;
+		__entry->pt	= pt;
 	),
 
-	TP_printk("order=%d alloc_flags=%d [%s]",
+	TP_printk("[%d]order=%u alloc_flags=%u [%s]",
+		__entry->pt, 
 		__entry->order,
 		__entry->alloc_flags,
 		__entry->alloc_flags & ALLOC_KSWAPD ? "KSWAPD" : "NONE"
