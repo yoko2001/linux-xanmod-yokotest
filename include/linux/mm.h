@@ -74,6 +74,7 @@ static inline void totalram_pages_add(long count)
 
 extern void * high_memory;
 extern int page_cluster;
+extern int ra_boost_order;
 extern const int page_cluster_max;
 
 #ifdef CONFIG_SYSCTL
