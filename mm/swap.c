@@ -39,7 +39,7 @@
 #include <linux/buffer_head.h>
 
 #include "internal.h"
-
+#include <trace/events/swap.h>
 #define CREATE_TRACE_POINTS
 #include <trace/events/pagemap.h>
 
@@ -416,8 +416,10 @@ static void folio_inc_refs(struct folio *folio)
 {
 	unsigned long new_flags, old_flags = READ_ONCE(folio->flags);
 
-	if (folio_test_unevictable(folio))
+	if (folio_test_unevictable(folio)){
+		trace_folio_inc_refs(folio, 0);
 		return;
+	}
 
 	if (!folio_test_referenced(folio)) {
 		folio_set_referenced(folio);
@@ -515,9 +517,35 @@ void folio_add_lru(struct folio *folio)
 	local_lock(&cpu_fbatches.lock);
 	fbatch = this_cpu_ptr(&cpu_fbatches.lru_add);
 	folio_batch_add_and_move(fbatch, folio, lru_add_fn);
+	trace_folio_add_lru(folio, false);
 	local_unlock(&cpu_fbatches.lock);
 }
 EXPORT_SYMBOL(folio_add_lru);
+
+void folio_add_lru_ra(struct folio *folio)
+{
+	struct folio_batch *fbatch;
+
+	VM_BUG_ON_FOLIO(folio_test_active(folio) &&
+			folio_test_unevictable(folio), folio);
+	VM_BUG_ON_FOLIO(folio_test_lru(folio), folio);
+
+	// /* see the comment in lru_gen_add_folio() */
+	// if (lru_gen_enabled() && !folio_test_unevictable(folio) &&
+	//     lru_gen_in_fault() && !(current->flags & PF_MEMALLOC))
+	// {
+	// 	folio_set_active(folio);
+	// 	trace_folio_add_lru(folio);
+	// }
+	folio_clear_active(folio);
+	folio_get(folio);
+	local_lock(&cpu_fbatches.lock);
+	fbatch = this_cpu_ptr(&cpu_fbatches.lru_add);
+	folio_batch_add_and_move(fbatch, folio, lru_add_fn);
+	trace_folio_add_lru(folio, true);
+	local_unlock(&cpu_fbatches.lock);
+}
+EXPORT_SYMBOL(folio_add_lru_ra);
 
 /**
  * folio_add_lru_vma() - Add a folio to the appropate LRU list for this VMA.
@@ -1096,7 +1124,8 @@ void __init swap_setup(void)
 	if (megs < 16)
 		page_cluster = 2;
 	else
-		page_cluster = 3;
+		// page_cluster = 3;
+		page_cluster = 5;
 	/*
 	 * Right now other parts of the system means that we
 	 * _really_ don't want to cluster much more

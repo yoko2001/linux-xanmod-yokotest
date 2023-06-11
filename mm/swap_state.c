@@ -24,7 +24,10 @@
 #include <linux/shmem_fs.h>
 #include "internal.h"
 #include "swap.h"
-
+/*DJL ADD START*/
+#define CREATE_TRACE_POINTS
+#include <trace/events/swap.h>
+/*DJL ADD END*/
 /*
  * swapper_space is a fiction, retained to simplify the path through
  * vmscan's shrink_page_list.
@@ -355,8 +358,10 @@ struct folio *swap_cache_get_folio(swp_entry_t entry,
 			ra_val = GET_SWAP_RA_VAL(vma);
 			win = SWAP_RA_WIN(ra_val);
 			hits = SWAP_RA_HITS(ra_val);
-			if (readahead)
+			if (readahead){
 				hits = min_t(int, hits + 1, SWAP_RA_HITS_MAX);
+				trace_swapin_readahead_hit(folio);				
+			}
 			atomic_long_set(&vma->swap_readahead_info,
 					SWAP_RA_VAL(addr, win, hits));
 		}
@@ -410,7 +415,7 @@ out:
 
 struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 			struct vm_area_struct *vma, unsigned long addr,
-			bool *new_page_allocated)
+			bool *new_page_allocated, bool no_ra)
 {
 	struct swap_info_struct *si;
 	struct folio *folio;
@@ -484,7 +489,8 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 
 	if (mem_cgroup_swapin_charge_folio(folio, NULL, gfp_mask, entry))
 		goto fail_unlock;
-
+	//reclaim 4kb pages space
+	//swapin_force_wake_kswapd(gfp_mask, 0);
 	/* May fail (-ENOMEM) if XArray node allocation failed. */
 	if (add_to_swap_cache(folio, entry, gfp_mask & GFP_RECLAIM_MASK, &shadow))
 		goto fail_unlock;
@@ -495,7 +501,10 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 		workingset_refault(folio, shadow);
 
 	/* Caller will initiate read into locked folio */
-	folio_add_lru(folio);
+	if (no_ra)
+		folio_add_lru(folio);
+	else
+		folio_add_lru_ra(folio);
 	*new_page_allocated = true;
 	return &folio->page;
 
@@ -519,7 +528,7 @@ struct page *read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 {
 	bool page_was_allocated;
 	struct page *retpage = __read_swap_cache_async(entry, gfp_mask,
-			vma, addr, &page_was_allocated);
+			vma, addr, &page_was_allocated, true);
 
 	if (page_was_allocated)
 		swap_readpage(retpage, do_poll, plug);
@@ -639,7 +648,7 @@ struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t gfp_mask,
 		/* Ok, do the async read-ahead now */
 		page = __read_swap_cache_async(
 			swp_entry(swp_type(entry), offset),
-			gfp_mask, vma, addr, &page_allocated);
+			gfp_mask, vma, addr, &page_allocated, true); //doesn't support fast swapout
 		if (!page)
 			continue;
 		if (page_allocated) {
@@ -712,6 +721,7 @@ static void swap_ra_info(struct vm_fault *vmf,
 			     SWAP_RA_ORDER_CEILING);
 	if (max_win == 1) {
 		ra_info->win = 1;
+		trace_new_swap_ra_info(ra_info->ptes, ra_info->nr_pte, ra_info->offset, ra_info->win);
 		return;
 	}
 
@@ -726,8 +736,10 @@ static void swap_ra_info(struct vm_fault *vmf,
 	atomic_long_set(&vma->swap_readahead_info,
 			SWAP_RA_VAL(faddr, win, 0));
 
-	if (win == 1)
+	if (win == 1){
+		trace_new_swap_ra_info(ra_info->ptes, ra_info->nr_pte, ra_info->offset, ra_info->win);
 		return;
+	}
 
 	/* Copy the PTEs because the page table may be unmapped */
 	orig_pte = pte = pte_offset_map(vmf->pmd, faddr);
@@ -758,6 +770,7 @@ static void swap_ra_info(struct vm_fault *vmf,
 	for (pfn = start; pfn != end; pfn++)
 		*tpte++ = *pte++;
 #endif
+	trace_new_swap_ra_info(ra_info->ptes, ra_info->nr_pte, ra_info->offset, ra_info->win);
 	pte_unmap(orig_pte);
 }
 
@@ -804,7 +817,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 		if (unlikely(non_swap_entry(entry)))
 			continue;
 		page = __read_swap_cache_async(entry, gfp_mask, vma,
-					       vmf->address, &page_allocated);
+					       vmf->address, &page_allocated, i == ra_info.offset);
 		if (!page)
 			continue;
 		if (page_allocated) {
@@ -813,6 +826,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				SetPageReadahead(page);
 				count_vm_event(SWAP_RA);
 			}
+			trace_readahead_swap_readpage(page_folio(page));
 		}
 		put_page(page);
 	}

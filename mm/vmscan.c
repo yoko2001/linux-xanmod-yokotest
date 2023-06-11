@@ -70,7 +70,9 @@
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/vmscan.h>
-
+/*DJL ADD START*/
+#include <trace/events/lru_gen.h>
+/*DJL ADD END*/
 struct scan_control {
 	/* How many pages shrink_list() should reclaim */
 	unsigned long nr_to_reclaim;
@@ -1381,6 +1383,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		if (reclaimed && !mapping_exiting(mapping))
 			shadow = workingset_eviction(folio, target_memcg);
 		__delete_from_swap_cache(folio, swap, shadow);
+		trace_folio_delete_from_swap_cache(folio);
 		mem_cgroup_swapout(folio, swap);
 		xa_unlock_irq(&mapping->i_pages);
 		put_swap_folio(folio, swap);
@@ -3954,6 +3957,7 @@ static bool walk_pte_range(pmd_t *pmd, unsigned long start, unsigned long end,
 	struct mem_cgroup *memcg = lruvec_memcg(walk->lruvec);
 	struct pglist_data *pgdat = lruvec_pgdat(walk->lruvec);
 	int old_gen, new_gen = lru_gen_from_seq(walk->max_seq);
+	int old_refs;
 
 	VM_WARN_ON_ONCE(pmd_leaf(*pmd));
 
@@ -3984,7 +3988,7 @@ restart:
 		folio = get_pfn_folio(pfn, memcg, pgdat, walk->can_swap);
 		if (!folio)
 			continue;
-
+		old_refs = folio_lru_refs(folio);
 		if (!ptep_test_and_clear_young(args->vma, addr, pte + i))
 			VM_WARN_ON_ONCE(true);
 
@@ -3997,8 +4001,10 @@ restart:
 			folio_mark_dirty(folio);
 
 		old_gen = folio_update_gen(folio, new_gen);
-		if (old_gen >= 0 && old_gen != new_gen)
+		if (old_gen >= 0 && old_gen != new_gen){
 			update_batch_size(walk, folio, old_gen, new_gen);
+			trace_walk_pte_range(folio, addr,old_gen, new_gen, old_refs);
+		}
 	}
 
 	if (i < PTRS_PER_PTE && get_next_vma(PMD_MASK, PAGE_SIZE, args, &start, &end))
@@ -4847,12 +4853,16 @@ static bool sort_folio(struct lruvec *lruvec, struct folio *folio, int tier_idx)
 	int delta = folio_nr_pages(folio);
 	int refs = folio_lru_refs(folio);
 	int tier = lru_tier_from_refs(refs);
+	int hist;
 	struct lru_gen_folio *lrugen = &lruvec->lrugen;
 
 	VM_WARN_ON_ONCE_FOLIO(gen >= MAX_NR_GENS, folio);
 
 	/* unevictable */
 	if (!folio_evictable(folio)) {
+		/*DJL ADD BEGIN*/
+		trace_mglru_sort_folio(lruvec, folio, folio_lru_gen(folio), tier, 1);
+		/*DJL ADD END*/
 		success = lru_gen_del_folio(lruvec, folio, true);
 		VM_WARN_ON_ONCE_FOLIO(!success, folio);
 		folio_set_unevictable(folio);
@@ -4863,6 +4873,9 @@ static bool sort_folio(struct lruvec *lruvec, struct folio *folio, int tier_idx)
 
 	/* dirty lazyfree */
 	if (type == LRU_GEN_FILE && folio_test_anon(folio) && folio_test_dirty(folio)) {
+		/*DJL ADD BEGIN*/
+		trace_mglru_sort_folio(lruvec, folio, folio_lru_gen(folio), tier,  2);
+		/*DJL ADD END*/
 		success = lru_gen_del_folio(lruvec, folio, true);
 		VM_WARN_ON_ONCE_FOLIO(!success, folio);
 		folio_set_swapbacked(folio);
@@ -4872,13 +4885,19 @@ static bool sort_folio(struct lruvec *lruvec, struct folio *folio, int tier_idx)
 
 	/* promoted */
 	if (gen != lru_gen_from_seq(lrugen->min_seq[type])) {
+		/*DJL ADD BEGIN*/
+		trace_mglru_sort_folio(lruvec, folio, folio_lru_gen(folio), tier, 3);
+		/*DJL ADD END*/
 		list_move(&folio->lru, &lrugen->folios[gen][type][zone]);
 		return true;
 	}
 
 	/* protected */
 	if (tier > tier_idx) {
-		int hist = lru_hist_from_seq(lrugen->min_seq[type]);
+		/*DJL ADD BEGIN*/
+		trace_mglru_sort_folio(lruvec, folio, folio_lru_gen(folio), tier, 4);
+		/*DJL ADD END*/
+		hist = lru_hist_from_seq(lrugen->min_seq[type]);
 
 		gen = folio_inc_gen(lruvec, folio, false);
 		list_move_tail(&folio->lru, &lrugen->folios[gen][type][zone]);
@@ -4892,17 +4911,26 @@ static bool sort_folio(struct lruvec *lruvec, struct folio *folio, int tier_idx)
 	/* waiting for writeback */
 	if (folio_test_locked(folio) || folio_test_writeback(folio) ||
 	    (type == LRU_GEN_FILE && folio_test_dirty(folio))) {
+		/*DJL ADD BEGIN*/
+		trace_mglru_sort_folio(lruvec, folio, folio_lru_gen(folio), tier, 5);
+		/*DJL ADD END*/
 		gen = folio_inc_gen(lruvec, folio, true);
 		list_move(&folio->lru, &lrugen->folios[gen][type][zone]);
 		return true;
 	}
-
+	/*DJL ADD BEGIN*/
+	trace_mglru_sort_folio(lruvec, folio, folio_lru_gen(folio), tier, 0);
+	/*DJL ADD END*/
 	return false;
 }
 
 static bool isolate_folio(struct lruvec *lruvec, struct folio *folio, struct scan_control *sc)
 {
 	bool success;
+	/*DJL ADD BEGIN*/
+	int newref, oriref = folio_lru_refs(folio);
+	int newtier, oritier = lru_tier_from_refs(oriref);
+	/*DJL ADD END*/
 
 	/* swapping inhibited */
 	if (!(sc->gfp_mask & __GFP_IO) &&
@@ -4930,7 +4958,11 @@ static bool isolate_folio(struct lruvec *lruvec, struct folio *folio, struct sca
 
 	success = lru_gen_del_folio(lruvec, folio, true);
 	VM_WARN_ON_ONCE_FOLIO(!success, folio);
-
+	newref = folio_lru_refs(folio);
+	newtier = lru_tier_from_refs(newref);
+	/*DJL ADD BEGIN*/
+	trace_mglru_isolate_folio(lruvec, folio, oriref, newref, oritier, newtier);
+	/*DJL ADD END*/
 	return true;
 }
 
@@ -5115,10 +5147,11 @@ static int evict_folios(struct lruvec *lruvec, struct scan_control *sc, int swap
 	struct pglist_data *pgdat = lruvec_pgdat(lruvec);
 
 	spin_lock_irq(&lruvec->lru_lock);
-
 	scanned = isolate_folios(lruvec, sc, swappiness, &type, &list);
+	trace_evict_folios(lruvec, 0, scanned);
 
 	scanned += try_to_inc_min_seq(lruvec, swappiness);
+	trace_evict_folios(lruvec, 1, scanned);
 
 	if (get_nr_gens(lruvec, !swappiness) == MIN_NR_GENS)
 		scanned = 0;
@@ -5204,6 +5237,7 @@ static bool should_run_aging(struct lruvec *lruvec, unsigned long max_seq,
 	/* whether this lruvec is completely out of cold folios */
 	if (min_seq[!can_swap] + MIN_NR_GENS > max_seq) {
 		*nr_to_scan = 0;
+		trace_should_run_aging(0, (int)nr_to_scan);
 		return true;
 	}
 
@@ -5228,6 +5262,7 @@ static bool should_run_aging(struct lruvec *lruvec, unsigned long max_seq,
 
 	/* try to scrape all its memory if this memcg was deleted */
 	*nr_to_scan = mem_cgroup_online(memcg) ? (total >> sc->priority) : total;
+	trace_should_run_aging(1, nr_to_scan);
 
 	/*
 	 * The aging tries to be lazy to reduce the overhead, while the eviction
@@ -5236,6 +5271,7 @@ static bool should_run_aging(struct lruvec *lruvec, unsigned long max_seq,
 	 */
 	if (min_seq[!can_swap] + MIN_NR_GENS < max_seq)
 		return false;
+	trace_should_run_aging(2, nr_to_scan);
 
 	/*
 	 * It's also ideal to spread pages out evenly, i.e., 1/(MIN_NR_GENS+1)
@@ -5246,8 +5282,10 @@ static bool should_run_aging(struct lruvec *lruvec, unsigned long max_seq,
 	 */
 	if (young * MIN_NR_GENS > total)
 		return true;
+	trace_should_run_aging(3, nr_to_scan);
 	if (old * (MIN_NR_GENS + 2) < total)
 		return true;
+	trace_should_run_aging(4, nr_to_scan);
 
 	return false;
 }
@@ -5495,7 +5533,6 @@ static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *
 	unsigned long reclaimed = sc->nr_reclaimed;
 
 	VM_WARN_ON_ONCE(!global_reclaim(sc));
-
 	/*
 	 * Unmapped clean folios are already prioritized. Scanning for more of
 	 * them is likely futile and can cause high reclaim latency when there
@@ -5503,6 +5540,7 @@ static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *
 	 */
 	if (!sc->may_writepage || !sc->may_unmap)
 		goto done;
+	trace_lru_gen_shrink_node(pgdat);
 
 	lru_add_drain();
 
@@ -6648,7 +6686,6 @@ static void shrink_zones(struct zonelist *zonelist, struct scan_control *sc)
 	gfp_t orig_mask;
 	pg_data_t *last_pgdat = NULL;
 	pg_data_t *first_pgdat = NULL;
-
 	/*
 	 * If the number of buffer_heads in the machine exceeds the maximum
 	 * allowed level, force direct reclaim to scan the highmem zone as
@@ -7264,12 +7301,13 @@ static bool kswapd_shrink_node(pg_data_t *pgdat,
 
 		sc->nr_to_reclaim += max(high_wmark_pages(zone), SWAP_CLUSTER_MAX);
 	}
-
+	trace_kswapd_shrink_node(sc->nr_reclaimed);
 	/*
 	 * Historically care was taken to put equal pressure on all zones but
 	 * now pressure is applied based on node LRU order.
 	 */
 	shrink_node(pgdat, sc);
+	trace_kswapd_shrink_node(sc->nr_reclaimed);
 
 	/*
 	 * Fragmentation may mean that the system cannot be rebalanced for
@@ -7778,7 +7816,7 @@ void wakeup_kswapd(struct zone *zone, gfp_t gfp_flags, int order,
 	}
 
 	trace_mm_vmscan_wakeup_kswapd(pgdat->node_id, highest_zoneidx, order,
-				      gfp_flags);
+				      gfp_flags, 5);
 	wake_up_interruptible(&pgdat->kswapd_wait);
 }
 

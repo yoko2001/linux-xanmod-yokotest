@@ -2284,6 +2284,25 @@ struct page *alloc_pages(gfp_t gfp, unsigned order)
 }
 EXPORT_SYMBOL(alloc_pages);
 
+/*DJL ADD BEGIN*/
+int swapin_force_wake_kswapd(gfp_t gfp, int order){
+	struct mempolicy *pol = &default_policy;
+	if (!in_interrupt() && !(gfp & __GFP_THISNODE))
+		pol = get_task_policy(current);
+
+	if (pol->mode == MPOL_INTERLEAVE)
+		return 0;
+	else if (pol->mode == MPOL_PREFERRED_MANY)
+		return 0;
+	else
+	return __swapin_force_wake_kswapd(gfp, order, 
+				policy_node(gfp, pol, numa_node_id()),
+				policy_nodemask(gfp, pol));
+}
+/*DJL ADD END*/
+
+EXPORT_SYMBOL(swapin_force_wake_kswapd);
+
 struct folio *folio_alloc(gfp_t gfp, unsigned order)
 {
 	struct page *page = alloc_pages(gfp | __GFP_COMP, order);

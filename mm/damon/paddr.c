@@ -12,9 +12,10 @@
 #include <linux/pagemap.h>
 #include <linux/rmap.h>
 #include <linux/swap.h>
-
+#include <linux/mm_inline.h>
 #include "../internal.h"
 #include "ops-common.h"
+#include "trace/events/lru_gen.h"
 
 static bool __damon_pa_mkold(struct folio *folio, struct vm_area_struct *vma,
 		unsigned long addr, void *arg)
@@ -276,8 +277,10 @@ static inline unsigned long damon_pa_mark_accessed_or_deactivate(
 			continue;
 		}
 
-		if (mark_accessed)
+		if (mark_accessed){
 			folio_mark_accessed(folio);
+			trace_damon_folio_mark_accessed(folio,  folio_lru_refs(folio), true);
+		}
 		else
 			folio_deactivate(folio);
 		applied += folio_nr_pages(folio);

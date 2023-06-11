@@ -14,8 +14,10 @@
 #include <linux/page_idle.h>
 #include <linux/pagewalk.h>
 #include <linux/sched/mm.h>
+#include <linux/mm_inline.h>
 
 #include "ops-common.h"
+#include "trace/events/lru_gen.h"
 
 #ifdef CONFIG_DAMON_VADDR_KUNIT_TEST
 #undef DAMON_MIN_REGION
@@ -474,7 +476,11 @@ regular_page:
 		goto out;
 	if (pte_young(*pte) || !folio_test_idle(folio) ||
 			mmu_notifier_test_young(walk->mm, addr))
+	{
+		folio_mark_accessed(folio);
+		trace_damon_folio_mark_accessed(folio,  folio_lru_refs(folio), false);
 		priv->young = true;
+	}
 	*priv->folio_sz = folio_size(folio);
 	folio_put(folio);
 out:

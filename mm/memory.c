@@ -90,7 +90,7 @@
 #include "pgalloc-track.h"
 #include "internal.h"
 #include "swap.h"
-
+#include <trace/events/swap.h>
 #if defined(LAST_CPUPID_NOT_IN_PAGE_FLAGS) && !defined(CONFIG_COMPILE_TEST)
 #warning Unfortunate NUMA and NUMA Balancing config, growing page-frame for last_cpupid.
 #endif
@@ -3695,7 +3695,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	int locked;
 	vm_fault_t ret = 0;
 	void *shadow = NULL;
-
+	trace_do_swap_page(-1, folio);
 	if (!pte_unmap_same(vmf))
 		goto out;
 
@@ -3746,8 +3746,10 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	swapcache = folio;
 
 	if (!folio) {
+		trace_do_swap_page(0, folio);
 		if (data_race(si->flags & SWP_SYNCHRONOUS_IO) &&
 		    __swap_count(entry) == 1) {
+			trace_do_swap_page(1, folio);
 			/* skip swapcache */
 			folio = vma_alloc_folio(GFP_HIGHUSER_MOVABLE, 0,
 						vma, vmf->address, false);
@@ -3776,6 +3778,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				folio->private = NULL;
 			}
 		} else {
+			trace_do_swap_page(2, folio);
 			page = swapin_readahead(entry, GFP_HIGHUSER_MOVABLE,
 						vmf);
 			if (page)
@@ -3784,6 +3787,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		}
 
 		if (!folio) {
+			trace_do_swap_page(3, folio);
 			/*
 			 * Back out if somebody else faulted in this pte
 			 * while we released the pte lock.
@@ -3816,6 +3820,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	}
 
 	if (swapcache) {
+		trace_do_swap_page(4, folio);
 		/*
 		 * Make sure folio_free_swap() or swapoff did not release the
 		 * swapcache from under us.  The page pin, and pte_same test

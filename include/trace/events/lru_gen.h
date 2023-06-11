@@ -1,0 +1,390 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+#undef TRACE_SYSTEM
+#define TRACE_SYSTEM lru_gen
+
+#if !defined(_TRACE_LRU_GEN_H) || defined(TRACE_HEADER_MULTI_READ)
+#define _TRACE_LRU_GEN_H
+
+#include <linux/tracepoint.h>
+#include <linux/mm.h>
+#include <linux/mm_inline.h>
+
+#define	PAGEMAP_MAPPED		0x0001u
+#define PAGEMAP_ANONYMOUS	0x0002u
+#define PAGEMAP_FILE		0x0004u
+#define PAGEMAP_SWAPCACHE	0x0008u
+#define PAGEMAP_SWAPBACKED	0x0010u
+#define PAGEMAP_MAPPEDDISK	0x0020u
+#define PAGEMAP_BUFFERS		0x0040u
+
+#define trace_pagemap_flags(folio) ( \
+	(folio_test_anon(folio)		? PAGEMAP_ANONYMOUS  : PAGEMAP_FILE) | \
+	(folio_mapped(folio)		? PAGEMAP_MAPPED     : 0) | \
+	(folio_test_swapcache(folio)	? PAGEMAP_SWAPCACHE  : 0) | \
+	(folio_test_swapbacked(folio)	? PAGEMAP_SWAPBACKED : 0) | \
+	(folio_test_mappedtodisk(folio)	? PAGEMAP_MAPPEDDISK : 0) | \
+	(folio_test_private(folio)	? PAGEMAP_BUFFERS    : 0) \
+	)
+
+TRACE_EVENT(mglru_folio_updt_gen,
+
+	TP_PROTO(struct folio *folio, int oldgen, int newgen),
+
+	TP_ARGS(folio, oldgen, newgen),
+
+	TP_STRUCT__entry(
+		__field(struct folio *,	folio	)
+		__field(unsigned long,	pfn	)
+		__field(int , oldgen    )
+		__field(int , newgen    )
+		__field(unsigned long,	flags	)
+	),
+
+	TP_fast_assign(
+		__entry->folio	= folio;
+		__entry->pfn	= folio_pfn(folio);
+		__entry->oldgen	= oldgen;
+		__entry->newgen	= newgen;
+		__entry->flags	= trace_pagemap_flags(folio);
+	),
+
+	/* Flag format is based on page-types.c formatting for pagemap */
+	TP_printk("folio=%p[%s] pfn=0x%lx gen:%d->%d flags=%s%s%s%s%s%s",
+			__entry->folio,
+			folio_test_transhuge(__entry->folio)? "T": "N",
+			__entry->pfn,
+			__entry->oldgen,
+			__entry->newgen,
+			__entry->flags & PAGEMAP_MAPPED		? "M" : " ",
+			__entry->flags & PAGEMAP_ANONYMOUS	? "a" : "f",
+			__entry->flags & PAGEMAP_SWAPCACHE	? "s" : " ",
+			__entry->flags & PAGEMAP_SWAPBACKED	? "b" : " ",
+			__entry->flags & PAGEMAP_MAPPEDDISK	? "d" : " ",
+			__entry->flags & PAGEMAP_BUFFERS	? "B" : " ")
+);
+
+TRACE_EVENT(mglru_folio_inc_gen,
+
+	TP_PROTO(struct folio *folio, int oldgen, int newgen),
+
+	TP_ARGS(folio, oldgen, newgen),
+
+	TP_STRUCT__entry(
+		__field(struct folio *,	folio	)
+		__field(unsigned long,	pfn	)
+		__field(int , oldgen    )
+		__field(int , newgen    )
+		__field(unsigned long,	flags	)
+	),
+
+	TP_fast_assign(
+		__entry->folio	= folio;
+		__entry->pfn	= folio_pfn(folio);
+		__entry->oldgen	= oldgen;
+		__entry->newgen	= newgen;
+		__entry->flags	= trace_pagemap_flags(folio);
+	),
+
+	/* Flag format is based on page-types.c formatting for pagemap */
+	TP_printk("folio=%p[%s] pfn=0x%lx gen:%d->%d flags=%s%s%s%s%s%s",
+			__entry->folio,
+			folio_test_transhuge(__entry->folio)? "T": "N",
+			__entry->pfn,
+			__entry->oldgen,
+			__entry->newgen,
+			__entry->flags & PAGEMAP_MAPPED		? "M" : " ",
+			__entry->flags & PAGEMAP_ANONYMOUS	? "a" : "f",
+			__entry->flags & PAGEMAP_SWAPCACHE	? "s" : " ",
+			__entry->flags & PAGEMAP_SWAPBACKED	? "b" : " ",
+			__entry->flags & PAGEMAP_MAPPEDDISK	? "d" : " ",
+			__entry->flags & PAGEMAP_BUFFERS	? "B" : " ")
+);
+
+
+TRACE_EVENT(mglru_sort_folio,
+
+	TP_PROTO(struct lruvec *lruvec, struct folio *folio, int gen, int tier, int reason),
+
+	TP_ARGS(lruvec, folio, gen, tier, reason),
+
+	TP_STRUCT__entry(
+		__field(struct lruvec *, lruvec	)
+		__field(struct folio *,	folio	)
+		__field(unsigned long,	pfn	)
+		__field(int , tier    )
+		__field(int , reason    )
+		__field(int , gen    )
+		__field(unsigned long,	flags	)
+	),
+
+	TP_fast_assign(
+		__entry->lruvec	= lruvec;
+		__entry->folio	= folio;
+		__entry->pfn	= folio_pfn(folio);
+		__entry->gen	= gen;
+		__entry->tier   = tier;
+		__entry->reason	= reason;
+		__entry->flags	= trace_pagemap_flags(folio);
+	),
+
+	/* Flag format is based on page-types.c formatting for pagemap */
+	TP_printk("[%s]lruvec=%p folio=%p[%s][ra%d] pfn=0x%lx gen:%d tier=%d flags=%s%s%s%s%s%s",
+			(__entry->reason == 0 )? "KILLED" : (
+			(__entry->reason == 1 )? "unevictable" : (
+			(__entry->reason == 2 )? "dirty lazyfree" : (
+			(__entry->reason == 3 )? "promoted" : (
+			(__entry->reason == 4 )? "protected" : "writeback" 
+			)))),
+			__entry->lruvec,
+			__entry->folio,
+			folio_test_transhuge(__entry->folio)? "T": "N",
+			folio_test_readahead(__entry->folio),
+			__entry->pfn,
+			__entry->gen,
+			__entry->tier,
+			__entry->flags & PAGEMAP_MAPPED		? "M" : " ",
+			__entry->flags & PAGEMAP_ANONYMOUS	? "a" : "f",
+			__entry->flags & PAGEMAP_SWAPCACHE	? "s" : " ",
+			__entry->flags & PAGEMAP_SWAPBACKED	? "b" : " ",
+			__entry->flags & PAGEMAP_MAPPEDDISK	? "d" : " ",
+			__entry->flags & PAGEMAP_BUFFERS	? "B" : " ")
+);
+
+TRACE_EVENT(mglru_isolate_folio,
+
+	TP_PROTO(struct lruvec *lruvec, struct folio *folio, 
+	         int orirefs, int newrefs, int oritiers, int newtiers),
+
+	TP_ARGS(lruvec, folio, orirefs, newrefs, oritiers, newtiers),
+
+	TP_STRUCT__entry(
+		__field(struct lruvec *, lruvec	)
+		__field(struct folio *,	folio	)
+		__field(unsigned long,	pfn	)
+		__field(int , orirefs    )
+		__field(int , newrefs    )
+		__field(int , oritiers    )
+		__field(int , newtiers    )
+		__field(unsigned long,	flags	)
+	),
+
+	TP_fast_assign(
+		__entry->lruvec	= lruvec;
+		__entry->folio	= folio;
+		__entry->pfn	= folio_pfn(folio);
+		__entry->orirefs	= orirefs;
+		__entry->newrefs	= newrefs;
+		__entry->oritiers	= oritiers;
+		__entry->newtiers	= newtiers;
+		__entry->flags	= trace_pagemap_flags(folio);
+	),
+
+	/* Flag format is based on page-types.c formatting for pagemap */
+	TP_printk("lruvec=%p folio=%p[%s] pfn=0x%lx refs:%d->%d tiers:%d->%d flags=%s%s%s%s%s%s",
+			__entry->lruvec,
+			__entry->folio,
+			folio_test_transhuge(__entry->folio)? "T": "N",
+			__entry->pfn,
+			__entry->orirefs,
+			__entry->newrefs,
+			__entry->oritiers,
+			__entry->newtiers,
+			__entry->flags & PAGEMAP_MAPPED		? "M" : " ",
+			__entry->flags & PAGEMAP_ANONYMOUS	? "a" : "f",
+			__entry->flags & PAGEMAP_SWAPCACHE	? "s" : " ",
+			__entry->flags & PAGEMAP_SWAPBACKED	? "b" : " ",
+			__entry->flags & PAGEMAP_MAPPEDDISK	? "d" : " ",
+			__entry->flags & PAGEMAP_BUFFERS	? "B" : " ")
+);
+
+TRACE_EVENT(walk_pte_range,
+
+	TP_PROTO(struct folio *folio, 	unsigned long addr, int old_gen, int new_gen, int old_refs),
+
+	TP_ARGS(folio, addr, old_gen, new_gen, old_refs),
+
+	TP_STRUCT__entry(
+		__field(struct folio *,	folio	)
+		__field(unsigned long,	addr	)
+		__field(int , type    )
+		__field(int , oldgen    )
+		__field(int , newgen    )
+		__field(int,  new_refs		)
+		__field(int,  old_refs		)
+		__field(unsigned long,	flags	)
+	),
+
+	TP_fast_assign(
+		__entry->folio	= folio;
+		__entry->addr	= addr;
+		__entry->oldgen	= old_gen;
+		__entry->newgen	= new_gen;
+		__entry->new_refs	= folio_lru_refs(folio);
+		__entry->old_refs   = old_refs;
+		__entry->flags	= trace_pagemap_flags(folio);
+	),
+
+	/* Flag format is based on page-types.c formatting for pagemap */
+	TP_printk("folio=%p[%s] addr=0x%lx  gen:%d->%d  refs=%d->%d, flags=%s%s%s%s%s%s",
+			__entry->folio,
+			folio_test_transhuge(__entry->folio)? "T": "N",
+			__entry->addr,
+			__entry->oldgen,
+			__entry->newgen,
+			__entry->old_refs,
+			__entry->new_refs,
+			__entry->flags & PAGEMAP_MAPPED		? "M" : " ",
+			__entry->flags & PAGEMAP_ANONYMOUS	? "a" : "f",
+			__entry->flags & PAGEMAP_SWAPCACHE	? "s" : " ",
+			__entry->flags & PAGEMAP_SWAPBACKED	? "b" : " ",
+			__entry->flags & PAGEMAP_MAPPEDDISK	? "d" : " ",
+			__entry->flags & PAGEMAP_BUFFERS	? "B" : " ")
+);
+
+TRACE_EVENT(folio_update_gen,
+
+	TP_PROTO(struct folio *folio, int newgen, int type),
+
+	TP_ARGS(folio, newgen, type),
+
+	TP_STRUCT__entry(
+		__field(struct folio *,	folio	)
+		__field(unsigned long,	pfn	)
+		__field(int , type    )
+		__field(int , oldgen    )
+		__field(int , newgen    )
+		__field(unsigned long,	flags	)
+	),
+
+	TP_fast_assign(
+		__entry->folio	= folio;
+		__entry->pfn	= folio_pfn(folio);
+		__entry->oldgen	= ((READ_ONCE(folio->flags) & LRU_GEN_MASK) >> LRU_GEN_PGOFF) - 1;
+		__entry->newgen	= newgen;
+		__entry->type	= type;
+		__entry->flags	= trace_pagemap_flags(folio);
+	),
+
+	/* Flag format is based on page-types.c formatting for pagemap */
+	TP_printk("folio=%p[%s] pfn=0x%lx type:%s gen:%d->%d flags=%s%s%s%s%s%s",
+			__entry->folio,
+			folio_test_transhuge(__entry->folio)? "T": "N",
+			__entry->pfn,
+			__entry->type == 0 ? "other" : (__entry->type == 1 ? "norm" : "thp"),
+			__entry->oldgen,
+			__entry->newgen,
+			__entry->flags & PAGEMAP_MAPPED		? "M" : " ",
+			__entry->flags & PAGEMAP_ANONYMOUS	? "a" : "f",
+			__entry->flags & PAGEMAP_SWAPCACHE	? "s" : " ",
+			__entry->flags & PAGEMAP_SWAPBACKED	? "b" : " ",
+			__entry->flags & PAGEMAP_MAPPEDDISK	? "d" : " ",
+			__entry->flags & PAGEMAP_BUFFERS	? "B" : " ")
+);
+
+// TRACE_EVENT(page_set_swapprio,
+
+// 	TP_PROTO(struct page* page),
+
+// 	TP_ARGS(page),
+
+// 	TP_STRUCT__entry(
+// 		__field(struct page* ,page)
+// 	),
+
+// 	TP_fast_assign(
+// 		__entry->page	= page;
+// 	),
+
+// 	TP_printk("page@[%p] prio1[%d],prio2[%d]", 
+//                 __entry->page,
+//                 PageSwapPrio1(__entry->page),
+//                 PageSwapPrio2(__entry->page))
+// );
+
+TRACE_EVENT(folio_delete_from_swap_cache,
+
+	TP_PROTO(struct folio* folio),
+
+	TP_ARGS(folio),
+
+	TP_STRUCT__entry(
+		__field(struct folio* ,folio)
+	),
+
+	TP_fast_assign(
+		__entry->folio	= folio;
+	),
+
+	TP_printk("folio@[%p] fdfsc_ra[%d]", 
+                __entry->folio, folio_test_readahead(__entry->folio))
+);
+
+TRACE_EVENT(folio_workingset_change,
+
+	TP_PROTO(struct folio* folio, 
+	         struct pglist_data *pgdat, 
+			 unsigned short cgroup_id, 
+			 unsigned long token, 
+			 int refs, 
+			 bool in),
+
+	TP_ARGS(folio, pgdat, cgroup_id, token, refs, in),
+
+	TP_STRUCT__entry(
+		__field(struct folio* ,folio)
+		__field(struct pglist_data*, pgdat)
+		__field(unsigned short, cgroup_id)
+		__field(unsigned long , token)
+		__field(int , refs)
+		__field(int, tiers)
+		__field(bool , in)
+	),
+
+	TP_fast_assign(
+		__entry->folio	= folio;
+		__entry->pgdat	= pgdat;
+		__entry->cgroup_id	= cgroup_id;
+		__entry->token	= token;
+		__entry->refs	= refs;
+		__entry->tiers  = lru_tier_from_refs(refs);
+		__entry->in	= in;
+	),
+
+	TP_printk("[%s] folio@[%p] ra[%d] {memcg:%d}{pglist[%p]} mins_seq[%lu], ref[%d] tier[%d]", 
+                __entry->in ? "REFAULT" : "EVICT",
+				__entry->folio, folio_test_readahead(__entry->folio),
+				(unsigned short)__entry->cgroup_id,
+				__entry->pgdat,
+				(__entry->token >> LRU_REFS_WIDTH),
+				__entry->refs, __entry->tiers)
+);
+
+TRACE_EVENT(damon_folio_mark_accessed,
+
+	TP_PROTO(struct folio* folio, int ref, int pa),
+
+	TP_ARGS(folio, ref, pa),
+
+	TP_STRUCT__entry(
+		__field(struct folio* , folio)
+		__field(int , ref)
+		__field(int , tiers)
+		__field(int , pa)
+	),
+
+	TP_fast_assign(
+		__entry->folio	= folio;
+		__entry->ref   = ref;
+		__entry->tiers  = lru_tier_from_refs(ref);
+		__entry->pa   = pa;
+	),
+
+	TP_printk("[%s] folio[%p] ref[%d] tier[%d] PG_work[%d] PG_ref[%d]",
+			 __entry->pa ? "paddr" : "vaddr",  
+			 __entry->folio, __entry->ref, __entry->tiers, 
+			 folio_test_workingset(__entry->folio), 
+			 folio_test_referenced(__entry->folio))
+);
+
+#endif /* _TRACE_LRU_GEN_H */
+#include <trace/define_trace.h>

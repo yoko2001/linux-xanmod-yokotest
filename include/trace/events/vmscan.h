@@ -86,17 +86,97 @@ TRACE_EVENT(mm_vmscan_kswapd_wake,
 		__entry->order)
 );
 
+TRACE_EVENT(lru_gen_shrink_node,
+
+	TP_PROTO(struct pglist_data *pgdat),
+
+	TP_ARGS(pgdat),
+
+	TP_STRUCT__entry(
+		__field(struct pglist_data *,	pgdat	)
+	),
+
+	TP_fast_assign(
+		__entry->pgdat	= pgdat;
+	),
+
+	TP_printk("pgdat [%p]",
+		__entry->pgdat)
+);
+
+TRACE_EVENT(evict_folios,
+
+	TP_PROTO(struct lruvec *lruvec, int ckpt, int scanned),
+
+	TP_ARGS(lruvec, ckpt, scanned),
+
+	TP_STRUCT__entry(
+		__field(struct lruvec *, lruvec)
+		__field(int , ckpt)
+		__field(int , scanned)
+	),
+
+	TP_fast_assign(
+		__entry->lruvec	= lruvec;
+		__entry->ckpt	= ckpt;
+		__entry->scanned	= scanned;
+	),
+
+	TP_printk("[%s] lruvec[%p]  scanned[%d]",
+		__entry->ckpt == 0 ? "isolate_folios pass" : (
+		__entry->ckpt == 1 ? "try_to_inc_min_seq pass" : "null"
+		),
+		__entry->lruvec,  __entry->scanned)
+);
+
+TRACE_EVENT(should_run_aging,
+
+	TP_PROTO(int ckpt, int nr_to_scan),
+
+	TP_ARGS(ckpt, nr_to_scan),
+
+	TP_STRUCT__entry(
+		__field(	int,	ckpt	)
+		__field(	int,	nr_to_scan	)
+	),
+
+	TP_fast_assign(
+		__entry->ckpt	= ckpt;
+		__entry->nr_to_scan	= nr_to_scan;
+	),
+
+	TP_printk("ckpt=%d nr_to_scan=%d", __entry->ckpt, __entry->nr_to_scan)
+);
+
+TRACE_EVENT(kswapd_shrink_node,
+
+	TP_PROTO(int nr_reclaimed),
+
+	TP_ARGS(nr_reclaimed),
+
+	TP_STRUCT__entry(
+		__field(	int,	nr_reclaimed	)
+	),
+
+	TP_fast_assign(
+		__entry->nr_reclaimed	= nr_reclaimed;
+	),
+
+	TP_printk("nr_reclaimed=%d ", __entry->nr_reclaimed)
+);
+
 TRACE_EVENT(mm_vmscan_wakeup_kswapd,
 
-	TP_PROTO(int nid, int zid, int order, gfp_t gfp_flags),
+	TP_PROTO(int nid, int zid, int order, gfp_t gfp_flags, int ckpt),
 
-	TP_ARGS(nid, zid, order, gfp_flags),
+	TP_ARGS(nid, zid, order, gfp_flags, ckpt),
 
 	TP_STRUCT__entry(
 		__field(	int,	nid		)
 		__field(	int,	zid		)
 		__field(	int,	order		)
 		__field(	unsigned long,	gfp_flags	)
+		__field(	int,	ckpt		)
 	),
 
 	TP_fast_assign(
@@ -104,9 +184,11 @@ TRACE_EVENT(mm_vmscan_wakeup_kswapd,
 		__entry->zid		= zid;
 		__entry->order		= order;
 		__entry->gfp_flags	= (__force unsigned long)gfp_flags;
+		__entry->ckpt		= ckpt;
 	),
 
-	TP_printk("nid=%d order=%d gfp_flags=%s",
+	TP_printk("ckpt[%d] nid=%d order=%d gfp_flags=%s",
+		__entry->ckpt, 
 		__entry->nid,
 		__entry->order,
 		show_gfp_flags(__entry->gfp_flags))
