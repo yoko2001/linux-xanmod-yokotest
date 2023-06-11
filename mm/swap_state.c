@@ -44,6 +44,7 @@ struct address_space *swapper_spaces[MAX_SWAPFILES] __read_mostly;
 static unsigned int nr_swapper_spaces[MAX_SWAPFILES] __read_mostly;
 static bool enable_vma_readahead __read_mostly = true;
 static bool enable_vma_readahead_boost __read_mostly = true;//controller of boost
+static bool enable_ra_fast_evict __read_mostly = false;//controller of boost
 
 #define SWAP_RA_WIN_SHIFT	(PAGE_SHIFT / 2)
 #define SWAP_RA_HITS_MASK	((1UL << SWAP_RA_WIN_SHIFT) - 1)
@@ -862,7 +863,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 		if (unlikely(non_swap_entry(entry)))
 			continue;
 		page = __read_swap_cache_async(entry, gfp_mask, vma,
-					       vmf->address, &page_allocated, i == ra_info.offset);
+					       vmf->address, &page_allocated, (!enable_ra_fast_evict) || (i == ra_info.offset));
 		if (!page)
 			continue;
 		if (page_allocated) {
