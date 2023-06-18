@@ -5237,7 +5237,7 @@ static bool should_run_aging(struct lruvec *lruvec, unsigned long max_seq,
 	/* whether this lruvec is completely out of cold folios */
 	if (min_seq[!can_swap] + MIN_NR_GENS > max_seq) {
 		*nr_to_scan = 0;
-		trace_should_run_aging(0, (int)nr_to_scan);
+		trace_should_run_aging(0, nr_to_scan);
 		return true;
 	}
 

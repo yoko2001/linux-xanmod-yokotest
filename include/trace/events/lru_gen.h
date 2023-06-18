@@ -114,6 +114,7 @@ TRACE_EVENT(mglru_sort_folio,
 		__field(int , tier    )
 		__field(int , reason    )
 		__field(int , gen    )
+		__field(int, ref)
 		__field(unsigned long,	flags	)
 	),
 
@@ -122,13 +123,14 @@ TRACE_EVENT(mglru_sort_folio,
 		__entry->folio	= folio;
 		__entry->pfn	= folio_pfn(folio);
 		__entry->gen	= gen;
+		__entry->ref    = folio_lru_refs(folio);
 		__entry->tier   = tier;
 		__entry->reason	= reason;
 		__entry->flags	= trace_pagemap_flags(folio);
 	),
 
 	/* Flag format is based on page-types.c formatting for pagemap */
-	TP_printk("[%s]lruvec=%p folio=%p[%s][ra%d] pfn=0x%lx gen:%d tier=%d flags=%s%s%s%s%s%s",
+	TP_printk("[%s]lruvec=%p folio=%p[%s][ra%d] ref[%d] pfn=0x%lx gen:%d tier=%d flags=%s%s%s%s%s%s",
 			(__entry->reason == 0 )? "KILLED" : (
 			(__entry->reason == 1 )? "unevictable" : (
 			(__entry->reason == 2 )? "dirty lazyfree" : (
@@ -139,6 +141,7 @@ TRACE_EVENT(mglru_sort_folio,
 			__entry->folio,
 			folio_test_transhuge(__entry->folio)? "T": "N",
 			folio_test_readahead(__entry->folio),
+			__entry->ref,
 			__entry->pfn,
 			__entry->gen,
 			__entry->tier,

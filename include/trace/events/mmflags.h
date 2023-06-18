@@ -102,6 +102,12 @@
 #define IF_HAVE_PG_SKIP_KASAN_POISON(flag,string)
 #endif
 
+#ifdef CONFIG_LRU_GEN
+#define IF_HAVE_PG_SWAP_PRIORITY_LOW(flag, string) ,{1UL << flag, string}
+#else
+#define IF_HAVE_PG_SWAP_PRIORITY_LOW(flag, string)
+#endif
+
 #define __def_pageflag_names						\
 	{1UL << PG_locked,		"locked"	},		\
 	{1UL << PG_waiters,		"waiters"	},		\
@@ -131,7 +137,9 @@ IF_HAVE_PG_IDLE(PG_young,		"young"		)		\
 IF_HAVE_PG_IDLE(PG_idle,		"idle"		)		\
 IF_HAVE_PG_ARCH_X(PG_arch_2,		"arch_2"	)		\
 IF_HAVE_PG_ARCH_X(PG_arch_3,		"arch_3"	)		\
-IF_HAVE_PG_SKIP_KASAN_POISON(PG_skip_kasan_poison, "skip_kasan_poison")
+IF_HAVE_PG_SKIP_KASAN_POISON(PG_skip_kasan_poison, "skip_kasan_poison")		\
+IF_HAVE_PG_SWAP_PRIORITY_LOW(PG_swappriolow, "swap_priority_low")		\
+IF_HAVE_PG_SWAP_PRIORITY_LOW(PG_swappriohigh, "swap_priority_high")
 
 #define show_page_flags(flags)						\
 	(flags) ? __print_flags(flags, "|",				\

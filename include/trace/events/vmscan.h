@@ -131,13 +131,13 @@ TRACE_EVENT(evict_folios,
 
 TRACE_EVENT(should_run_aging,
 
-	TP_PROTO(int ckpt, int nr_to_scan),
+	TP_PROTO(int ckpt, unsigned long nr_to_scan),
 
 	TP_ARGS(ckpt, nr_to_scan),
 
 	TP_STRUCT__entry(
 		__field(	int,	ckpt	)
-		__field(	int,	nr_to_scan	)
+		__field(	unsigned long,	nr_to_scan	)
 	),
 
 	TP_fast_assign(
@@ -145,7 +145,7 @@ TRACE_EVENT(should_run_aging,
 		__entry->nr_to_scan	= nr_to_scan;
 	),
 
-	TP_printk("ckpt=%d nr_to_scan=%d", __entry->ckpt, __entry->nr_to_scan)
+	TP_printk("ckpt=%d nr_to_scan=%lu", __entry->ckpt, __entry->nr_to_scan)
 );
 
 TRACE_EVENT(kswapd_shrink_node,

@@ -139,6 +139,12 @@ enum pageflags {
 #ifdef CONFIG_KASAN_HW_TAGS
 	PG_skip_kasan_poison,
 #endif
+/*DJL ADD BEGIN*/
+#ifdef CONFIG_LRU_GEN
+	PG_swappriohigh,
+	PG_swappriolow,
+#endif
+/*DJL ADD END*/
 	__NR_PAGEFLAGS,
 
 	PG_readahead = PG_reclaim,
@@ -500,6 +506,11 @@ PAGEFLAG(Reserved, reserved, PF_NO_COMPOUND)
 PAGEFLAG(SwapBacked, swapbacked, PF_NO_TAIL)
 	__CLEARPAGEFLAG(SwapBacked, swapbacked, PF_NO_TAIL)
 	__SETPAGEFLAG(SwapBacked, swapbacked, PF_NO_TAIL)
+
+/*DJL ADD BEGIN*/
+PAGEFLAG(SwapPrioHigh, swappriohigh, PF_NO_TAIL)
+PAGEFLAG(SwapPrioLow, swappriolow, PF_NO_TAIL)
+/*DJL ADD END*/
 
 /*
  * Private page markings that may be used by the filesystem that owns the page
