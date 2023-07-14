@@ -1383,7 +1383,8 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		if (reclaimed && !mapping_exiting(mapping))
 			shadow = workingset_eviction(folio, target_memcg);
 		__delete_from_swap_cache(folio, swap, shadow);
-		trace_folio_delete_from_swap_cache(folio);
+		trace_folio_delete_from_swap_cache(folio, folio_lru_refs(folio));
+		//if readahead go to 
 		mem_cgroup_swapout(folio, swap);
 		xa_unlock_irq(&mapping->i_pages);
 		put_swap_folio(folio, swap);
@@ -1495,9 +1496,13 @@ static enum folio_references folio_check_references(struct folio *folio,
 		return FOLIOREF_ACTIVATE;
 
 	/* rmap lock contention: rotate */
-	if (referenced_ptes == -1)
+	if (referenced_ptes == -1){
+		trace_folio_check_references(folio, referenced_ptes, referenced_folio, folio_lru_refs(folio) , folio_test_workingset(folio), folio_lru_gen(folio), folio_test_reclaim(folio), folio_test_dirty(folio) , folio_test_writeback(folio));
 		return FOLIOREF_KEEP;
-
+	}
+	if (folio_test_anon(folio)){
+		trace_folio_check_references(folio, referenced_ptes, referenced_folio, folio_lru_refs(folio) , folio_test_workingset(folio), folio_lru_gen(folio), folio_test_reclaim(folio), folio_test_dirty(folio) , folio_test_writeback(folio));
+	}
 	if (referenced_ptes) {
 		/*
 		 * All mapped folios start out with page table
@@ -1515,6 +1520,10 @@ static enum folio_references folio_check_references(struct folio *folio,
 		 */
 		folio_set_referenced(folio);
 
+		// if (referenced_folio && folio_test_anon(folio)){
+		//	trace_folio_check_references(folio, referenced_ptes, referenced_folio, folio_lru_refs(folio) , folio_test_workingset(folio), folio_lru_gen(folio), folio_test_reclaim(folio), folio_test_dirty(folio) , folio_test_writeback(folio));
+		// 	return FOLIOREF_RECLAIM;//give reclaim a chance
+		// }
 		if (referenced_folio || referenced_ptes > 1)
 			return FOLIOREF_ACTIVATE;
 
@@ -1814,6 +1823,7 @@ retry:
 
 		if (!ignore_references)
 			references = folio_check_references(folio, sc);
+		trace_shrink_folio_list(folio, -2, references, folio_test_writeback(folio), folio_test_readahead(folio), folio_test_dirty(folio), folio_test_swapbacked(folio), folio_test_reclaim(folio), folio_lru_gen(folio));
 
 		switch (references) {
 		case FOLIOREF_ACTIVATE:
@@ -1898,6 +1908,7 @@ retry:
 		 * processes. Try to unmap it here.
 		 */
 		if (folio_mapped(folio)) {
+			trace_shrink_folio_list(folio, 4, -1, folio_test_writeback(folio), folio_test_readahead(folio), folio_test_dirty(folio), folio_test_swapbacked(folio), folio_test_reclaim(folio), folio_lru_gen(folio));
 			enum ttu_flags flags = TTU_BATCH_FLUSH;
 			bool was_swapbacked = folio_test_swapbacked(folio);
 
@@ -1973,6 +1984,7 @@ retry:
 			case PAGE_ACTIVATE:
 				goto activate_locked;
 			case PAGE_SUCCESS:
+				trace_shrink_folio_list(folio, 5, -1, folio_test_writeback(folio), folio_test_readahead(folio), folio_test_dirty(folio), folio_test_swapbacked(folio), folio_test_reclaim(folio), folio_lru_gen(folio));
 				stat->nr_pageout += nr_pages;
 
 				if (folio_test_writeback(folio))
@@ -2060,6 +2072,7 @@ retry:
 
 		folio_unlock(folio);
 free_it:
+		trace_shrink_folio_list(folio, 6, -1, folio_test_writeback(folio), folio_test_readahead(folio), folio_test_dirty(folio), folio_test_swapbacked(folio), folio_test_reclaim(folio), folio_lru_gen(folio));
 		/*
 		 * Folio may get swapped out as a whole, need to account
 		 * all pages in it.
@@ -2103,6 +2116,7 @@ keep:
 		list_add(&folio->lru, &ret_folios);
 		VM_BUG_ON_FOLIO(folio_test_lru(folio) ||
 				folio_test_unevictable(folio), folio);
+		// trace_shrink_folio_list(folio, 7, -1, folio_test_writeback(folio), folio_test_readahead(folio), folio_test_dirty(folio), folio_test_swapbacked(folio), folio_test_reclaim(folio), folio_lru_gen(folio));
 	}
 	/* 'folio_list' is always empty here */
 
@@ -2471,7 +2485,9 @@ static unsigned int move_folios_to_lru(struct lruvec *lruvec,
 		 * inhibits memcg migration).
 		 */
 		VM_BUG_ON_FOLIO(!folio_matches_lruvec(folio, lruvec), folio);
+		// trace_move_folios_to_lru(folio, 0, folio_lru_gen(folio), folio_test_reclaim(folio), folio_test_dirty(folio), folio_test_writeback(folio));
 		lruvec_add_folio(lruvec, folio);
+		// trace_move_folios_to_lru(folio, 1, folio_lru_gen(folio), folio_test_reclaim(folio), folio_test_dirty(folio), folio_test_writeback(folio));
 		nr_pages = folio_nr_pages(folio);
 		nr_moved += nr_pages;
 		if (folio_test_active(folio))
@@ -4861,7 +4877,7 @@ static bool sort_folio(struct lruvec *lruvec, struct folio *folio, int tier_idx)
 	/* unevictable */
 	if (!folio_evictable(folio)) {
 		/*DJL ADD BEGIN*/
-		trace_mglru_sort_folio(lruvec, folio, folio_lru_gen(folio), tier, 1);
+		trace_mglru_sort_folio(lruvec, folio, folio_lru_refs(folio), tier, 1);
 		/*DJL ADD END*/
 		success = lru_gen_del_folio(lruvec, folio, true);
 		VM_WARN_ON_ONCE_FOLIO(!success, folio);
@@ -4874,7 +4890,7 @@ static bool sort_folio(struct lruvec *lruvec, struct folio *folio, int tier_idx)
 	/* dirty lazyfree */
 	if (type == LRU_GEN_FILE && folio_test_anon(folio) && folio_test_dirty(folio)) {
 		/*DJL ADD BEGIN*/
-		trace_mglru_sort_folio(lruvec, folio, folio_lru_gen(folio), tier,  2);
+		trace_mglru_sort_folio(lruvec, folio, folio_lru_refs(folio), tier,  2);
 		/*DJL ADD END*/
 		success = lru_gen_del_folio(lruvec, folio, true);
 		VM_WARN_ON_ONCE_FOLIO(!success, folio);
@@ -4886,7 +4902,7 @@ static bool sort_folio(struct lruvec *lruvec, struct folio *folio, int tier_idx)
 	/* promoted */
 	if (gen != lru_gen_from_seq(lrugen->min_seq[type])) {
 		/*DJL ADD BEGIN*/
-		trace_mglru_sort_folio(lruvec, folio, folio_lru_gen(folio), tier, 3);
+		trace_mglru_sort_folio(lruvec, folio, folio_lru_refs(folio), tier, 3);
 		/*DJL ADD END*/
 		list_move(&folio->lru, &lrugen->folios[gen][type][zone]);
 		return true;
@@ -4895,7 +4911,7 @@ static bool sort_folio(struct lruvec *lruvec, struct folio *folio, int tier_idx)
 	/* protected */
 	if (tier > tier_idx) {
 		/*DJL ADD BEGIN*/
-		trace_mglru_sort_folio(lruvec, folio, folio_lru_gen(folio), tier, 4);
+		trace_mglru_sort_folio(lruvec, folio, folio_lru_refs(folio), tier, 4);
 		/*DJL ADD END*/
 		hist = lru_hist_from_seq(lrugen->min_seq[type]);
 
@@ -4912,14 +4928,14 @@ static bool sort_folio(struct lruvec *lruvec, struct folio *folio, int tier_idx)
 	if (folio_test_locked(folio) || folio_test_writeback(folio) ||
 	    (type == LRU_GEN_FILE && folio_test_dirty(folio))) {
 		/*DJL ADD BEGIN*/
-		trace_mglru_sort_folio(lruvec, folio, folio_lru_gen(folio), tier, 5);
+		trace_mglru_sort_folio(lruvec, folio, folio_lru_refs(folio), tier, 5);
 		/*DJL ADD END*/
 		gen = folio_inc_gen(lruvec, folio, true);
 		list_move(&folio->lru, &lrugen->folios[gen][type][zone]);
 		return true;
 	}
 	/*DJL ADD BEGIN*/
-	trace_mglru_sort_folio(lruvec, folio, folio_lru_gen(folio), tier, 0);
+	trace_mglru_sort_folio(lruvec, folio, folio_lru_refs(folio), tier, 0);
 	/*DJL ADD END*/
 	return false;
 }
@@ -4931,7 +4947,9 @@ static bool isolate_folio(struct lruvec *lruvec, struct folio *folio, struct sca
 	int newref, oriref = folio_lru_refs(folio);
 	int newtier, oritier = lru_tier_from_refs(oriref);
 	/*DJL ADD END*/
-
+	// newref = folio_lru_refs(folio);
+	// newtier = lru_tier_from_refs(newref);
+	// trace_mglru_isolate_folio(lruvec, folio, oriref, newref, oritier, newtier, folio_lru_gen(folio));
 	/* swapping inhibited */
 	if (!(sc->gfp_mask & __GFP_IO) &&
 	    (folio_test_dirty(folio) ||
@@ -4949,20 +4967,25 @@ static bool isolate_folio(struct lruvec *lruvec, struct folio *folio, struct sca
 	}
 
 	/* see the comment on MAX_NR_TIERS */
-	if (!folio_test_referenced(folio))
+	if (!folio_test_referenced(folio) && !folio_test_workingset(folio))
 		set_mask_bits(&folio->flags, LRU_REFS_MASK | LRU_REFS_FLAGS, 0);
 
 	/* for shrink_folio_list() */
 	folio_clear_reclaim(folio);
-	folio_clear_referenced(folio);
+	// folio_clear_referenced(folio);
 
 	success = lru_gen_del_folio(lruvec, folio, true);
 	VM_WARN_ON_ONCE_FOLIO(!success, folio);
 	newref = folio_lru_refs(folio);
 	newtier = lru_tier_from_refs(newref);
 	/*DJL ADD BEGIN*/
-	trace_mglru_isolate_folio(lruvec, folio, oriref, newref, oritier, newtier);
+	trace_mglru_isolate_folio(lruvec, folio, oriref, newref, oritier, newtier, folio_lru_gen(folio));
 	/*DJL ADD END*/
+
+	if (newref == oriref && newref > 0){
+		folio_set_swappriohigh(folio);
+	}
+	
 	return true;
 }
 
@@ -5163,6 +5186,7 @@ static int evict_folios(struct lruvec *lruvec, struct scan_control *sc, int swap
 retry:
 	reclaimed = shrink_folio_list(&list, pgdat, sc, &stat, false);
 	sc->nr_reclaimed += reclaimed;
+	trace_evict_folios(lruvec, 2, reclaimed);
 
 	list_for_each_entry_safe_reverse(folio, next, &list, lru) {
 		if (!folio_evictable(folio)) {
@@ -5185,12 +5209,14 @@ retry:
 			/* don't add rejected folios to the oldest generation */
 			set_mask_bits(&folio->flags, LRU_REFS_MASK | LRU_REFS_FLAGS,
 				      BIT(PG_active));
+			// trace_evict_folios_keep(folio, 2, folio_test_reclaim(folio), folio_test_dirty(folio) , folio_test_writeback(folio), folio_lru_gen(folio));
 			continue;
 		}
 
 		/* retry folios that may have missed folio_rotate_reclaimable() */
 		list_move(&folio->lru, &clean);
 		sc->nr_scanned -= folio_nr_pages(folio);
+		trace_evict_folios_keep(folio, 3, folio_test_reclaim(folio), folio_test_dirty(folio) , folio_test_writeback(folio), folio_lru_gen(folio));
 	}
 
 	spin_lock_irq(&lruvec->lru_lock);
@@ -5237,7 +5263,7 @@ static bool should_run_aging(struct lruvec *lruvec, unsigned long max_seq,
 	/* whether this lruvec is completely out of cold folios */
 	if (min_seq[!can_swap] + MIN_NR_GENS > max_seq) {
 		*nr_to_scan = 0;
-		trace_should_run_aging(0, nr_to_scan);
+		trace_should_run_aging(0, *nr_to_scan);
 		return true;
 	}
 
@@ -5262,7 +5288,7 @@ static bool should_run_aging(struct lruvec *lruvec, unsigned long max_seq,
 
 	/* try to scrape all its memory if this memcg was deleted */
 	*nr_to_scan = mem_cgroup_online(memcg) ? (total >> sc->priority) : total;
-	trace_should_run_aging(1, nr_to_scan);
+	trace_should_run_aging(1, *nr_to_scan);
 
 	/*
 	 * The aging tries to be lazy to reduce the overhead, while the eviction
@@ -5271,7 +5297,7 @@ static bool should_run_aging(struct lruvec *lruvec, unsigned long max_seq,
 	 */
 	if (min_seq[!can_swap] + MIN_NR_GENS < max_seq)
 		return false;
-	trace_should_run_aging(2, nr_to_scan);
+	trace_should_run_aging(2, *nr_to_scan);
 
 	/*
 	 * It's also ideal to spread pages out evenly, i.e., 1/(MIN_NR_GENS+1)
@@ -5282,10 +5308,10 @@ static bool should_run_aging(struct lruvec *lruvec, unsigned long max_seq,
 	 */
 	if (young * MIN_NR_GENS > total)
 		return true;
-	trace_should_run_aging(3, nr_to_scan);
+	trace_should_run_aging(3, *nr_to_scan);
 	if (old * (MIN_NR_GENS + 2) < total)
 		return true;
-	trace_should_run_aging(4, nr_to_scan);
+	trace_should_run_aging(4, *nr_to_scan);
 
 	return false;
 }

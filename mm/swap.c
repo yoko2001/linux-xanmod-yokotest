@@ -1126,7 +1126,7 @@ void __init swap_setup(void)
 		page_cluster = 2;
 	else
 		page_cluster = 3;
-	ra_boost_order = 3;
+	ra_boost_order = 5;
 	/*
 	 * Right now other parts of the system means that we
 	 * _really_ don't want to cluster much more

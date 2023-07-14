@@ -366,6 +366,8 @@ struct folio *swap_cache_get_folio(swp_entry_t entry,
 			}
 			atomic_long_set(&vma->swap_readahead_info,
 					SWAP_RA_VAL(addr, win, hits));
+			//hit might get hit again
+			folio_set_swappriohigh(folio);
 		}
 
 		if (readahead) {
@@ -760,7 +762,7 @@ static void swap_ra_info(struct vm_fault *vmf,
 #endif
 
 	max_win = 1 << min_t(unsigned int, READ_ONCE(page_cluster) + READ_ONCE(ra_boost_order),
-			     SWAP_RA_ORDER_CEILING);
+			     SWAP_RA_ORDER_CEILING + SWAP_RA_ORDER_CEILING_BOOST);
 	if (max_win == 1) {
 		ra_info->win = 1;
 		trace_new_swap_ra_info(ra_info->ptes, ra_info->nr_pte, ra_info->offset, ra_info->win);

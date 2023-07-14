@@ -563,11 +563,12 @@ static void __damon_va_check_access(struct mm_struct *mm,
 	}
 
 	last_accessed = damon_va_young(mm, r->sampling_addr, &last_folio_sz);
-	if (last_accessed)
+	if (last_accessed){
 		r->nr_accesses++;
-	//DJL ADD try to rand another page in this place
-	__damon_va_prepare_access_check(mm, r);
-	
+		trace_damon_va_check_access((void*) r, r->sampling_addr, r->ar.start, r->ar.end);
+	}
+	// //DJL ADD try to rand another page in this place
+	// __damon_va_prepare_access_check(mm, r);
 	last_addr = r->sampling_addr;
 }
 

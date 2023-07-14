@@ -187,9 +187,14 @@ TRACE_EVENT(folio_add_lru,
 	),
 
 	/* Flag format is based on page-types.c formatting for pagemap */
-	TP_printk("folio@[%p], %s ",
+	TP_printk("folio@[%p], %s;%s;%s;%s gen[%d], ra[%d]",
 			__entry->folio, 
-			__entry->ra ? "ra-noactive":"active")
+			folio_test_reclaim(__entry->folio) ? "[Reclm]" : "",
+			folio_test_dirty(__entry->folio) ? "[Dirty]" : "",
+			folio_test_writeback(__entry->folio) ? "[wb]" : "",
+			__entry->ra ? "[ra-noactv]":"[actv]", 
+			folio_lru_gen(__entry->folio), 
+			folio_test_readahead(__entry->folio))
 );
 
 TRACE_EVENT(readahead_swap_readpage,

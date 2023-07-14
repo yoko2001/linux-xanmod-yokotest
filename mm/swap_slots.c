@@ -314,7 +314,7 @@ static int refill_swap_slots_cache(struct swap_slots_cache *cache)
 	cache->cur = 0;
 	if (swap_slot_cache_active)
 		cache->nr = get_swap_pages(SWAP_SLOTS_CACHE_SIZE,
-					   cache->slots, 1, 0); //DJL ADD PARAMETER
+					   cache->slots, 1, 0, &cache->prio); //DJL ADD PARAMETER
 
 	return cache->nr;
 }
@@ -329,7 +329,7 @@ static int refill_swap_slots_slow_cache(struct swap_slots_cache *cache)
 	cache->cur_slow = 0;
 	if (swap_slot_cache_active)
 		cache->nr_slow = get_swap_pages(SWAP_SLOTS_CACHE_SIZE,
-					   cache->slots_slow, 1, 1);	//DJL ADD PARAMETER
+					   cache->slots_slow, 1, 1, &cache->prio_slow);	//DJL ADD PARAMETER
 
 	return cache->nr_slow;
 }
@@ -341,7 +341,7 @@ static int refill_swap_slots_fast_cache(struct swap_slots_cache *cache)
 	cache->cur_fast = 0;
 	if (swap_slot_cache_active)
 		cache->nr_fast = get_swap_pages(SWAP_SLOTS_CACHE_SIZE,
-					   cache->slots_fast, 1, 2);	//DJL ADD PARAMETER
+					   cache->slots_fast, 1, 2, &cache->prio_fast);	//DJL ADD PARAMETER
 
 	return cache->nr_fast;
 }
@@ -381,12 +381,14 @@ swp_entry_t folio_alloc_swap(struct folio *folio)
 {
 	swp_entry_t entry;
 	struct swap_slots_cache *cache;
-
+	unsigned short prio;
+	int _nr, _cur, _prio;
+	swp_entry_t* _slots;
 	entry.val = 0;
 
 	if (folio_test_large(folio)) {
 		if (IS_ENABLED(CONFIG_THP_SWAP) && arch_thp_swp_supported())
-			get_swap_pages(1, &entry, folio_nr_pages(folio), 0);
+			get_swap_pages(1, &entry, folio_nr_pages(folio), 0, &prio);
 		goto out;
 	}
 
@@ -427,6 +429,13 @@ repeat_slow:
 			mutex_lock(&cache->alloc_lock);
 			if (cache->slots_fast) {
 repeat_fast:
+				//if slower than normal , exchange
+				if (cache->prio > cache->prio_fast){
+					_nr = cache->nr;   cache->nr = cache->nr_fast;	  cache->nr_fast = _nr;
+					_cur = cache->cur; cache->cur = cache->cur_fast;  cache->cur_fast = _cur;
+					_slots = cache->slots; cache->slots = cache->slots_fast; cache->slots_fast = _slots;
+					_prio = cache->prio;   cache->prio = cache->prio_fast;   cache->prio_fast = _prio;
+				}				
 				if (cache->nr_fast) {
 					entry = cache->slots_fast[cache->cur_fast];
 					cache->slots_fast[cache->cur_fast++].val = 0;
@@ -444,6 +453,13 @@ repeat_fast:
 			mutex_lock(&cache->alloc_lock);
 			if (cache->slots) {
 	repeat:
+				//if slower than normal , exchange
+				if (cache->prio > cache->prio_fast){
+					_nr = cache->nr;   cache->nr = cache->nr_fast;	  cache->nr_fast = _nr;
+					_cur = cache->cur; cache->cur = cache->cur_fast;  cache->cur_fast = _cur;
+					_slots = cache->slots; cache->slots = cache->slots_fast; cache->slots_fast = _slots;
+					_prio = cache->prio;   cache->prio = cache->prio_fast;   cache->prio_fast = _prio;
+				}
 				if (cache->nr) {
 					entry = cache->slots[cache->cur];
 					cache->slots[cache->cur++].val = 0;
@@ -458,7 +474,7 @@ repeat_fast:
 		}		
 	}
 
-	get_swap_pages(1, &entry, 1, 0);
+	get_swap_pages(1, &entry, 1, 0, &prio);
 out:
 	if (mem_cgroup_try_charge_swap(folio, entry)) {
 		put_swap_folio(folio, entry);

@@ -103,9 +103,9 @@ TRACE_EVENT(mglru_folio_inc_gen,
 
 TRACE_EVENT(mglru_sort_folio,
 
-	TP_PROTO(struct lruvec *lruvec, struct folio *folio, int gen, int tier, int reason),
+	TP_PROTO(struct lruvec *lruvec, struct folio *folio, int ref, int tier, int reason),
 
-	TP_ARGS(lruvec, folio, gen, tier, reason),
+	TP_ARGS(lruvec, folio, ref, tier, reason),
 
 	TP_STRUCT__entry(
 		__field(struct lruvec *, lruvec	)
@@ -113,7 +113,6 @@ TRACE_EVENT(mglru_sort_folio,
 		__field(unsigned long,	pfn	)
 		__field(int , tier    )
 		__field(int , reason    )
-		__field(int , gen    )
 		__field(int, ref)
 		__field(unsigned long,	flags	)
 	),
@@ -122,28 +121,26 @@ TRACE_EVENT(mglru_sort_folio,
 		__entry->lruvec	= lruvec;
 		__entry->folio	= folio;
 		__entry->pfn	= folio_pfn(folio);
-		__entry->gen	= gen;
-		__entry->ref    = folio_lru_refs(folio);
+		__entry->ref    = ref;
 		__entry->tier   = tier;
 		__entry->reason	= reason;
 		__entry->flags	= trace_pagemap_flags(folio);
 	),
 
 	/* Flag format is based on page-types.c formatting for pagemap */
-	TP_printk("[%s]lruvec=%p folio=%p[%s][ra%d] ref[%d] pfn=0x%lx gen:%d tier=%d flags=%s%s%s%s%s%s",
+	TP_printk("[%s] folio=%p[%s][ra%d] ref[%d] pfn=0x%lx gen:%d tier=%d flags=%s%s%s%s%s%s",
 			(__entry->reason == 0 )? "KILLED" : (
 			(__entry->reason == 1 )? "unevictable" : (
 			(__entry->reason == 2 )? "dirty lazyfree" : (
 			(__entry->reason == 3 )? "promoted" : (
 			(__entry->reason == 4 )? "protected" : "writeback" 
 			)))),
-			__entry->lruvec,
 			__entry->folio,
 			folio_test_transhuge(__entry->folio)? "T": "N",
 			folio_test_readahead(__entry->folio),
 			__entry->ref,
 			__entry->pfn,
-			__entry->gen,
+			folio_lru_gen(__entry->folio),
 			__entry->tier,
 			__entry->flags & PAGEMAP_MAPPED		? "M" : " ",
 			__entry->flags & PAGEMAP_ANONYMOUS	? "a" : "f",
@@ -156,9 +153,9 @@ TRACE_EVENT(mglru_sort_folio,
 TRACE_EVENT(mglru_isolate_folio,
 
 	TP_PROTO(struct lruvec *lruvec, struct folio *folio, 
-	         int orirefs, int newrefs, int oritiers, int newtiers),
+	         int orirefs, int newrefs, int oritiers, int newtiers, int gen),
 
-	TP_ARGS(lruvec, folio, orirefs, newrefs, oritiers, newtiers),
+	TP_ARGS(lruvec, folio, orirefs, newrefs, oritiers, newtiers, gen),
 
 	TP_STRUCT__entry(
 		__field(struct lruvec *, lruvec	)
@@ -168,6 +165,7 @@ TRACE_EVENT(mglru_isolate_folio,
 		__field(int , newrefs    )
 		__field(int , oritiers    )
 		__field(int , newtiers    )
+		__field(int , gen    )
 		__field(unsigned long,	flags	)
 	),
 
@@ -179,15 +177,16 @@ TRACE_EVENT(mglru_isolate_folio,
 		__entry->newrefs	= newrefs;
 		__entry->oritiers	= oritiers;
 		__entry->newtiers	= newtiers;
+		__entry->gen = gen;
 		__entry->flags	= trace_pagemap_flags(folio);
 	),
 
 	/* Flag format is based on page-types.c formatting for pagemap */
-	TP_printk("lruvec=%p folio=%p[%s] pfn=0x%lx refs:%d->%d tiers:%d->%d flags=%s%s%s%s%s%s",
-			__entry->lruvec,
+	TP_printk("folio=%p[%s] pfn=0x%lx gen:%d refs:%d->%d tiers:%d->%d flags=%s%s%s%s%s%s",
 			__entry->folio,
 			folio_test_transhuge(__entry->folio)? "T": "N",
 			__entry->pfn,
+			__entry->gen,
 			__entry->orirefs,
 			__entry->newrefs,
 			__entry->oritiers,
@@ -306,20 +305,22 @@ TRACE_EVENT(folio_update_gen,
 
 TRACE_EVENT(folio_delete_from_swap_cache,
 
-	TP_PROTO(struct folio* folio),
+	TP_PROTO(struct folio* folio, int refs),
 
-	TP_ARGS(folio),
+	TP_ARGS(folio, refs),
 
 	TP_STRUCT__entry(
 		__field(struct folio* ,folio)
+		__field(int , refs)
 	),
 
 	TP_fast_assign(
 		__entry->folio	= folio;
+		__entry->refs	= refs;
 	),
 
-	TP_printk("folio@[%p] fdfsc_ra[%d]", 
-                __entry->folio, folio_test_readahead(__entry->folio))
+	TP_printk("folio@[%p] fdfsc_ra[%d] gen[%d] refs[%d]", 
+                __entry->folio, folio_test_readahead(__entry->folio), folio_lru_gen(__entry->folio), __entry->refs)
 );
 
 TRACE_EVENT(folio_workingset_change,
@@ -353,9 +354,10 @@ TRACE_EVENT(folio_workingset_change,
 		__entry->in	= in;
 	),
 
-	TP_printk("[%s] folio@[%p] ra[%d] {memcg:%d}{pglist[%p]} mins_seq[%lu], ref[%d] tier[%d]", 
+	TP_printk("[%s] folio@[%p] ra[%d] gen[%d] {memcg:%d}{pglist[%p]} mins_seq[%lu], ref[%d] tier[%d]", 
                 __entry->in ? "REFAULT" : "EVICT",
 				__entry->folio, folio_test_readahead(__entry->folio),
+				folio_lru_gen(__entry->folio),
 				(unsigned short)__entry->cgroup_id,
 				__entry->pgdat,
 				(__entry->token >> LRU_REFS_WIDTH),
@@ -387,6 +389,30 @@ TRACE_EVENT(damon_folio_mark_accessed,
 			 __entry->folio, __entry->ref, __entry->tiers, 
 			 folio_test_workingset(__entry->folio), 
 			 folio_test_referenced(__entry->folio))
+);
+
+TRACE_EVENT(damon_va_check_access,
+
+	TP_PROTO(void* r, unsigned long sampling_addr, unsigned long start, unsigned long end),
+
+	TP_ARGS(r, sampling_addr, start, end),
+
+	TP_STRUCT__entry(
+		__field(void* ,r)
+		__field(unsigned long ,sampling_addr)
+		__field(unsigned long ,start)
+		__field(unsigned long ,end)
+	),
+
+	TP_fast_assign(
+		__entry->r	= r;
+		__entry->sampling_addr	= sampling_addr;
+		__entry->start	= start;
+		__entry->end	= end;
+	),
+
+	TP_printk("region@[%p][%lu-%lu] len[%lu] accessed sample addr[%lu]", 
+                __entry->r, __entry->start / PAGE_SIZE, __entry->end / PAGE_SIZE, (__entry->end - __entry->start) / PAGE_SIZE,  __entry->sampling_addr)
 );
 
 #endif /* _TRACE_LRU_GEN_H */

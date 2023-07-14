@@ -122,11 +122,81 @@ TRACE_EVENT(evict_folios,
 		__entry->scanned	= scanned;
 	),
 
-	TP_printk("[%s] lruvec[%p]  scanned[%d]",
+	TP_printk("[%s] lruvec[%p]  %s[%d]",
 		__entry->ckpt == 0 ? "isolate_folios pass" : (
-		__entry->ckpt == 1 ? "try_to_inc_min_seq pass" : "null"
-		),
-		__entry->lruvec,  __entry->scanned)
+		__entry->ckpt == 1 ? "try_to_inc_min_seq pass" : (
+		__entry->ckpt == 2 ? "shrink_folio_list" : "null")),
+		__entry->lruvec,
+		__entry->ckpt  < 2 ? "scanned" : "reclaimed", 
+		__entry->scanned)
+);
+
+TRACE_EVENT(evict_folios_keep,
+
+	TP_PROTO(struct folio* folio, int ckpt, int reclaim, int dirty, int wb, int gen),
+
+	TP_ARGS(folio, ckpt, reclaim, dirty, wb, gen),
+
+	TP_STRUCT__entry(
+		__field(struct folio* ,folio)
+		__field(int , ckpt)
+		__field(int , reclaim)
+		__field(int , dirty)
+		__field(int , wb)
+		__field(int , gen)
+	),
+
+	TP_fast_assign(
+		__entry->folio	= folio;
+		__entry->ckpt	= ckpt;
+		__entry->reclaim	= reclaim;
+		__entry->dirty	= dirty;
+		__entry->wb	= wb;
+		__entry->gen	= gen;
+	),
+
+	TP_printk("folio[%p] %s;%s;%s  gen[%d] ckpt[%d]",
+		__entry->folio,
+		__entry->reclaim ? "[Reclm]" : "",
+		__entry->dirty ? "[Dirty]" : "",
+		__entry->wb ? "[wb]" : "",
+		__entry->gen,
+		__entry->ckpt
+	)
+);
+
+TRACE_EVENT(move_folios_to_lru,
+
+	TP_PROTO(struct folio* folio, int ckpt, int gen, int reclaim, int dirty, int writeback),
+
+	TP_ARGS(folio, ckpt, gen, reclaim, dirty, writeback),
+
+	TP_STRUCT__entry(
+		__field(struct folio* ,folio)
+		__field(int , ckpt)
+		__field(int , gen)
+		__field(int , reclaim)
+		__field(int , dirty)
+		__field(int , writeback)
+	),
+
+	TP_fast_assign(
+		__entry->folio	= folio;
+		__entry->ckpt	= ckpt;
+		__entry->gen	= gen;
+		__entry->reclaim	= reclaim;
+		__entry->dirty	= dirty;
+		__entry->writeback	= writeback;
+	),
+
+	TP_printk("folio[%p] %s;%s;%s  gen[%d] ckpt[%d]",
+		__entry->folio,
+		__entry->reclaim ? "[Reclm]" : "",
+		__entry->dirty ? "[Dirty]" : "",
+		__entry->writeback ? "[wb]" : "",
+		__entry->gen,
+		__entry->ckpt
+	)
 );
 
 TRACE_EVENT(should_run_aging,
@@ -541,6 +611,108 @@ TRACE_EVENT(mm_vmscan_node_reclaim_begin,
 		__entry->nid,
 		__entry->order,
 		show_gfp_flags(__entry->gfp_flags))
+);
+
+TRACE_EVENT(shrink_folio_list,
+
+	TP_PROTO(struct folio* folio, int ckpt, int ref,  int wb, int ra, int dirty, int sw_backed, int reclaim, int gen),
+
+	TP_ARGS(folio, ckpt, ref, wb, ra, dirty, sw_backed, reclaim, gen),
+
+	TP_STRUCT__entry(
+		__field(struct folio*, folio)
+		__field(int, ckpt)
+		__field(int, ref)
+		__field(int, ra)
+		__field(int, wb)
+		__field(int, dirty)
+		__field(int, sw_backed)
+		__field(int, reclaim)
+		__field(int, gen)
+	),
+
+	TP_fast_assign(
+		__entry->folio = folio;
+		__entry->ckpt = ckpt;
+		__entry->ref = ref;
+		__entry->wb = wb;
+		__entry->ra = ra;
+		__entry->dirty = dirty;
+		__entry->sw_backed = sw_backed;
+		__entry->reclaim = reclaim;
+		__entry->gen = gen;
+	),
+
+	TP_printk("folio[%p]gen[%d] [%s] ref[%s] ra[%d] %s;%s;%s;%s",
+		__entry->folio,
+		__entry->gen,
+		__entry->ckpt == -1 ? "folio lock fail" : (
+		__entry->ckpt == -2 ? "switch ref" : (
+		__entry->ckpt == 0 ? "folio unevictable" : (
+		__entry->ckpt == 1 ? "unmap banned" : (
+		__entry->ckpt == 2 ? "update_gen promote" : (
+		__entry->ckpt == 3 ? "anon swapbacked add_to_swap" : (
+		__entry->ckpt == 4 ? "do try_to_unmap" : (
+		__entry->ckpt == 5 ? "do pageout" : (
+		__entry->ckpt == 6 ? "free_it" : (
+		__entry->ckpt == 7 ? "active/keep" : "undefined"
+		))))))))),
+		__entry->ref < 0 ? "NONE" : (
+		__entry->ref == 0 ? "0RECLAIM" : (
+		__entry->ref == 1 ? "1RECLAIM_CLEAN" : (
+		__entry->ref == 2 ? "2KEEP" : ">2ACTIVATE"
+		))),
+		__entry->ra,
+		__entry->wb ? "[WB]" : "",
+		__entry->dirty ? "[Dirt]" : "",
+		__entry->reclaim ? "[Reclm]" : "",
+		__entry->sw_backed ? "[SW_BK]" : ""
+	)
+);
+
+TRACE_EVENT(folio_check_references,
+
+	TP_PROTO(struct folio* folio, int ptes, int folios, 
+			int ref, int workingset, 
+			int gen, int reclaim, int dirty, int wb),
+
+	TP_ARGS(folio, ptes, folios, ref, workingset, gen, reclaim, dirty, wb),
+
+	TP_STRUCT__entry(
+		__field(struct folio* , folio)
+		__field(int, r_ptes)
+		__field(int, r_folios)
+		__field(int, ref)
+		__field(int, workingset)
+		__field(int, gen)
+		__field(int, reclaim)
+		__field(int, dirty)
+		__field(int, wb)
+	),
+
+	TP_fast_assign(
+		__entry->folio = folio;
+		__entry->r_ptes =ptes;
+		__entry->r_folios =folios;
+		__entry->ref = ref;
+		__entry->workingset = workingset;
+		__entry->gen =gen;
+		__entry->reclaim =reclaim;
+		__entry->dirty =dirty;
+		__entry->wb =wb;
+	),
+
+	TP_printk("folio[%p], ptes[%d] folios[%d] lru_refs[%d] ws[%d] gen[%d] %s;%s;%s",
+		__entry->folio,
+		__entry->r_ptes,
+		__entry->r_folios,
+		__entry->ref,
+		__entry->workingset,
+		__entry->gen,
+		__entry->wb ? "[WB]" : "",
+		__entry->dirty ? "[Dirt]" : "",
+		__entry->reclaim ? "[Reclm]" : ""
+	)
 );
 
 DEFINE_EVENT(mm_vmscan_direct_reclaim_end_template, mm_vmscan_node_reclaim_end,

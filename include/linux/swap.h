@@ -324,9 +324,11 @@ struct swap_info_struct {
 
 #ifdef CONFIG_64BIT
 #define SWAP_RA_ORDER_CEILING	5
+#define SWAP_RA_ORDER_CEILING_BOOST 3
 #else
 /* Avoid stack overflow, because we need to save part of page table */
 #define SWAP_RA_ORDER_CEILING	3
+#define SWAP_RA_ORDER_CEILING_BOOST 0
 #define SWAP_RA_PTE_CACHE_SIZE	(1 << SWAP_RA_ORDER_CEILING)
 #endif
 
@@ -486,7 +488,7 @@ swp_entry_t folio_alloc_swap(struct folio *folio);
 bool folio_free_swap(struct folio *folio);
 void put_swap_folio(struct folio *folio, swp_entry_t entry);
 extern swp_entry_t get_swap_page_of_type(int);
-extern int get_swap_pages(int n, swp_entry_t swp_entries[], int entry_size, int tier);
+extern int get_swap_pages(int n, swp_entry_t swp_entries[], int entry_size, int tier, signed short *prio);
 extern int add_swap_count_continuation(swp_entry_t, gfp_t);
 extern void swap_shmem_alloc(swp_entry_t);
 extern int swap_duplicate(swp_entry_t);
