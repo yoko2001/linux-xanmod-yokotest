@@ -90,6 +90,9 @@
 #include "pgalloc-track.h"
 #include "internal.h"
 #include "swap.h"
+/*DJL ADD BEGIN*/
+#include <trace/events/swap.h>
+/*DJL ADD END*/
 
 #if defined(LAST_CPUPID_NOT_IN_PAGE_FLAGS) && !defined(CONFIG_COMPILE_TEST)
 #warning Unfortunate NUMA and NUMA Balancing config, growing page-frame for last_cpupid.
@@ -3695,7 +3698,9 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	int locked;
 	vm_fault_t ret = 0;
 	void *shadow = NULL;
-
+	/*DJL ADD BEGIN*/
+	trace_do_swap_page(-1, folio);
+	/*DJL ADD END*/
 	if (!pte_unmap_same(vmf))
 		goto out;
 
@@ -3741,13 +3746,25 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		goto out;
 
 	folio = swap_cache_get_folio(entry, vma, vmf->address);
-	if (folio)
-		page = folio_file_page(folio, swp_offset(entry));
+	/*DJL ADD BEGIN*/
+	if (folio){
+ 		page = folio_file_page(folio, swp_offset(entry));
+		count_memcg_event_mm(vma->vm_mm, SWAPIN_FROM_SWAPCACHE);
+	}
+		// if (folio)
+		//	 	page = folio_file_page(folio, swp_offset(entry));
+	/*DJL ADD END*/
 	swapcache = folio;
 
 	if (!folio) {
+		/*DJL ADD BEGIN*/
+		trace_do_swap_page(0, folio);
+		/*DJL ADD END*/
 		if (data_race(si->flags & SWP_SYNCHRONOUS_IO) &&
 		    __swap_count(entry) == 1) {
+			/*DJL ADD BEGIN*/
+			trace_do_swap_page(1, folio);
+			/*DJL ADD END*/
 			/* skip swapcache */
 			folio = vma_alloc_folio(GFP_HIGHUSER_MOVABLE, 0,
 						vma, vmf->address, false);
@@ -3765,25 +3782,47 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				mem_cgroup_swapin_uncharge_swap(entry);
 
 				shadow = get_shadow_from_swap_cache(entry);
-				if (shadow)
-					workingset_refault(folio, shadow);
+				/*DJL ADD BEGIN*/
+				if (shadow){
+ 					workingset_refault(folio, shadow);
+					count_memcg_event_mm(vma->vm_mm, WORKINGSET_REFAULT_FAST);
+				}
+					// if (shadow)
+					// 	workingset_refault(folio, shadow);
+				/*DJL ADD END*/
 
 				folio_add_lru(folio);
 
 				/* To provide entry to swap_readpage() */
 				folio_set_swap_entry(folio, entry);
+				/*DJL ADD BEGIN*/
+				count_memcg_event_mm(vma->vm_mm, SWAPIN_FAST);
+				/*DJL ADD END*/
 				swap_readpage(page, true, NULL);
 				folio->private = NULL;
+				/*DJL ADD BEGIN*/
+				trace_readahead_swap_readpage(page_folio(page), si);
+				/*DJL ADD END*/
 			}
 		} else {
+			/*DJL ADD BEGIN*/
+			trace_do_swap_page(2, folio);
+			/*DJL ADD END*/
 			page = swapin_readahead(entry, GFP_HIGHUSER_MOVABLE,
 						vmf);
 			if (page)
 				folio = page_folio(page);
 			swapcache = folio;
+			/*DJL ADD BEGIN*/
+			if (page)
+				count_memcg_event_mm(vma->vm_mm, SWAPIN_SLOW);
+			/*DJL ADD END*/
 		}
 
 		if (!folio) {
+			/*DJL ADD BEGIN*/
+			trace_do_swap_page(3, folio);
+			/*DJL ADD END*/
 			/*
 			 * Back out if somebody else faulted in this pte
 			 * while we released the pte lock.
@@ -3816,6 +3855,9 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	}
 
 	if (swapcache) {
+		/*DJL ADD BEGIN*/
+		trace_do_swap_page(4, folio);
+		/*DJL ADD END*/
 		/*
 		 * Make sure folio_free_swap() or swapoff did not release the
 		 * swapcache from under us.  The page pin, and pte_same test

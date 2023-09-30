@@ -1272,6 +1272,11 @@ const char * const vmstat_text[] = {
 	"pgsteal_kswapd",
 	"pgsteal_direct",
 	"pgsteal_khugepaged",
+/*DJL ADD BEGIN*/
+#ifdef CONFIG_LRU_GEN
+	"pgsteal_kswapd_memcg",
+#endif
+/*DJL ADD END*/
 	"pgdemote_kswapd",
 	"pgdemote_direct",
 	"pgdemote_khugepaged",
@@ -1399,6 +1404,29 @@ const char * const vmstat_text[] = {
 	"direct_map_level2_splits",
 	"direct_map_level3_splits",
 #endif
+/*DJL ADD BEGIN*/
+#ifdef CONFIG_LRU_GEN
+	"swap_out_to_slow",
+	"assign_slow_swap",
+	"assign_slow_swap_success",
+	"assign_slow_swap_fail",
+	"swap_out_to_mid",
+	"swap_out_to_fast",
+	"assign_fast_swap",
+	"assign_fast_swap_success",
+	"assign_fast_swap_fail",
+	"swap_out_raw(no_slot_cache)",
+	"swap_in_intercept_by_swapcache",
+	"swap_in_from_slow",
+	"swap_in_from_fast",
+	"workingset_refault_from_slow",
+	"workingset_refault_from_fast",
+	"workingset_refault_dist_0",
+	"workingset_refault_dist_1",
+	"workingset_refault_dist_2",
+	"workingset_refault_dist_3",
+#endif
+/*DJL ADD END*/
 #endif /* CONFIG_VM_EVENT_COUNTERS || CONFIG_MEMCG */
 };
 #endif /* CONFIG_PROC_FS || CONFIG_SYSFS || CONFIG_NUMA || CONFIG_MEMCG */

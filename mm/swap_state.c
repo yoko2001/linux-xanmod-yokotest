@@ -24,7 +24,11 @@
 #include <linux/shmem_fs.h>
 #include "internal.h"
 #include "swap.h"
-
+/*DJL ADD START*/
+#include <linux/memcontrol.h>
+#define CREATE_TRACE_POINTS
+#include <trace/events/swap.h>
+/*DJL ADD END*/
 /*
  * swapper_space is a fiction, retained to simplify the path through
  * vmscan's shrink_page_list.
@@ -40,6 +44,10 @@ static const struct address_space_operations swap_aops = {
 struct address_space *swapper_spaces[MAX_SWAPFILES] __read_mostly;
 static unsigned int nr_swapper_spaces[MAX_SWAPFILES] __read_mostly;
 static bool enable_vma_readahead __read_mostly = true;
+/*DJL ADD BEGIN*/
+static bool enable_vma_readahead_boost __read_mostly = true;//controller of boost
+static bool enable_ra_fast_evict __read_mostly = false;//controller of boost
+/*DJL ADD END*/
 
 #define SWAP_RA_WIN_SHIFT	(PAGE_SHIFT / 2)
 #define SWAP_RA_HITS_MASK	((1UL << SWAP_RA_WIN_SHIFT) - 1)
@@ -60,7 +68,12 @@ static bool enable_vma_readahead __read_mostly = true;
 	(atomic_long_read(&(vma)->swap_readahead_info) ? : 4)
 
 static atomic_t swapin_readahead_hits = ATOMIC_INIT(4);
-
+/*DJL ADD BEGIN*/
+#ifdef CONFIG_LRU_GEN_CGROUP_KSWAPD_BOOST
+static int force_wake_up_delay = 10;
+static int force_wake_up_delay_now = 0;
+#endif
+/*DJL ADD END*/
 void show_swap_cache_info(void)
 {
 	printk("%lu pages in swap cache\n", total_swapcache_pages());
@@ -355,8 +368,12 @@ struct folio *swap_cache_get_folio(swp_entry_t entry,
 			ra_val = GET_SWAP_RA_VAL(vma);
 			win = SWAP_RA_WIN(ra_val);
 			hits = SWAP_RA_HITS(ra_val);
-			if (readahead)
+			if (readahead){
 				hits = min_t(int, hits + 1, SWAP_RA_HITS_MAX);
+				/*DJL ADD BEGIN*/
+				trace_swapin_readahead_hit(folio);		
+				/*DJL ADD END*/
+			}
 			atomic_long_set(&vma->swap_readahead_info,
 					SWAP_RA_VAL(addr, win, hits));
 		}
@@ -407,15 +424,19 @@ struct folio *filemap_get_incore_folio(struct address_space *mapping,
 out:
 	return folio;
 }
-
+/*DJL ADD BEGIN*/
 struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 			struct vm_area_struct *vma, unsigned long addr,
-			bool *new_page_allocated)
+			bool *new_page_allocated, bool no_ra)
+/*DJL ADD END*/
 {
 	struct swap_info_struct *si;
 	struct folio *folio;
 	void *shadow = NULL;
-
+	/*DJL ADD BEGIN*/
+	struct lruvec *lruvec;
+	pg_data_t* pgdat;
+	/*DJL ADD END*/
 	*new_page_allocated = false;
 
 	for (;;) {
@@ -491,12 +512,34 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 
 	mem_cgroup_swapin_uncharge_swap(entry);
 
-	if (shadow)
+	/*DJL ADD BEGIN*/
+	if (shadow){
 		workingset_refault(folio, shadow);
+		if (vma && vma->vm_mm)
+			count_memcg_event_mm(vma->vm_mm, WORKINGSET_REFAULT_SLOW);
+	}
+	/*DJL ADD END*/
 
 	/* Caller will initiate read into locked folio */
-	folio_add_lru(folio);
+	// folio_add_lru(folio);
+	if (no_ra)
+		folio_add_lru(folio);
+	else
+		folio_add_lru_ra(folio);
 	*new_page_allocated = true;
+#ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
+	folio_test_swappriolow(folio);
+#endif
+//reclaim another 4kb pages space //1mb = 128*4kb pages space
+	lruvec = folio_lruvec(folio);
+	pgdat = lruvec_pgdat(lruvec);
+	pgdat->prio_lruvec = lruvec;
+#ifdef CONFIG_LRU_GEN_CGROUP_KSWAPD_BOOST
+	if (force_wake_up_delay_now++ >= force_wake_up_delay){
+		force_wake_up_delay_now = 0;
+		swapin_force_wake_kswapd(gfp_mask, 0);
+	}
+#endif
 	return &folio->page;
 
 fail_unlock:
@@ -519,7 +562,7 @@ struct page *read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 {
 	bool page_was_allocated;
 	struct page *retpage = __read_swap_cache_async(entry, gfp_mask,
-			vma, addr, &page_was_allocated);
+			vma, addr, &page_was_allocated, true);
 
 	if (page_was_allocated)
 		swap_readpage(retpage, do_poll, plug);
@@ -588,6 +631,45 @@ static unsigned long swapin_nr_pages(unsigned long offset)
 	return pages;
 }
 
+static unsigned int __swapin_nr_pages_boost(unsigned long prev_offset,
+				      unsigned long offset,
+				      int hits,
+				      int max_pages,
+				      int prev_win)
+{
+	unsigned int pages, last_ra;
+
+	/*
+	 * This heuristic has been found to work well on both sequential and
+	 * random loads, swapping to hard disk or to SSD: please don't ask
+	 * what the "+ 2" means, it just happens to work well, that's all.
+	 */
+	pages = hits + 4;
+	if (pages == 4) {
+		/*
+		 * We can have no readahead hits to judge by: but must not get
+		 * stuck here forever, so check for an adjacent offset instead
+		 * (and don't even bother to check whether swap type is same).
+		 */
+		if (offset - prev_offset > (prev_win / 2) ||  prev_offset - offset > (prev_win / 2))
+			pages = 1;//force add one page in any cases
+	} else {
+		unsigned int roundup = 8;
+		while (roundup < pages)
+			roundup <<= 1;
+		pages = roundup;
+	}
+
+	if (pages > max_pages)
+		pages = max_pages;
+
+	/* Don't shrink readahead too fast */
+	last_ra = prev_win * 3 / 4;
+	if (pages < last_ra)
+		pages = last_ra;
+
+	return pages;
+}
 /**
  * swap_cluster_readahead - swap in pages in hope we need them soon
  * @entry: swap entry of this memory
@@ -639,7 +721,7 @@ struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t gfp_mask,
 		/* Ok, do the async read-ahead now */
 		page = __read_swap_cache_async(
 			swp_entry(swp_type(entry), offset),
-			gfp_mask, vma, addr, &page_allocated);
+			gfp_mask, vma, addr, &page_allocated, true); //DJL doesn't support fast swapout
 		if (!page)
 			continue;
 		if (page_allocated) {
@@ -708,10 +790,16 @@ static void swap_ra_info(struct vm_fault *vmf,
 	pte_t *tpte;
 #endif
 
-	max_win = 1 << min_t(unsigned int, READ_ONCE(page_cluster),
-			     SWAP_RA_ORDER_CEILING);
+	/*DJL ADD BEGIN*/
+	// max_win = 1 << min_t(unsigned int, READ_ONCE(page_cluster),
+	// 		     SWAP_RA_ORDER_CEILING);
+	max_win = 1 << min_t(unsigned int, READ_ONCE(page_cluster) + READ_ONCE(ra_boost_order),
+			     SWAP_RA_ORDER_CEILING + SWAP_RA_ORDER_CEILING_BOOST);
+	/*DJL ADD END*/
+
 	if (max_win == 1) {
 		ra_info->win = 1;
+		trace_new_swap_ra_info(ra_info->ptes, ra_info->nr_pte, ra_info->offset, ra_info->win);
 		return;
 	}
 
@@ -721,13 +809,24 @@ static void swap_ra_info(struct vm_fault *vmf,
 	pfn = PFN_DOWN(SWAP_RA_ADDR(ra_val));
 	prev_win = SWAP_RA_WIN(ra_val);
 	hits = SWAP_RA_HITS(ra_val);
-	ra_info->win = win = __swapin_nr_pages(pfn, fpfn, hits,
+	/*DJL ADD BEGIN*/
+	if (!enable_vma_readahead_boost)
+		ra_info->win = win = __swapin_nr_pages(pfn, fpfn, hits,
 					       max_win, prev_win);
+	else
+		ra_info->win = win = __swapin_nr_pages_boost(pfn, fpfn, hits,
+						max_win, prev_win);
 	atomic_long_set(&vma->swap_readahead_info,
 			SWAP_RA_VAL(faddr, win, 0));
 
-	if (win == 1)
-		return;
+	/*DJL ADD BEGIN*/
+	if (win == 1){
+		trace_new_swap_ra_info(ra_info->ptes, ra_info->nr_pte, ra_info->offset, ra_info->win);
+ 		return;
+	}
+	// if (win == 1)
+	// 	return;
+	/*DJL ADD END*/
 
 	/* Copy the PTEs because the page table may be unmapped */
 	orig_pte = pte = pte_offset_map(vmf->pmd, faddr);
@@ -758,6 +857,7 @@ static void swap_ra_info(struct vm_fault *vmf,
 	for (pfn = start; pfn != end; pfn++)
 		*tpte++ = *pte++;
 #endif
+	trace_new_swap_ra_info(ra_info->ptes, ra_info->nr_pte, ra_info->offset, ra_info->win);
 	pte_unmap(orig_pte);
 }
 
@@ -782,6 +882,9 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 	struct swap_iocb *splug = NULL;
 	struct vm_area_struct *vma = vmf->vma;
 	struct page *page;
+	/*DJL ADD BEGIN*/
+	struct swap_info_struct *si;
+	/*DJL ADD END*/
 	pte_t *pte, pentry;
 	swp_entry_t entry;
 	unsigned int i;
@@ -803,8 +906,10 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 		entry = pte_to_swp_entry(pentry);
 		if (unlikely(non_swap_entry(entry)))
 			continue;
+		/*DJL ADD BEGIN*/
 		page = __read_swap_cache_async(entry, gfp_mask, vma,
-					       vmf->address, &page_allocated);
+					       vmf->address, &page_allocated, (!enable_ra_fast_evict) || (i == ra_info.offset));
+		/*DJL ADD END*/
 		if (!page)
 			continue;
 		if (page_allocated) {
@@ -814,6 +919,12 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				count_vm_event(SWAP_RA);
 			}
 		}
+		/*DJL ADD BEGIN*/
+		si = get_swap_device(entry);
+		trace_readahead_swap_readpage(page_folio(page), si);
+		put_swap_device(si);
+		count_memcg_event_mm(vma->vm_mm, SWAPIN_SLOW);
+		/*DJL ADD END*/
 		put_page(page);
 	}
 	blk_finish_plug(&plug);

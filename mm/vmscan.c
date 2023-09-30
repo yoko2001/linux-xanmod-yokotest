@@ -70,6 +70,9 @@
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/vmscan.h>
+/*DJL ADD START*/
+#include <trace/events/lru_gen.h>
+/*DJL ADD END*/
 
 struct scan_control {
 	/* How many pages shrink_list() should reclaim */
@@ -168,6 +171,11 @@ struct scan_control {
 	/* for recording the reclaimed slab by now */
 	struct reclaim_state reclaim_state;
 };
+/*DJL ADD BEGIN*/
+#ifdef CONFIG_LRU_GEN
+int kswapd_force_boost_cnt[MAX_NUMNODES] __read_mostly;
+#endif /*CONFIG_LRU_GEN*/
+/*DJL ADD END*/
 
 #ifdef ARCH_HAS_PREFETCHW
 #define prefetchw_prev_lru_folio(_folio, _base, _field)			\
@@ -187,6 +195,11 @@ struct scan_control {
  * From 0 .. 200.  Higher means more swappy.
  */
 int vm_swappiness = 30;
+/*DJL ADD BEGIN*/
+#ifdef CONFIG_LRU_GEN_CGROUP_KSWAPD_BOOST
+int kswapd_force_boost_max = 5000000;
+#endif
+/*DJL ADD END*/
 
 static void set_task_reclaim_state(struct task_struct *task,
 				   struct reclaim_state *rs)
@@ -5171,6 +5184,10 @@ retry:
 	item = PGSTEAL_KSWAPD + reclaimer_offset();
 	if (!cgroup_reclaim(sc))
 		__count_vm_events(item, reclaimed);
+	/*DJL ADD BEGIN*/
+	else if (item == PGSTEAL_KSWAPD)
+		__count_memcg_events(memcg, PGSTEAL_KSWAPD_MEMCG, reclaimed);
+	/*DJL ADD END*/
 	__count_memcg_events(memcg, item, reclaimed);
 	__count_vm_events(PGSTEAL_ANON + type, reclaimed);
 
@@ -5370,12 +5387,17 @@ static void shrink_many(struct pglist_data *pgdat, struct scan_control *sc)
 	int gen;
 	int bin;
 	int first_bin;
+	/*DJL ADD BEGIN*/
+	int nid;
+	/*DJL ADD END*/
 	struct lruvec *lruvec;
 	struct lru_gen_folio *lrugen;
 	struct mem_cgroup *memcg;
 	const struct hlist_nulls_node *pos;
 	unsigned long nr_to_reclaim = get_nr_to_reclaim(sc);
-
+	/*DJL ADD BEGIN*/
+	nid = pgdat->node_id;
+	/*DJL ADD END*/
 	bin = first_bin = get_random_u32_below(MEMCG_NR_BINS);
 restart:
 	op = 0;
@@ -5383,30 +5405,58 @@ restart:
 	gen = get_memcg_gen(READ_ONCE(pgdat->memcg_lru.seq));
 
 	rcu_read_lock();
+#ifdef CONFIG_LRU_GEN_CGROUP_KSWAPD_BOOST
+	if (current_is_kswapd()){
+		if (pgdat->prio_lruvec != NULL){
+			if ((++kswapd_force_boost_cnt[nid]) <= kswapd_force_boost_max){
+				pgdat->prio_lruvec = NULL;
+				rcu_read_unlock();
+				return;
+			}
+			kswapd_force_boost_cnt[nid] = 0;	
+			lruvec = pgdat->prio_lruvec;
+			memcg = lruvec_memcg(lruvec);
+			if (!mem_cgroup_tryget(memcg)) {
+				memcg = NULL;
+			}
+			else {
+				rcu_read_unlock();
+				op = shrink_one(lruvec, sc);
+				rcu_read_lock();
+				trace_shrink_many(pgdat->prio_lruvec, sc->nr_reclaimed, mem_cgroup_id(memcg));
+			}
+			pgdat->prio_lruvec = NULL;
+			clear_bit(LRUVEC_BOOST_SHRINK, &lruvec->flags);
+			rcu_read_unlock();
+			return;
+		}		
+	}
+#endif
+	if (sc->nr_reclaimed < nr_to_reclaim){
+		hlist_nulls_for_each_entry_rcu(lrugen, pos, &pgdat->memcg_lru.fifo[gen][bin], list) {
+			if (op)
+				lru_gen_rotate_memcg(lruvec, op);
 
-	hlist_nulls_for_each_entry_rcu(lrugen, pos, &pgdat->memcg_lru.fifo[gen][bin], list) {
-		if (op)
-			lru_gen_rotate_memcg(lruvec, op);
+			mem_cgroup_put(memcg);
 
-		mem_cgroup_put(memcg);
+			lruvec = container_of(lrugen, struct lruvec, lrugen);
+			memcg = lruvec_memcg(lruvec);
 
-		lruvec = container_of(lrugen, struct lruvec, lrugen);
-		memcg = lruvec_memcg(lruvec);
+			if (!mem_cgroup_tryget(memcg)) {
+				op = 0;
+				memcg = NULL;
+				continue;
+			}
 
-		if (!mem_cgroup_tryget(memcg)) {
-			op = 0;
-			memcg = NULL;
-			continue;
-		}
+			rcu_read_unlock();
 
-		rcu_read_unlock();
+			op = shrink_one(lruvec, sc);
 
-		op = shrink_one(lruvec, sc);
+			rcu_read_lock();
 
-		rcu_read_lock();
-
-		if (sc->nr_reclaimed >= nr_to_reclaim)
-			break;
+			if (sc->nr_reclaimed >= nr_to_reclaim)
+				break;
+		}		
 	}
 
 	rcu_read_unlock();
@@ -5489,7 +5539,8 @@ static void set_initial_priority(struct pglist_data *pgdat, struct scan_control 
 	sc->priority = clamp(priority, 0, DEF_PRIORITY);
 }
 
-static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *sc)
+// static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *sc)
+static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *sc, int force)
 {
 	struct blk_plug plug;
 	unsigned long reclaimed = sc->nr_reclaimed;
@@ -5501,8 +5552,15 @@ static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *
 	 * them is likely futile and can cause high reclaim latency when there
 	 * is a large number of memcgs.
 	 */
-	if (!sc->may_writepage || !sc->may_unmap)
-		goto done;
+	/*DJL ADD BEGIN*/
+	// if (!sc->may_writepage || !sc->may_unmap)
+	// 	goto done;
+	trace_lru_gen_shrink_node(pgdat, sc->may_writepage);
+	if (!force && (!sc->may_writepage || !sc->may_unmap))
+ 		goto done;
+	if (force) //kswapd
+		sc->may_swap = true;
+	/*DJL ADD END*/
 
 	lru_add_drain();
 
@@ -6204,8 +6262,9 @@ static void lru_gen_age_node(struct pglist_data *pgdat, struct scan_control *sc)
 static void lru_gen_shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 {
 }
-
-static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *sc)
+/*DJL ADD BEGIN*/
+static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *sc, int force)
+/*DJL ADD END*/
 {
 }
 
@@ -6466,7 +6525,10 @@ static void shrink_node(pg_data_t *pgdat, struct scan_control *sc)
 	bool reclaimable = false;
 
 	if (lru_gen_enabled() && global_reclaim(sc)) {
-		lru_gen_shrink_node(pgdat, sc);
+		/*DJL ADD BEGIN*/
+		// lru_gen_shrink_node(pgdat, sc);
+		lru_gen_shrink_node(pgdat, sc, 0);
+		/*DJL ADD BEGIN*/
 		return;
 	}
 
@@ -7269,7 +7331,12 @@ static bool kswapd_shrink_node(pg_data_t *pgdat,
 	 * Historically care was taken to put equal pressure on all zones but
 	 * now pressure is applied based on node LRU order.
 	 */
-	shrink_node(pgdat, sc);
+	/*DJL ADD BEGIN*/
+	// shrink_node(pgdat, sc);
+	trace_kswapd_shrink_node(sc->nr_scanned, sc->nr_reclaimed, sc->nr_to_reclaim);
+	lru_gen_shrink_node(pgdat, sc, 1); //force shrink
+	trace_kswapd_shrink_node(sc->nr_scanned, sc->nr_reclaimed, sc->nr_to_reclaim);
+	/*DJL ADD END*/
 
 	/*
 	 * Fragmentation may mean that the system cannot be rebalanced for
@@ -7432,6 +7499,9 @@ restart:
 		 */
 		sc.may_writepage = !laptop_mode && !nr_boost_reclaim;
 		sc.may_swap = !nr_boost_reclaim;
+		/*DJL ADD BEGIN*/
+		trace_balance_pgdat(nr_boost_reclaim, sc.may_writepage, sc.may_swap);
+		/*DJL ADD END*/
 
 		/*
 		 * Do some background aging, to give pages a chance to be
@@ -7762,6 +7832,22 @@ void wakeup_kswapd(struct zone *zone, gfp_t gfp_flags, int order,
 		return;
 
 	/* Hopeless node, leave it to direct reclaim if possible */
+#ifdef CONFIG_LRU_GEN_CGROUP_KSWAPD_BOOST
+	if (pgdat->kswapd_failures >= MAX_RECLAIM_RETRIES ||
+	    (pgdat_balanced(pgdat, order, highest_zoneidx) &&
+	     !pgdat_watermark_boosted(pgdat, highest_zoneidx) && !(lru_gen_enabled()))) {
+		/*
+		 * There may be plenty of free memory available, but it's too
+		 * fragmented for high-order allocations.  Wake up kcompactd
+		 * and rely on compaction_suitable() to determine if it's
+		 * needed.  If it fails, it will defer subsequent attempts to
+		 * ratelimit its work.
+		 */
+		if (!(gfp_flags & __GFP_DIRECT_RECLAIM))
+			wakeup_kcompactd(pgdat, order, highest_zoneidx);
+		return;
+	}
+#else
 	if (pgdat->kswapd_failures >= MAX_RECLAIM_RETRIES ||
 	    (pgdat_balanced(pgdat, order, highest_zoneidx) &&
 	     !pgdat_watermark_boosted(pgdat, highest_zoneidx))) {
@@ -7776,7 +7862,7 @@ void wakeup_kswapd(struct zone *zone, gfp_t gfp_flags, int order,
 			wakeup_kcompactd(pgdat, order, highest_zoneidx);
 		return;
 	}
-
+#endif
 	trace_mm_vmscan_wakeup_kswapd(pgdat->node_id, highest_zoneidx, order,
 				      gfp_flags);
 	wake_up_interruptible(&pgdat->kswapd_wait);
@@ -7864,8 +7950,15 @@ static int __init kswapd_init(void)
 	int nid;
 
 	swap_setup();
-	for_each_node_state(nid, N_MEMORY)
+/*DJL ADD BEGIN*/
+	for_each_node_state(nid, N_MEMORY){
  		kswapd_run(nid);
+#ifdef CONFIG_LRU_GEN_CGROUP_KSWAPD_BOOST
+		kswapd_force_boost_cnt[nid] = 0;
+#endif
+	}
+/*DJL ADD END*/
+
 	return 0;
 }
 

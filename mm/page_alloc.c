@@ -57,6 +57,9 @@
 #include <linux/compaction.h>
 #include <trace/events/kmem.h>
 #include <trace/events/oom.h>
+/*DJL ADD BEGIN*/
+#include <trace/events/swap.h>
+/*DJL ADD END*/
 #include <linux/prefetch.h>
 #include <linux/mm_inline.h>
 #include <linux/mmu_notifier.h>
@@ -5549,6 +5552,87 @@ failed:
 	goto out;
 }
 EXPORT_SYMBOL_GPL(__alloc_pages_bulk);
+
+/*DJL ADD BEGIN*/
+int __swapin_force_wake_kswapd(gfp_t gfp, unsigned int order, int preferred_nid,
+							nodemask_t *nodemask)
+{
+	gfp_t alloc_gfp; /* The gfp_t that was actually used for allocation */
+	struct alloc_context ac = { };
+	unsigned int alloc_flags = ALLOC_WMARK_LOW;
+	/*
+	 * There are several places where we assume that the order value is sane
+	 * so bail out early if the request is out of bound.
+	 */
+	if (WARN_ON_ONCE_GFP(order >= MAX_ORDER, gfp))
+		return -1;
+
+	gfp &= gfp_allowed_mask;
+	/*
+	 * Apply scoped allocation constraints. This is mainly about GFP_NOFS
+	 * resp. GFP_NOIO which has to be inherited for all allocation requests
+	 * from a particular context which has been marked by
+	 * memalloc_no{fs,io}_{save,restore}. And PF_MEMALLOC_PIN which ensures
+	 * movable zones are not used during allocation.
+	 */
+	gfp = current_gfp_context(gfp);
+	alloc_gfp = gfp;
+	if (!prepare_alloc_pages(gfp, order, preferred_nid, nodemask, &ac,
+			&alloc_gfp, &alloc_flags))
+		return -1;
+
+	/*
+	 * Forbid the first pass from falling back to types that fragment
+	 * memory until all local zones are considered.
+	 */
+	alloc_flags |= alloc_flags_nofragment(ac.preferred_zoneref->zone, gfp);
+
+	alloc_gfp = gfp;
+	ac.spread_dirty_pages = false;
+	/*
+	 * Restore the original nodemask if it was potentially replaced with
+	 * &cpuset_current_mems_allowed to optimize the fast-path attempt.
+	 */
+	ac.nodemask = nodemask;
+
+	//1MB
+	alloc_flags = gfp_to_alloc_flags(gfp, order);
+
+	ac.preferred_zoneref = first_zones_zonelist(ac.zonelist,
+					ac.highest_zoneidx, ac.nodemask);
+	if (!ac.preferred_zoneref->zone)
+		return -1;
+		/*
+	 * Check for insane configurations where the cpuset doesn't contain
+	 * any suitable zone to satisfy the request - e.g. non-movable
+	 * GFP_HIGHUSER allocations from MOVABLE nodes only.
+	 */
+	if (cpusets_insane_config() && (gfp & __GFP_HARDWALL)) {
+		struct zoneref *z = first_zones_zonelist(ac.zonelist,
+					ac.highest_zoneidx,
+					&cpuset_current_mems_allowed);
+		if (!z->zone)
+			return -1;
+	}
+	/*
+	 * Boost watermarks to increase reclaim pressure to reduce the
+	 * likelihood of future fallbacks. Wake kswapd now as the node
+	 * may be balanced overall and kswapd will not wake naturally.
+	 */
+	if (boost_watermark(ac.preferred_zoneref->zone) && (alloc_flags & ALLOC_KSWAPD))
+		set_bit(ZONE_BOOSTED_WATERMARK, &ac.preferred_zoneref->zone->flags);
+
+	// gfp |= __GFP_DIRECT_RECLAIM;
+	if (alloc_flags & ALLOC_KSWAPD){
+		wake_all_kswapds(order, gfp, &ac);
+	}	
+	// trace_swapin_force_wake_kswapd(order);
+	// gfp &= ~__GFP_DIRECT_RECLAIM;
+
+	return 0;
+}
+EXPORT_SYMBOL(__swapin_force_wake_kswapd);
+/*DJL ADD END*/
 
 /*
  * This is the 'heart' of the zoned buddy allocator.

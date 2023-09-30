@@ -179,6 +179,11 @@ struct page *__alloc_pages(gfp_t gfp, unsigned int order, int preferred_nid,
 struct folio *__folio_alloc(gfp_t gfp, unsigned int order, int preferred_nid,
 		nodemask_t *nodemask);
 
+/*DJL ADD BEGIN*/
+int __swapin_force_wake_kswapd(gfp_t gfp, unsigned int order, int preferred_nid,
+							nodemask_t *nodemask);
+/*DJL ADD END*/
+
 unsigned long __alloc_pages_bulk(gfp_t gfp, int preferred_nid,
 				nodemask_t *nodemask, int nr_pages,
 				struct list_head *page_list,
@@ -265,6 +270,9 @@ struct page *alloc_pages(gfp_t gfp, unsigned int order);
 struct folio *folio_alloc(gfp_t gfp, unsigned order);
 struct folio *vma_alloc_folio(gfp_t gfp, int order, struct vm_area_struct *vma,
 		unsigned long addr, bool hugepage);
+/*DJL ADD BEGIN*/
+int swapin_force_wake_kswapd(gfp_t gfp, int order);
+/*DJL ADD END*/
 #else
 static inline struct page *alloc_pages(gfp_t gfp_mask, unsigned int order)
 {

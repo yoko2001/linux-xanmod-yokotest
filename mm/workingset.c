@@ -16,6 +16,9 @@
 #include <linux/dax.h>
 #include <linux/fs.h>
 #include <linux/mm.h>
+/*DJL ADD BEGIN*/
+#include <trace/events/lru_gen.h>
+/*DJL ADD END*/
 
 /*
  *		Double CLOCK lists
@@ -257,6 +260,10 @@ static void lru_gen_refault(struct folio *folio, void *shadow)
 	struct pglist_data *pgdat;
 	int type = folio_is_file_lru(folio);
 	int delta = folio_nr_pages(folio);
+	/*DJL ADD BEGIN*/
+	int dist = -1;
+	int lasthist = -1;
+	/*DJL ADD END*/
 
 	unpack_shadow(shadow, &memcg_id, &pgdat, &token, &workingset);
 
@@ -273,6 +280,25 @@ static void lru_gen_refault(struct folio *folio, void *shadow)
 	lrugen = &lruvec->lrugen;
 
 	min_seq = READ_ONCE(lrugen->min_seq[type]);
+	/*DJL ADD BEGIN*/
+	lasthist = (token >> LRU_REFS_WIDTH) % MAX_NR_GENS;
+	dist = (min_seq + MAX_NR_GENS - lasthist ) % MAX_NR_GENS;
+	switch(dist){
+		case 0: 
+			count_memcg_events(memcg, WORKINGSET_REFAULT_DIST0, 1);
+			break;
+		case 1: 
+			count_memcg_events(memcg, WORKINGSET_REFAULT_DIST1, 1);
+			break;
+		case 2: 
+			count_memcg_events(memcg, WORKINGSET_REFAULT_DIST2, 1);
+			break;
+		case 3: 
+			count_memcg_events(memcg, WORKINGSET_REFAULT_DIST3, 1);
+			break;
+	};
+	/*DJL ADD END*/
+
 	if ((token >> LRU_REFS_WIDTH) != (min_seq & (EVICTION_MASK >> LRU_REFS_WIDTH)))
 		goto unlock;
 
@@ -280,6 +306,10 @@ static void lru_gen_refault(struct folio *folio, void *shadow)
 	/* see the comment in folio_lru_refs() */
 	refs = (token & (BIT(LRU_REFS_WIDTH) - 1)) + workingset;
 	tier = lru_tier_from_refs(refs);
+	
+	/*DJL ADD BEGIN*/
+	trace_folio_workingset_change(folio, pgdat, (unsigned short)memcg_id, token, refs, 1);
+	/*DJL ADD END*/
 
 	atomic_long_add(delta, &lrugen->refaulted[hist][type][tier]);
 	mod_lruvec_state(lruvec, WORKINGSET_REFAULT_BASE + type, delta);
@@ -295,6 +325,12 @@ static void lru_gen_refault(struct folio *folio, void *shadow)
 		folio_set_workingset(folio);
 		mod_lruvec_state(lruvec, WORKINGSET_RESTORE_BASE + type, delta);
 	}
+	/*DJL ADD BEGIN*/
+#ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
+	folio_test_swappriohigh(folio);
+#endif
+	/*DJL ADD END*/
+
 unlock:
 	rcu_read_unlock();
 }

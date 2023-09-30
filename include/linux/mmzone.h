@@ -303,6 +303,7 @@ enum lruvec_flags {
 	LRUVEC_CONGESTED,		/* lruvec has many dirty pages
 					 * backed by a congested BDI
 					 */
+	LRUVEC_BOOST_SHRINK
 };
 
 #endif /* !__GENERATING_BOUNDS_H */
@@ -1364,7 +1365,9 @@ typedef struct pglist_data {
 	 * Use mem_cgroup_lruvec() to look up lruvecs.
 	 */
 	struct lruvec		__lruvec;
-
+	/*DJL ADD BEGIN*/
+	struct lruvec* prio_lruvec;
+	/*DJL ADD END*/
 	unsigned long		flags;
 
 #ifdef CONFIG_LRU_GEN
