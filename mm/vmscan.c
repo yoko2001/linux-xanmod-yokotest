@@ -197,7 +197,7 @@ int kswapd_force_boost_cnt[MAX_NUMNODES] __read_mostly;
 int vm_swappiness = 30;
 /*DJL ADD BEGIN*/
 #ifdef CONFIG_LRU_GEN_CGROUP_KSWAPD_BOOST
-int kswapd_force_boost_max = 5000000;
+int kswapd_force_boost_max = 50000;
 #endif
 /*DJL ADD END*/
 
@@ -5420,6 +5420,7 @@ restart:
 				memcg = NULL;
 			}
 			else {
+				sc->target_mem_cgroup = memcg;
 				rcu_read_unlock();
 				op = shrink_one(lruvec, sc);
 				rcu_read_lock();
