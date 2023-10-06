@@ -418,8 +418,64 @@ swp_entry_t folio_alloc_swap(struct folio *folio)
 	 * so cache->free_lock is not taken.
 	 */
 	cache = raw_cpu_ptr(&swp_slots);
+	/*DJL ADD BEGIN*/
+	//shouldn't up together
+	WARN_ON_ONCE(folio_test_swappriolow(folio) && folio_test_swappriohigh(folio));
+	/*DJL ADD END*/
 
-	if (likely(check_cache_active() && cache->slots)) {
+	if (folio_test_swappriolow(folio)){
+		if (likely(check_cache_active() && cache->slots_slow)) {
+			mutex_lock(&cache->alloc_lock);
+			if (cache->slots_slow) {
+repeat_slow:
+				if (cache->nr_slow) {
+					entry = cache->slots_slow[cache->cur_slow];
+					cache->slots_slow[cache->cur_slow++].val = 0;
+					cache->nr_slow--;
+				} else if (refill_swap_slots_slow_cache(cache)) {
+					goto repeat_slow;
+				}
+			}
+			mutex_unlock(&cache->alloc_lock);
+			if (entry.val){
+				count_memcg_folio_events(folio, SWAPOUT_SLOW_ASSIGN_SUCC,1);
+				count_memcg_folio_events(folio, SWAPOUT_SLOW_ASSIGN,1);
+				goto out;
+			}
+		}	
+	}
+	else if (folio_test_swappriohigh(folio)){//fast
+		if (likely(check_cache_active() && cache->slots_fast)) {
+			mutex_lock(&cache->alloc_lock);
+			if (cache->slots_fast) {
+repeat_fast:
+				//if slower than normal , exchange
+				if (cache->prio > cache->prio_fast){
+					_nr = cache->nr;   cache->nr = cache->nr_fast;	  cache->nr_fast = _nr;
+					_cur = cache->cur; cache->cur = cache->cur_fast;  cache->cur_fast = _cur;
+					_slots = cache->slots; cache->slots = cache->slots_fast; cache->slots_fast = _slots;
+					_prio = cache->prio;   cache->prio = cache->prio_fast;   cache->prio_fast = _prio;
+				}				
+				if (cache->nr_fast) {
+					entry = cache->slots_fast[cache->cur_fast];
+					cache->slots_fast[cache->cur_fast++].val = 0;
+					cache->nr_fast--;
+				} else if (refill_swap_slots_fast_cache(cache)) {
+					goto repeat_fast;
+				}
+			}
+			mutex_unlock(&cache->alloc_lock);
+			if (entry.val){
+				// if (cache->prio_fast == fastest_swap_prio)
+				// 	count_memcg_folio_events(folio, SWAPOUT_FAST_ASSIGN_SUCC, 1);
+				// else
+				// 	count_memcg_folio_events(folio, SWAPOUT_FAST_ASSIGN_FAIL, 1);
+				// count_memcg_folio_events(folio, SWAPOUT_FAST_ASSIGN,1);
+				goto out;
+			}
+		}
+	}
+	else if (likely(check_cache_active() && cache->slots)) {
 		mutex_lock(&cache->alloc_lock);
 		if (cache->slots) {
 repeat:
