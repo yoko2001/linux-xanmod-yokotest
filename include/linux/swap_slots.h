@@ -16,6 +16,15 @@ struct swap_slots_cache {
 	swp_entry_t	*slots;
 	int		nr;
 	int		cur;
+	swp_entry_t	*slots_fast;
+	int		nr_fast;
+	int		cur_fast;
+	swp_entry_t	*slots_slow;
+	int		nr_slow;
+	int		cur_slow;
+	signed short prio;
+	signed short prio_fast;
+	signed short prio_slow;
 	spinlock_t	free_lock;  /* protects slots_ret, n_ret */
 	swp_entry_t	*slots_ret;
 	int		n_ret;

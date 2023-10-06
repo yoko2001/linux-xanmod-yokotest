@@ -264,7 +264,7 @@ static int refill_swap_slots_cache(struct swap_slots_cache *cache)
 	cache->cur = 0;
 	if (swap_slot_cache_active)
 		cache->nr = get_swap_pages(SWAP_SLOTS_CACHE_SIZE,
-					   cache->slots, 1);
+					   cache->slots, 1, 0, &cache->prio);
 
 	return cache->nr;
 }
@@ -303,15 +303,35 @@ swp_entry_t folio_alloc_swap(struct folio *folio)
 {
 	swp_entry_t entry;
 	struct swap_slots_cache *cache;
-
+	/*DJL ADD BEGIN*/
+	unsigned short prio;
+	int _nr, _cur, _prio;
+	swp_entry_t* _slots;
+	/*DJL ADD END*/
+	
 	entry.val = 0;
 
 	if (folio_test_large(folio)) {
 		if (IS_ENABLED(CONFIG_THP_SWAP) && arch_thp_swp_supported())
-			get_swap_pages(1, &entry, folio_nr_pages(folio));
+			get_swap_pages(1, &entry, folio_nr_pages(folio), 0, &prio);
+		if (entry.val){
+			count_memcg_folio_events(folio, SWAPOUT_RAW, folio_nr_pages(folio));
+		}
 		goto out;
 	}
-
+	/*DJL ADD BEGIN*/
+#ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
+	folio_clear_readaheaded(folio);
+#else
+	//PRIORITY STAYS FOR MADVISE 
+	if (!folio_test_swappriolow(folio) && !folio_test_swappriohigh(folio)){
+		if (folio_test_readaheaded(folio)){
+			folio_set_swappriolow(folio);
+		}
+	}
+	folio_clear_readaheaded(folio);
+#endif
+	/*DJL ADD END*/
 	/*
 	 * Preemption is allowed here, because we may sleep
 	 * in refill_swap_slots_cache().  But it is safe, because
@@ -340,7 +360,10 @@ repeat:
 			goto out;
 	}
 
-	get_swap_pages(1, &entry, 1);
+	get_swap_pages(1, &entry, 1, 0, &prio);
+	if (entry.val){
+		count_memcg_folio_events(folio, SWAPOUT_RAW, 1);
+ 	}
 out:
 	if (mem_cgroup_try_charge_swap(folio, entry)) {
 		put_swap_folio(folio, entry);
