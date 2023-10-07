@@ -197,7 +197,7 @@ int kswapd_force_boost_cnt[MAX_NUMNODES] __read_mostly;
 int vm_swappiness = 30;
 /*DJL ADD BEGIN*/
 #ifdef CONFIG_LRU_GEN_CGROUP_KSWAPD_BOOST
-int kswapd_force_boost_max = 50000;
+int kswapd_force_boost_max = 500;
 #endif
 /*DJL ADD END*/
 

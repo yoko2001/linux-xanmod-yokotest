@@ -283,25 +283,71 @@ TRACE_EVENT(folio_update_gen,
 			__entry->flags & PAGEMAP_BUFFERS	? "B" : " ")
 );
 
-// TRACE_EVENT(page_set_swapprio,
+TRACE_EVENT(page_set_swapprio,
 
-// 	TP_PROTO(struct page* page),
+	TP_PROTO(struct page* page),
 
-// 	TP_ARGS(page),
+	TP_ARGS(page),
 
-// 	TP_STRUCT__entry(
-// 		__field(struct page* ,page)
-// 	),
+	TP_STRUCT__entry(
+		__field(struct page* ,page)
+	),
 
-// 	TP_fast_assign(
-// 		__entry->page	= page;
-// 	),
+	TP_fast_assign(
+		__entry->page	= page;
+	),
 
-// 	TP_printk("page@[%p] prio1[%d],prio2[%d]", 
-//                 __entry->page,
-//                 PageSwapPrio1(__entry->page),
-//                 PageSwapPrio2(__entry->page))
-// );
+	TP_printk("page@[%p] lowprio[%d],highprio[%d]", 
+                __entry->page,
+				PageSwapPrioHigh(__entry->page),
+                PageSwapPrioLow(__entry->page)
+                )
+);
+
+TRACE_EVENT(folio_set_swapprio,
+
+	TP_PROTO(struct folio* folio),
+
+	TP_ARGS(folio),
+
+	TP_STRUCT__entry(
+		__field(struct folio* , folio)
+	),
+
+	TP_fast_assign(
+		__entry->folio	= folio;
+	),
+
+	TP_printk("folio@[%p] highp[%d],lowp[%d]", 
+                __entry->folio,
+                folio_test_swappriohigh(__entry->folio),
+                folio_test_swappriolow(__entry->folio))
+);
+
+TRACE_EVENT(refill_swap_slots,
+
+	TP_PROTO(int type, int nr, signed short prio),
+
+	TP_ARGS(type, nr , prio),
+
+	TP_STRUCT__entry(
+		__field(int ,type)
+		__field(int ,nr)
+		__field(signed short ,prio)
+	),
+
+	TP_fast_assign(
+		__entry->type	= type;
+		__entry->nr	= nr;
+		__entry->prio	= prio;
+	),
+
+	TP_printk("refill[%s] nr[%d],prio[%d]", 
+                (__entry->type == 0) ? "slots" : (
+				(__entry->type == 1) ? "slots_slow" : "slots_fast"),
+                __entry->nr,
+                __entry->prio)
+);
 
 TRACE_EVENT(folio_delete_from_swap_cache,
 

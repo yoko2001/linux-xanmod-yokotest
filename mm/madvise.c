@@ -36,6 +36,7 @@
 
 #include "internal.h"
 #include "swap.h"
+#include "trace/events/lru_gen.h"
 
 struct madvise_walk_private {
 	struct mmu_gather *tlb;
@@ -588,6 +589,7 @@ static int madvise_prio_pte_range(pmd_t *pmd,
 		}
 huge_unlock2:
 		spin_unlock(ptl);
+		trace_folio_set_swapprio(folio);
 		return 0;
 	}
 
@@ -635,7 +637,8 @@ regular_page:
 			folio_set_swappriolow(folio);
 		}else{
 			folio_set_swappriohigh(folio);
-		}	
+		}
+		trace_folio_set_swapprio(folio);
 		// folio_unlock(folio);
 		// folio_put(folio);
 	}

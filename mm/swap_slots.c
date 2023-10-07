@@ -34,6 +34,7 @@
 #include <linux/vmalloc.h>
 #include <linux/mutex.h>
 #include <linux/mm.h>
+#include <trace/events/lru_gen.h>
 
 static DEFINE_PER_CPU(struct swap_slots_cache, swp_slots);
 static bool	swap_slot_cache_active;
@@ -51,6 +52,10 @@ static void __drain_swap_slots_cache(unsigned int type);
 /*DJL ADD BEGIN*/
 #define SLOTS_CACHE_SLOW 0x4
 #define SLOTS_CACHE_FAST 0x8
+/*DJL ADD END*/
+/*DJL ADD BEGIN*/
+static short fastest_swap_prio;
+static short slowest_swap_prio;
 /*DJL ADD END*/
 static void deactivate_swap_slots_cache(void)
 {
@@ -160,6 +165,8 @@ static int alloc_swap_slot_cache(unsigned int cpu)
 
 		kvfree(slots);
 		kvfree(slots_ret);
+		kvfree(slots_slow);
+		kvfree(slots_fast);
 
 		return 0;
 	}
@@ -187,6 +194,11 @@ static int alloc_swap_slot_cache(unsigned int cpu)
 	mb();
 	cache->slots = slots;
 	cache->slots_ret = slots_ret;
+	/*DJL ADD BEGIN*/
+	cache->slots_fast = slots_fast;
+	cache->slots_slow = slots_slow;
+	/*DJL ADD END*/
+
 	mutex_unlock(&swap_slots_cache_mutex);
 	return 0;
 }
@@ -297,7 +309,10 @@ void enable_swap_slots_cache(void)
 
 		swap_slot_cache_initialized = true;
 	}
-
+	/*DJL ADD BEGIN*/
+	fastest_swap_prio = -30000;
+	slowest_swap_prio = 30000;
+	/*DJL ADD END*/
 	__reenable_swap_slots_cache();
 out_unlock:
 	mutex_unlock(&swap_slots_cache_enable_mutex);
@@ -313,7 +328,7 @@ static int refill_swap_slots_cache(struct swap_slots_cache *cache)
 	if (swap_slot_cache_active)
 		cache->nr = get_swap_pages(SWAP_SLOTS_CACHE_SIZE,
 					   cache->slots, 1, 0, &cache->prio);
-
+	trace_refill_swap_slots(0, cache->nr, cache->prio);
 	return cache->nr;
 }
 
@@ -328,7 +343,8 @@ static int refill_swap_slots_slow_cache(struct swap_slots_cache *cache)
 	if (swap_slot_cache_active)
 		cache->nr_slow = get_swap_pages(SWAP_SLOTS_CACHE_SIZE,
 					   cache->slots_slow, 1, 1, &cache->prio_slow);	//DJL ADD PARAMETER
-	// if (slowest_swap_prio > cache->prio) slowest_swap_prio = cache->prio;
+	if (slowest_swap_prio > cache->prio_slow) slowest_swap_prio = cache->prio_slow;
+	trace_refill_swap_slots(1, cache->nr_slow, cache->prio_slow);
 	return cache->nr_slow;
 }
 static int refill_swap_slots_fast_cache(struct swap_slots_cache *cache)
@@ -340,7 +356,8 @@ static int refill_swap_slots_fast_cache(struct swap_slots_cache *cache)
 	if (swap_slot_cache_active)
 		cache->nr_fast = get_swap_pages(SWAP_SLOTS_CACHE_SIZE,
 					   cache->slots_fast, 1, 2, &cache->prio_fast);	//DJL ADD PARAMETER
-	// if (fastest_swap_prio < cache->prio) fastest_swap_prio = cache->prio;
+	if (fastest_swap_prio < cache->prio_fast) fastest_swap_prio = cache->prio_fast;
+	trace_refill_swap_slots(2, cache->nr_fast, cache->prio_fast);
 	return cache->nr_fast;
 }
 /*DJL ADD END*/
@@ -466,11 +483,11 @@ repeat_fast:
 			}
 			mutex_unlock(&cache->alloc_lock);
 			if (entry.val){
-				// if (cache->prio_fast == fastest_swap_prio)
-				// 	count_memcg_folio_events(folio, SWAPOUT_FAST_ASSIGN_SUCC, 1);
-				// else
-				// 	count_memcg_folio_events(folio, SWAPOUT_FAST_ASSIGN_FAIL, 1);
-				// count_memcg_folio_events(folio, SWAPOUT_FAST_ASSIGN,1);
+				if (cache->prio_fast == fastest_swap_prio)
+					count_memcg_folio_events(folio, SWAPOUT_FAST_ASSIGN_SUCC, 1);
+				else
+					count_memcg_folio_events(folio, SWAPOUT_FAST_ASSIGN_FAIL, 1);
+				count_memcg_folio_events(folio, SWAPOUT_FAST_ASSIGN,1);
 				goto out;
 			}
 		}
