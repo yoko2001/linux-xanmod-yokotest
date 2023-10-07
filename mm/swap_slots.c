@@ -54,8 +54,10 @@ static void __drain_swap_slots_cache(unsigned int type);
 #define SLOTS_CACHE_FAST 0x8
 /*DJL ADD END*/
 /*DJL ADD BEGIN*/
-static short fastest_swap_prio;
-static short slowest_swap_prio;
+static signed short fastest_swap_prio;
+static signed short slowest_swap_prio;
+signed short get_fastest_swap_prio(void){return fastest_swap_prio;}
+signed short get_slowest_swap_prio(void){return slowest_swap_prio;}
 /*DJL ADD END*/
 static void deactivate_swap_slots_cache(void)
 {

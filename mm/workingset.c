@@ -327,7 +327,8 @@ static void lru_gen_refault(struct folio *folio, void *shadow)
 	}
 	/*DJL ADD BEGIN*/
 #ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
-	folio_test_swappriohigh(folio);
+	// folio_set_swappriohigh(folio);
+	folio_swapprio_promote(folio);
 #endif
 	/*DJL ADD END*/
 
