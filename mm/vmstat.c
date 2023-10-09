@@ -1407,10 +1407,12 @@ const char * const vmstat_text[] = {
 /*DJL ADD BEGIN*/
 #ifdef CONFIG_LRU_GEN
 	"swap_out_to_slow",
-	"assign_slow_swap",
+	"attempt_assign_slow_swap",
 	"assign_slow_swap_success",
 	"assign_slow_swap_fail",
 	"swap_out_to_mid",
+	"attempt_assign_mid_swap",
+	"assign_mid_swap_success",
 	"swap_out_to_fast",
 	"assign_fast_swap",
 	"assign_fast_swap_success",

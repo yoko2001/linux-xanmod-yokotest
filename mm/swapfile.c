@@ -282,6 +282,14 @@ static void discard_swap_cluster(struct swap_info_struct *si,
 #endif
 #define LATENCY_LIMIT		256
 
+/*DJL ADD BEGIN*/
+static signed short fastest_swap_prio = -30000;
+static signed short slowest_swap_prio = 30000;
+signed short get_fastest_swap_prio(void){return fastest_swap_prio;}
+signed short get_slowest_swap_prio(void){return slowest_swap_prio;}
+static void update_swap_prio_mark(void);
+/*DJL ADD END*/
+
 static inline void cluster_set_flag(struct swap_cluster_info *info,
 	unsigned int flag)
 {
@@ -719,6 +727,30 @@ static void add_to_avail_list(struct swap_info_struct *p)
 	}
 	spin_unlock(&swap_avail_lock);
 }
+
+/*DJL ADD BEGIN*/
+static void update_swap_prio_mark(void){
+	int nid;
+	struct swap_info_struct *fast, *slow;
+	spin_lock(&swap_avail_lock);
+	fastest_swap_prio = -30000;
+	slowest_swap_prio = 30000;
+	for_each_node(nid) {
+		fast = plist_first_entry(&swap_avail_heads[nid], struct swap_info_struct, avail_lists[nid]);
+		slow = plist_last_entry(&swap_avail_heads[nid], struct swap_info_struct, avail_lists[nid]);
+		if (fast->prio > fastest_swap_prio) {
+			fastest_swap_prio = fast->prio;
+			pr_err("fastest_swap_prio => %d", fastest_swap_prio);
+		}
+		if (slow->prio < slowest_swap_prio) {
+			slowest_swap_prio = slow->prio;
+			pr_err("slowest_swap_prio => %d", slowest_swap_prio);
+
+		}
+	}
+	spin_unlock(&swap_avail_lock);
+}
+/*DJL ADD END*/
 
 static void swap_range_free(struct swap_info_struct *si, unsigned long offset,
 			    unsigned int nr_entries)
@@ -3219,7 +3251,9 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 		(p->flags & SWP_AREA_DISCARD) ? "s" : "",
 		(p->flags & SWP_PAGE_DISCARD) ? "c" : "",
 		(frontswap_map) ? "FS" : "");
-
+	/*DJL ADD BEGIN*/
+	update_swap_prio_mark();
+	/*DJL ADD END*/
 	mutex_unlock(&swapon_mutex);
 	atomic_inc(&proc_poll_event);
 	wake_up_interruptible(&proc_poll_wait);

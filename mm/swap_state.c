@@ -531,7 +531,8 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 	folio_clear_swappriohigh(folio); //clear here
 	folio_set_swappriolow(folio);  //set here so that only those got promoted again can go to fast
 	if (si->prio == get_fastest_swap_prio()){
-		folio_swapprio_promote(folio);	
+		folio_swapprio_promote(folio);
+		pr_err("swapin from fast [%d]", folio_test_swappriolow(folio));
 	}
 #endif
 //reclaim another 4kb pages space //1mb = 128*4kb pages space

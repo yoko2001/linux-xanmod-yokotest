@@ -53,12 +53,9 @@ static void __drain_swap_slots_cache(unsigned int type);
 #define SLOTS_CACHE_SLOW 0x4
 #define SLOTS_CACHE_FAST 0x8
 /*DJL ADD END*/
-/*DJL ADD BEGIN*/
-static signed short fastest_swap_prio;
-static signed short slowest_swap_prio;
-signed short get_fastest_swap_prio(void){return fastest_swap_prio;}
-signed short get_slowest_swap_prio(void){return slowest_swap_prio;}
-/*DJL ADD END*/
+// extern signed short fastest_swap_prio;
+// extern signed short slowest_swap_prio;
+
 static void deactivate_swap_slots_cache(void)
 {
 	mutex_lock(&swap_slots_cache_mutex);
@@ -311,10 +308,7 @@ void enable_swap_slots_cache(void)
 
 		swap_slot_cache_initialized = true;
 	}
-	/*DJL ADD BEGIN*/
-	fastest_swap_prio = -30000;
-	slowest_swap_prio = 30000;
-	/*DJL ADD END*/
+
 	__reenable_swap_slots_cache();
 out_unlock:
 	mutex_unlock(&swap_slots_cache_enable_mutex);
@@ -330,6 +324,8 @@ static int refill_swap_slots_cache(struct swap_slots_cache *cache)
 	if (swap_slot_cache_active)
 		cache->nr = get_swap_pages(SWAP_SLOTS_CACHE_SIZE,
 					   cache->slots, 1, 0, &cache->prio);
+	// if (fastest_swap_prio < cache->prio) fastest_swap_prio = cache->prio;
+	// if (slowest_swap_prio > cache->prio) slowest_swap_prio = cache->prio;
 	trace_refill_swap_slots(0, cache->nr, cache->prio);
 	return cache->nr;
 }
@@ -345,7 +341,7 @@ static int refill_swap_slots_slow_cache(struct swap_slots_cache *cache)
 	if (swap_slot_cache_active)
 		cache->nr_slow = get_swap_pages(SWAP_SLOTS_CACHE_SIZE,
 					   cache->slots_slow, 1, 1, &cache->prio_slow);	//DJL ADD PARAMETER
-	if (slowest_swap_prio > cache->prio_slow) slowest_swap_prio = cache->prio_slow;
+	// if (slowest_swap_prio > cache->prio_slow) slowest_swap_prio = cache->prio_slow;
 	trace_refill_swap_slots(1, cache->nr_slow, cache->prio_slow);
 	return cache->nr_slow;
 }
@@ -358,7 +354,7 @@ static int refill_swap_slots_fast_cache(struct swap_slots_cache *cache)
 	if (swap_slot_cache_active)
 		cache->nr_fast = get_swap_pages(SWAP_SLOTS_CACHE_SIZE,
 					   cache->slots_fast, 1, 2, &cache->prio_fast);	//DJL ADD PARAMETER
-	if (fastest_swap_prio < cache->prio_fast) fastest_swap_prio = cache->prio_fast;
+	// if (fastest_swap_prio < cache->prio_fast) fastest_swap_prio = cache->prio_fast;
 	trace_refill_swap_slots(2, cache->nr_fast, cache->prio_fast);
 	return cache->nr_fast;
 }
@@ -419,11 +415,11 @@ swp_entry_t folio_alloc_swap(struct folio *folio)
 	folio_clear_readaheaded(folio);
 #else
 	//PRIORITY STAYS FOR MADVISE 
-	if (!folio_test_swappriolow(folio) && !folio_test_swappriohigh(folio)){
-		if (folio_test_readaheaded(folio)){
-			folio_set_swappriolow(folio);
-		}
-	}
+	// if (!folio_test_swappriolow(folio) && !folio_test_swappriohigh(folio)){
+	// 	if (folio_test_readaheaded(folio)){
+	// 		folio_set_swappriolow(folio);
+	// 	}
+	// }
 	folio_clear_readaheaded(folio);
 #endif
 	/*DJL ADD END*/
@@ -458,7 +454,7 @@ repeat_slow:
 			mutex_unlock(&cache->alloc_lock);
 			if (entry.val){
 				count_memcg_folio_events(folio, SWAPOUT_SLOW_ASSIGN_SUCC,1);
-				count_memcg_folio_events(folio, SWAPOUT_SLOW_ASSIGN,1);
+				count_memcg_folio_events(folio, SWAPOUT_SLOW_ASSIGN_ATT,1);
 				goto out;
 			}
 		}	
@@ -485,11 +481,11 @@ repeat_fast:
 			}
 			mutex_unlock(&cache->alloc_lock);
 			if (entry.val){
-				if (cache->prio_fast == fastest_swap_prio)
+				if (cache->prio_fast == get_fastest_swap_prio())
 					count_memcg_folio_events(folio, SWAPOUT_FAST_ASSIGN_SUCC, 1);
 				else
 					count_memcg_folio_events(folio, SWAPOUT_FAST_ASSIGN_FAIL, 1);
-				count_memcg_folio_events(folio, SWAPOUT_FAST_ASSIGN,1);
+				count_memcg_folio_events(folio, SWAPOUT_FAST_ASSIGN_ATT,1);
 				goto out;
 			}
 		}
@@ -507,8 +503,16 @@ repeat:
 			}
 		}
 		mutex_unlock(&cache->alloc_lock);
-		if (entry.val)
+		if (entry.val){
+			if (cache->prio_fast == get_fastest_swap_prio())
+					count_memcg_folio_events(folio, SWAPOUT_FAST_ASSIGN_SUCC, 1);
+			else if (cache->prio_fast == get_slowest_swap_prio())
+					count_memcg_folio_events(folio, SWAPOUT_SLOW_ASSIGN_SUCC, 1);
+			else 
+					count_memcg_folio_events(folio, SWAPOUT_MID_ASSIGN_SUCC, 1);
+			count_memcg_folio_events(folio, SWAPOUT_MID_ASSIGN_ATT,1);
 			goto out;
+		}
 	}
 
 	get_swap_pages(1, &entry, 1, 0, &prio);

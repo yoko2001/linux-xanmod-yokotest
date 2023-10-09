@@ -444,21 +444,25 @@ extern signed short get_slowest_swap_prio(void);
 
 #ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
 static inline int folio_swapprio_demote(struct folio* folio){
-	if (folio_test_clear_swappriohigh(folio)){
+	if (folio_test_swappriohigh(folio)){
+		folio_clear_swappriohigh(folio);
 		folio_clear_swappriolow(folio);
 		return 0;
 	}
 	else{
+		folio_clear_swappriohigh(folio);		
 		folio_set_swappriolow(folio);
 		return 1;
 	}
 }
 static inline int folio_swapprio_promote(struct folio* folio){
-	if (folio_test_clear_swappriolow(folio)){
+	if (folio_test_swappriolow(folio)){
 		folio_clear_swappriohigh(folio);
+		folio_clear_swappriolow(folio);
 		return 0;
 	}
 	else{
+		folio_clear_swappriolow(folio);
 		folio_set_swappriohigh(folio);
 		return 2;
 	}

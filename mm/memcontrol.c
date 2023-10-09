@@ -698,12 +698,14 @@ static const unsigned int memcg_vm_event_stat[] = {
 /*DJL ADD BEGIN*/
 #ifdef CONFIG_LRU_GEN
 	SWAPOUT_SLOW,
-	SWAPOUT_SLOW_ASSIGN,
+	SWAPOUT_SLOW_ASSIGN_ATT,
 	SWAPOUT_SLOW_ASSIGN_SUCC,
 	SWAPOUT_SLOW_ASSIGN_FAIL,
 	SWAPOUT_MID,
+	SWAPOUT_MID_ASSIGN_ATT,
+	SWAPOUT_MID_ASSIGN_SUCC,
 	SWAPOUT_FAST,
-	SWAPOUT_FAST_ASSIGN,
+	SWAPOUT_FAST_ASSIGN_ATT,
 	SWAPOUT_FAST_ASSIGN_SUCC,
 	SWAPOUT_FAST_ASSIGN_FAIL,
 	SWAPOUT_RAW,
@@ -7432,6 +7434,10 @@ void mem_cgroup_swapout(struct folio *folio, swp_entry_t entry)
 	struct mem_cgroup *memcg, *swap_memcg;
 	unsigned int nr_entries;
 	unsigned short oldid;
+	/*DJL ADD BEGIN*/
+	signed short fast=-1, slow=-1;
+	struct swap_info_struct * si;
+	/*DJL ADD END*/
 
 	VM_BUG_ON_FOLIO(folio_test_lru(folio), folio);
 	VM_BUG_ON_FOLIO(folio_ref_count(folio), folio);
@@ -7439,10 +7445,23 @@ void mem_cgroup_swapout(struct folio *folio, swp_entry_t entry)
 	if (mem_cgroup_disabled())
 		return;
 
-	if (!do_memsw_account())
-		return;
+	// if (!do_memsw_account())
+	// 	return;
 
 	memcg = folio_memcg(folio);
+	/*DJL ADD BEGIN*/
+	fast = get_fastest_swap_prio();
+	slow = get_slowest_swap_prio();
+	si = get_swap_device(entry);
+	if (fast == si->prio){
+		count_memcg_folio_events(folio, SWAPOUT_FAST, nr_entries);
+	}else if (slow == si->prio){
+		count_memcg_folio_events(folio, SWAPOUT_SLOW, nr_entries);	
+	}else{
+		count_memcg_folio_events(folio, SWAPOUT_MID, nr_entries);
+	}
+	put_swap_device(si);
+	/*DJL ADD END*/
 
 	VM_WARN_ON_ONCE_FOLIO(!memcg, folio);
 	if (!memcg)
@@ -7455,6 +7474,10 @@ void mem_cgroup_swapout(struct folio *folio, swp_entry_t entry)
 	 */
 	swap_memcg = mem_cgroup_id_get_online(memcg);
 	nr_entries = folio_nr_pages(folio);
+	
+	if (!do_memsw_account())
+		return;
+
 	/* Get references for the tail pages, too */
 	if (nr_entries > 1)
 		mem_cgroup_id_get_many(swap_memcg, nr_entries - 1);

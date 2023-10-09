@@ -402,9 +402,12 @@ TRACE_EVENT(folio_workingset_change,
 		__entry->in	= in;
 	),
 
-	TP_printk("[%s] folio@[%p] ra[%d] gen[%d] {memcg:%d}{pglist[%p]} mins_seq[%lu], ref[%d] tier[%d]", 
+	TP_printk("[%s] folio@[%p][%s] ra[%d] gen[%d] {memcg:%d}{pglist[%p]} mins_seq[%lu], ref[%d] tier[%d]", 
                 __entry->in ? "REFAULT" : "EVICT",
-				__entry->folio, folio_test_readahead(__entry->folio),
+				__entry->folio, 
+				folio_test_swappriolow(__entry->folio) ? "slow" : (
+				folio_test_swappriohigh(__entry->folio) ? "fast" : "mid"),
+				folio_test_readahead(__entry->folio),
 				folio_lru_gen(__entry->folio),
 				(unsigned short)__entry->cgroup_id,
 				__entry->pgdat,

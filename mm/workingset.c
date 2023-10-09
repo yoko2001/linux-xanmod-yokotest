@@ -298,6 +298,13 @@ static void lru_gen_refault(struct folio *folio, void *shadow)
 			break;
 	};
 	/*DJL ADD END*/
+#ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
+	// folio_set_swappriohigh(folio);
+	folio_swapprio_promote(folio);
+	if (folio_test_swappriolow(folio))
+		pr_err("folio[%p] promote fail", folio);		
+	/*DJL ADD END*/
+#endif
 
 	if ((token >> LRU_REFS_WIDTH) != (min_seq & (EVICTION_MASK >> LRU_REFS_WIDTH)))
 		goto unlock;
@@ -325,15 +332,19 @@ static void lru_gen_refault(struct folio *folio, void *shadow)
 		folio_set_workingset(folio);
 		mod_lruvec_state(lruvec, WORKINGSET_RESTORE_BASE + type, delta);
 	}
-	/*DJL ADD BEGIN*/
-#ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
-	// folio_set_swappriohigh(folio);
-	folio_swapprio_promote(folio);
-#endif
-	/*DJL ADD END*/
 
 unlock:
 	rcu_read_unlock();
+
+// /*DJL ADD BEGIN*/
+// #ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
+// 	//clear folio's swap, realloc again later
+// 	folio_lock(folio);
+// 	folio_wait_writeback(folio);
+// 	folio_free_swap(folio);
+// 	folio_unlock(folio);		
+// #endif
+// /*DJL ADD END*/
 }
 
 #else /* !CONFIG_LRU_GEN */
