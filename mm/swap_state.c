@@ -512,6 +512,15 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 
 	mem_cgroup_swapin_uncharge_swap(entry);
 
+#ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
+	folio_clear_swappriohigh(folio); //clear here
+	folio_set_swappriolow(folio);  //set here so that only those got promoted again can go to fast
+	if (si->prio == get_fastest_swap_prio()){
+		folio_swapprio_promote(folio);
+		// pr_err("swapin from fast [%d]", folio_test_swappriolow(folio));
+	}
+#endif
+
 	/*DJL ADD BEGIN*/
 	if (shadow){
 		workingset_refault(folio, shadow);
@@ -527,14 +536,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 	else
 		folio_add_lru_ra(folio);
 	*new_page_allocated = true;
-#ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
-	folio_clear_swappriohigh(folio); //clear here
-	folio_set_swappriolow(folio);  //set here so that only those got promoted again can go to fast
-	if (si->prio == get_fastest_swap_prio()){
-		folio_swapprio_promote(folio);
-		pr_err("swapin from fast [%d]", folio_test_swappriolow(folio));
-	}
-#endif
+
 //reclaim another 4kb pages space //1mb = 128*4kb pages space
 	lruvec = folio_lruvec(folio);
 	pgdat = lruvec_pgdat(lruvec);

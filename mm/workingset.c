@@ -299,6 +299,9 @@ static void lru_gen_refault(struct folio *folio, void *shadow)
 	};
 	/*DJL ADD END*/
 #ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
+	/*DJL ADD BEGIN*/
+	trace_folio_workingset_change(folio, folio_test_swappriolow(folio), folio_test_swappriohigh(folio), pgdat, (unsigned short)memcg_id, token, refs, 1);
+	/*DJL ADD END*/
 	// folio_set_swappriohigh(folio);
 	folio_swapprio_promote(folio);
 	if (folio_test_swappriolow(folio))
@@ -315,7 +318,7 @@ static void lru_gen_refault(struct folio *folio, void *shadow)
 	tier = lru_tier_from_refs(refs);
 	
 	/*DJL ADD BEGIN*/
-	trace_folio_workingset_change(folio, pgdat, (unsigned short)memcg_id, token, refs, 1);
+	trace_folio_workingset_change(folio, folio_test_swappriolow(folio), folio_test_swappriohigh(folio), pgdat, (unsigned short)memcg_id, token, refs, 1);
 	/*DJL ADD END*/
 
 	atomic_long_add(delta, &lrugen->refaulted[hist][type][tier]);

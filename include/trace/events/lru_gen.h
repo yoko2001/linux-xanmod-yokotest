@@ -374,16 +374,19 @@ TRACE_EVENT(folio_delete_from_swap_cache,
 TRACE_EVENT(folio_workingset_change,
 
 	TP_PROTO(struct folio* folio, 
+			 int low, int high,
 	         struct pglist_data *pgdat, 
 			 unsigned short cgroup_id, 
 			 unsigned long token, 
 			 int refs, 
 			 bool in),
 
-	TP_ARGS(folio, pgdat, cgroup_id, token, refs, in),
+	TP_ARGS(folio, low, high, pgdat, cgroup_id, token, refs, in),
 
 	TP_STRUCT__entry(
 		__field(struct folio* ,folio)
+		__field(int , low)
+		__field(int , high)
 		__field(struct pglist_data*, pgdat)
 		__field(unsigned short, cgroup_id)
 		__field(unsigned long , token)
@@ -394,6 +397,8 @@ TRACE_EVENT(folio_workingset_change,
 
 	TP_fast_assign(
 		__entry->folio	= folio;
+		__entry->low	= refs;
+		__entry->high	= high;
 		__entry->pgdat	= pgdat;
 		__entry->cgroup_id	= cgroup_id;
 		__entry->token	= token;
@@ -402,11 +407,12 @@ TRACE_EVENT(folio_workingset_change,
 		__entry->in	= in;
 	),
 
-	TP_printk("[%s] folio@[%p][%s] ra[%d] gen[%d] {memcg:%d}{pglist[%p]} mins_seq[%lu], ref[%d] tier[%d]", 
+	TP_printk("[%s] folio@[%p][%s]low[%d]high[%d] ra[%d] gen[%d] {memcg:%d}{pglist[%p]} mins_seq[%lu], ref[%d] tier[%d]", 
                 __entry->in ? "REFAULT" : "EVICT",
 				__entry->folio, 
 				folio_test_swappriolow(__entry->folio) ? "slow" : (
 				folio_test_swappriohigh(__entry->folio) ? "fast" : "mid"),
+				__entry->low, __entry->high,
 				folio_test_readahead(__entry->folio),
 				folio_lru_gen(__entry->folio),
 				(unsigned short)__entry->cgroup_id,

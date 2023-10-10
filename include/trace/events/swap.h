@@ -214,8 +214,10 @@ TRACE_EVENT(readahead_swap_readpage,
 	),
 
 	/* Flag format is based on page-types.c formatting for pagemap */
-	TP_printk("folio[%p] ra[%d] from-prio[%d]", 
-	          __entry->folio, folio_test_readahead(__entry->folio), 
+	TP_printk("folio[%p]low[%d]high[%d] ra[%d] from-prio[%d]", 
+	          __entry->folio, 
+			  folio_test_swappriolow(__entry->folio), folio_test_swappriohigh(__entry->folio),
+			  folio_test_readahead(__entry->folio), 
 			  __entry->si->prio)
 );
 
@@ -254,6 +256,7 @@ TRACE_EVENT(swapin_force_wake_kswapd,
 	/* Flag format is based on page-types.c formatting for pagemap */
 	TP_printk("order %d ",__entry->order)
 );
+
 TRACE_EVENT(folio_inc_refs,
 
 	TP_PROTO(struct folio *folio, int ckpt),
@@ -280,6 +283,34 @@ TRACE_EVENT(folio_inc_refs,
    (__entry->ckpt == 2 ? "set work" :
    "new_flags")), 
    __entry->ref)
+);
+
+TRACE_EVENT(should_try_to_free_swap,
+
+	TP_PROTO(struct folio *folio, int low, int high, int fault_flags, int ksm),
+
+	TP_ARGS(folio, low, high, fault_flags, ksm),
+
+	TP_STRUCT__entry(
+		__field(struct folio *, folio)
+		__field(int, low)
+		__field(int, high)
+		__field(int, fault_flags)
+		__field(int, ksm)
+	),
+
+	TP_fast_assign(
+		__entry->folio  = folio;
+		__entry->low  = low;
+		__entry->high  = high;
+		__entry->fault_flags	= fault_flags;
+		__entry->ksm    = ksm;
+	),
+
+	/* Flag format is based on page-types.c formatting for pagemap */
+	TP_printk("folio[%p]low[%d]high[%d] fault_flags[%d] ksm[%d]", __entry->folio,
+	__entry->low, __entry->high,
+	__entry->fault_flags, __entry->ksm)
 );
 /*DJL ADD END*/
 #endif /* _TRACE_SWAP_H */

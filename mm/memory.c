@@ -3615,6 +3615,12 @@ static inline bool should_try_to_free_swap(struct folio *folio,
 	 * user. Try freeing the swapcache to get rid of the swapcache
 	 * reference only in case it's likely that we'll be the exlusive user.
 	 */
+	/*DJL ADD BEGIN*/
+#ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
+	trace_should_try_to_free_swap(folio, folio_test_swappriolow(folio), folio_test_swappriohigh(folio), (fault_flags & FAULT_FLAG_WRITE), folio_test_ksm(folio));
+	return (fault_flags & FAULT_FLAG_WRITE) && !folio_test_ksm(folio);
+#endif
+	/*DJL ADD END*/
 	return (fault_flags & FAULT_FLAG_WRITE) && !folio_test_ksm(folio) &&
 		folio_ref_count(folio) == 2;
 }
