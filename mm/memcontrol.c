@@ -7450,6 +7450,7 @@ void mem_cgroup_swapout(struct folio *folio, swp_entry_t entry)
 
 	memcg = folio_memcg(folio);
 	/*DJL ADD BEGIN*/
+	nr_entries = folio_nr_pages(folio);
 	fast = get_fastest_swap_prio();
 	slow = get_slowest_swap_prio();
 	si = get_swap_device(entry);

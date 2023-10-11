@@ -339,15 +339,6 @@ static void lru_gen_refault(struct folio *folio, void *shadow)
 unlock:
 	rcu_read_unlock();
 
-// /*DJL ADD BEGIN*/
-// #ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
-// 	//clear folio's swap, realloc again later
-// 	folio_lock(folio);
-// 	folio_wait_writeback(folio);
-// 	folio_free_swap(folio);
-// 	folio_unlock(folio);		
-// #endif
-// /*DJL ADD END*/
 }
 
 #else /* !CONFIG_LRU_GEN */

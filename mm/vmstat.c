@@ -1414,7 +1414,7 @@ const char * const vmstat_text[] = {
 	"attempt_assign_mid_swap",
 	"assign_mid_swap_success",
 	"swap_out_to_fast",
-	"assign_fast_swap",
+	"attempt_assign_fast_swap",
 	"assign_fast_swap_success",
 	"assign_fast_swap_fail",
 	"swap_out_raw(no_slot_cache)",
