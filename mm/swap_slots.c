@@ -504,12 +504,12 @@ repeat:
 		}
 		mutex_unlock(&cache->alloc_lock);
 		if (entry.val){
-			if (cache->prio_fast == get_fastest_swap_prio())
-					count_memcg_folio_events(folio, SWAPOUT_FAST_ASSIGN_SUCC, 1);
-			else if (cache->prio_fast == get_slowest_swap_prio())
-					count_memcg_folio_events(folio, SWAPOUT_SLOW_ASSIGN_SUCC, 1);
+			if (cache->prio == get_fastest_swap_prio())
+				count_memcg_folio_events(folio, SWAPOUT_FAST_ASSIGN_SUCC, 1);
+			else if (cache->prio == get_slowest_swap_prio())
+				count_memcg_folio_events(folio, SWAPOUT_SLOW_ASSIGN_SUCC, 1);
 			else 
-					count_memcg_folio_events(folio, SWAPOUT_MID_ASSIGN_SUCC, 1);
+				count_memcg_folio_events(folio, SWAPOUT_MID_ASSIGN_SUCC, 1);
 			count_memcg_folio_events(folio, SWAPOUT_MID_ASSIGN_ATT,1);
 			goto out;
 		}
