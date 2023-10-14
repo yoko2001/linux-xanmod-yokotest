@@ -528,7 +528,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 			if (get_fastest_swap_prio() == si->prio){
 				count_memcg_event_mm(vma->vm_mm, WORKINGSET_REFAULT_FAST);
 #ifdef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
-				*try_free_entry = (*try_free_entry > 2) ? 1 : 0; //dist = 2, 3 reschedule
+				*try_free_entry = (*try_free_entry > 1) ? 1 : 0; //dist = 1, 2, 3 reschedule
 #endif
 			}
 			else if (get_slowest_swap_prio() == si->prio){

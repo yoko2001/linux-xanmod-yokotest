@@ -3617,8 +3617,8 @@ static inline bool should_try_to_free_swap(struct folio *folio,
 	 * reference only in case it's likely that we'll be the exlusive user.
 	 */
 	/*DJL ADD BEGIN*/
+	trace_should_try_to_free_swap(folio, try_free_entry_force, folio_test_swappriolow(folio), folio_test_swappriohigh(folio), (fault_flags & FAULT_FLAG_WRITE), folio_test_ksm(folio));
 #ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
-	trace_should_try_to_free_swap(folio, folio_test_swappriolow(folio), folio_test_swappriohigh(folio), (fault_flags & FAULT_FLAG_WRITE), folio_test_ksm(folio));
 	return try_free_entry_force && (fault_flags & FAULT_FLAG_WRITE) && !folio_test_ksm(folio);
 #endif
 	/*DJL ADD END*/

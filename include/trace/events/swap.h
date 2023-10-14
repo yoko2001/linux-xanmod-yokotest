@@ -287,12 +287,13 @@ TRACE_EVENT(folio_inc_refs,
 
 TRACE_EVENT(should_try_to_free_swap,
 
-	TP_PROTO(struct folio *folio, int low, int high, int fault_flags, int ksm),
+	TP_PROTO(struct folio *folio, int allow, int low, int high, int fault_flags, int ksm),
 
-	TP_ARGS(folio, low, high, fault_flags, ksm),
+	TP_ARGS(folio, allow, low, high, fault_flags, ksm),
 
 	TP_STRUCT__entry(
 		__field(struct folio *, folio)
+		__field(int, allow)
 		__field(int, low)
 		__field(int, high)
 		__field(int, fault_flags)
@@ -301,6 +302,7 @@ TRACE_EVENT(should_try_to_free_swap,
 
 	TP_fast_assign(
 		__entry->folio  = folio;
+		__entry->allow  = allow;
 		__entry->low  = low;
 		__entry->high  = high;
 		__entry->fault_flags	= fault_flags;
@@ -308,7 +310,9 @@ TRACE_EVENT(should_try_to_free_swap,
 	),
 
 	/* Flag format is based on page-types.c formatting for pagemap */
-	TP_printk("folio[%p]low[%d]high[%d] fault_flags[%d] ksm[%d]", __entry->folio,
+	TP_printk("[%s]folio[%p]low[%d]high[%d] fault_flags[%d] ksm[%d]",
+	__entry->allow ? "YES" : "NO",
+	__entry->folio,
 	__entry->low, __entry->high,
 	__entry->fault_flags, __entry->ksm)
 );

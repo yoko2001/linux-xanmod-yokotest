@@ -306,12 +306,12 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 	
 	*try_free_entry = dist;
 
-	if (dist < 2){
+	if (dist < 1){
 		folio_swapprio_promote(folio);
 		if (folio_test_swappriolow(folio))
 			pr_err("folio[%p] promote fail", folio);		
 	}
-	else if (dist > 2){ //punishment
+	else if (dist > 1){ //punishment
 		folio_set_swappriolow(folio);
 		folio_clear_swappriohigh(folio);
 	}
