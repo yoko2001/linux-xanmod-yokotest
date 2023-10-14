@@ -201,7 +201,7 @@ static int swapin_walk_pmd_entry(pmd_t *pmd, unsigned long start,
 	struct vm_area_struct *vma = walk->private;
 	unsigned long index;
 	struct swap_iocb *splug = NULL;
-
+	int temp;
 	if (pmd_none_or_trans_huge_or_clear_bad(pmd))
 		return 0;
 
@@ -223,7 +223,7 @@ static int swapin_walk_pmd_entry(pmd_t *pmd, unsigned long start,
 			continue;
 
 		page = read_swap_cache_async(entry, GFP_HIGHUSER_MOVABLE,
-					     vma, index, false, &splug);
+					     vma, index, false, &splug, false, &temp);
 		if (page)
 			put_page(page);
 	}
@@ -245,6 +245,7 @@ static void force_shm_swapin_readahead(struct vm_area_struct *vma,
 	pgoff_t end_index = linear_page_index(vma, end + PAGE_SIZE - 1);
 	struct page *page;
 	struct swap_iocb *splug = NULL;
+	int temp;
 
 	rcu_read_lock();
 	xas_for_each(&xas, page, end_index) {
@@ -260,7 +261,7 @@ static void force_shm_swapin_readahead(struct vm_area_struct *vma,
 		rcu_read_unlock();
 
 		page = read_swap_cache_async(swap, GFP_HIGHUSER_MOVABLE,
-					     NULL, 0, false, &splug);
+					     NULL, 0, false, &splug, false, &temp);
 		if (page)
 			put_page(page);
 

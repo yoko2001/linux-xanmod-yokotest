@@ -1506,12 +1506,13 @@ static struct folio *shmem_swapin(swp_entry_t swap, gfp_t gfp,
 {
 	struct vm_area_struct pvma;
 	struct page *page;
+	int temp;
 	struct vm_fault vmf = {
 		.vma = &pvma,
 	};
 
 	shmem_pseudo_vma_init(&pvma, info, index);
-	page = swap_cluster_readahead(swap, gfp, &vmf);
+	page = swap_cluster_readahead(swap, gfp, &vmf, &temp);
 	shmem_pseudo_vma_destroy(&pvma);
 
 	if (!page)

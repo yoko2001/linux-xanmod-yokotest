@@ -3602,7 +3602,8 @@ static vm_fault_t remove_device_exclusive_entry(struct vm_fault *vmf)
 
 static inline bool should_try_to_free_swap(struct folio *folio,
 					   struct vm_area_struct *vma,
-					   unsigned int fault_flags)
+					   unsigned int fault_flags,
+					   bool try_free_entry_force)
 {
 	if (!folio_test_swapcache(folio))
 		return false;
@@ -3618,7 +3619,7 @@ static inline bool should_try_to_free_swap(struct folio *folio,
 	/*DJL ADD BEGIN*/
 #ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
 	trace_should_try_to_free_swap(folio, folio_test_swappriolow(folio), folio_test_swappriohigh(folio), (fault_flags & FAULT_FLAG_WRITE), folio_test_ksm(folio));
-	return (fault_flags & FAULT_FLAG_WRITE) && !folio_test_ksm(folio);
+	return try_free_entry_force && (fault_flags & FAULT_FLAG_WRITE) && !folio_test_ksm(folio);
 #endif
 	/*DJL ADD END*/
 	return (fault_flags & FAULT_FLAG_WRITE) && !folio_test_ksm(folio) &&
@@ -3705,6 +3706,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	vm_fault_t ret = 0;
 	void *shadow = NULL;
 	/*DJL ADD BEGIN*/
+	int try_free_entry;
 	trace_do_swap_page(-1, folio);
 	/*DJL ADD END*/
 	if (!pte_unmap_same(vmf))
@@ -3790,8 +3792,19 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				shadow = get_shadow_from_swap_cache(entry);
 				/*DJL ADD BEGIN*/
 				if (shadow){
- 					workingset_refault(folio, shadow);
-					count_memcg_event_mm(vma->vm_mm, WORKINGSET_REFAULT_FAST);
+ 					workingset_refault(folio, shadow, &try_free_entry);
+					if (get_fastest_swap_prio() == si->prio){
+						count_memcg_event_mm(vma->vm_mm, WORKINGSET_REFAULT_FAST);
+#ifdef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
+						try_free_entry = (try_free_entry > 2) ? 1 : 0; //dist = 2, 3 reschedule
+#endif
+					}
+					else if (get_slowest_swap_prio() == si->prio){
+						count_memcg_event_mm(vma->vm_mm, WORKINGSET_REFAULT_SLOW);
+#ifdef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
+						try_free_entry = (try_free_entry < 1) ? 1 : 0; //dist = 0 reschedule
+#endif
+					}
 				}
 					// if (shadow)
 					// 	workingset_refault(folio, shadow);
@@ -3802,7 +3815,13 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				/* To provide entry to swap_readpage() */
 				folio_set_swap_entry(folio, entry);
 				/*DJL ADD BEGIN*/
-				count_memcg_event_mm(vma->vm_mm, SWAPIN_FAST);
+				if (get_fastest_swap_prio() == si->prio){
+					count_memcg_event_mm(vma->vm_mm, SWAPIN_FAST);
+				} else if (get_slowest_swap_prio() == si->prio){
+					count_memcg_event_mm(vma->vm_mm, SWAPIN_SLOW);
+				} else{
+					count_memcg_event_mm(vma->vm_mm, SWAPIN_MID);
+				}
 				/*DJL ADD END*/
 				swap_readpage(page, true, NULL);
 				folio->private = NULL;
@@ -3815,13 +3834,13 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 			trace_do_swap_page(2, folio);
 			/*DJL ADD END*/
 			page = swapin_readahead(entry, GFP_HIGHUSER_MOVABLE,
-						vmf);
+						vmf, &try_free_entry);
 			if (page)
 				folio = page_folio(page);
 			swapcache = folio;
 			/*DJL ADD BEGIN*/
-			if (page)
-				count_memcg_event_mm(vma->vm_mm, SWAPIN_SLOW);
+			// if (page)
+			// 	count_memcg_event_mm(vma->vm_mm, SWAPIN_SLOW);
 			/*DJL ADD END*/
 		}
 
@@ -3969,7 +3988,10 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	 * yet.
 	 */
 	swap_free(entry);
-	if (should_try_to_free_swap(folio, vma, vmf->flags))
+#ifndef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
+	try_free_entry = 1;//force free, no excuse
+#endif
+	if (should_try_to_free_swap(folio, vma, vmf->flags, try_free_entry))
 		folio_free_swap(folio);
 
 	inc_mm_counter(vma->vm_mm, MM_ANONPAGES);

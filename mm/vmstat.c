@@ -1421,6 +1421,7 @@ const char * const vmstat_text[] = {
 	"swap_in_intercept_by_swapcache",
 	"swap_in_from_slow",
 	"swap_in_from_fast",
+	"swap_in_from_mid",
 	"workingset_refault_from_slow",
 	"workingset_refault_from_fast",
 	"workingset_refault_dist_0",

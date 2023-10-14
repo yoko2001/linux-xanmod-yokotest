@@ -247,7 +247,7 @@ static void *lru_gen_eviction(struct folio *folio)
 	return pack_shadow(mem_cgroup_id(memcg), pgdat, token, refs);
 }
 
-static void lru_gen_refault(struct folio *folio, void *shadow)
+static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_entry)
 {
 	int hist, tier, refs;
 	int memcg_id;
@@ -303,9 +303,18 @@ static void lru_gen_refault(struct folio *folio, void *shadow)
 	trace_folio_workingset_change(folio, folio_test_swappriolow(folio), folio_test_swappriohigh(folio), pgdat, (unsigned short)memcg_id, token, refs, 1);
 	/*DJL ADD END*/
 	// folio_set_swappriohigh(folio);
-	folio_swapprio_promote(folio);
-	if (folio_test_swappriolow(folio))
-		pr_err("folio[%p] promote fail", folio);		
+	
+	*try_free_entry = dist;
+
+	if (dist < 2){
+		folio_swapprio_promote(folio);
+		if (folio_test_swappriolow(folio))
+			pr_err("folio[%p] promote fail", folio);		
+	}
+	else if (dist > 2){ //punishment
+		folio_set_swappriolow(folio);
+		folio_clear_swappriohigh(folio);
+	}
 	/*DJL ADD END*/
 #endif
 
@@ -348,7 +357,7 @@ static void *lru_gen_eviction(struct folio *folio)
 	return NULL;
 }
 
-static void lru_gen_refault(struct folio *folio, void *shadow)
+static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_entry)
 {
 }
 
@@ -424,7 +433,7 @@ void *workingset_eviction(struct folio *folio, struct mem_cgroup *target_memcg)
  * evicted folio in the context of the node and the memcg whose memory
  * pressure caused the eviction.
  */
-void workingset_refault(struct folio *folio, void *shadow)
+void workingset_refault(struct folio *folio, void *shadow, int* try_free_entry)
 {
 	bool file = folio_is_file_lru(folio);
 	struct mem_cgroup *eviction_memcg;
@@ -441,7 +450,7 @@ void workingset_refault(struct folio *folio, void *shadow)
 	long nr;
 
 	if (lru_gen_enabled()) {
-		lru_gen_refault(folio, shadow);
+		lru_gen_refault(folio, shadow, try_free_entry);
 		return;
 	}
 
@@ -544,6 +553,7 @@ void workingset_refault(struct folio *folio, void *shadow)
 	}
 out:
 	rcu_read_unlock();
+	*try_free_entry = 0;
 }
 
 /**

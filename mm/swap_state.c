@@ -427,7 +427,7 @@ out:
 /*DJL ADD BEGIN*/
 struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 			struct vm_area_struct *vma, unsigned long addr,
-			bool *new_page_allocated, bool no_ra)
+			bool *new_page_allocated, bool no_ra, int* try_free_entry)
 /*DJL ADD END*/
 {
 	struct swap_info_struct *si;
@@ -523,9 +523,21 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 
 	/*DJL ADD BEGIN*/
 	if (shadow){
-		workingset_refault(folio, shadow);
-		if (vma && vma->vm_mm)
-			count_memcg_event_mm(vma->vm_mm, WORKINGSET_REFAULT_SLOW);
+		workingset_refault(folio, shadow, try_free_entry);
+		if (vma && vma->vm_mm){
+			if (get_fastest_swap_prio() == si->prio){
+				count_memcg_event_mm(vma->vm_mm, WORKINGSET_REFAULT_FAST);
+#ifdef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
+				*try_free_entry = (*try_free_entry > 2) ? 1 : 0; //dist = 2, 3 reschedule
+#endif
+			}
+			else if (get_slowest_swap_prio() == si->prio){
+				count_memcg_event_mm(vma->vm_mm, WORKINGSET_REFAULT_SLOW);
+#ifdef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
+				*try_free_entry = (*try_free_entry < 1) ? 1 : 0; //dist = 0 reschedule
+#endif
+			}
+		}
 	}
 	/*DJL ADD END*/
 
@@ -565,15 +577,31 @@ fail_unlock:
 struct page *read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 				   struct vm_area_struct *vma,
 				   unsigned long addr, bool do_poll,
-				   struct swap_iocb **plug)
+				   struct swap_iocb **plug, bool count, int* try_free_entry)  //DJL ADD PARA
 {
 	bool page_was_allocated;
+	/*DJL ADD BEGIN*/
+	struct swap_info_struct *si;
+	/*DJL ADD END*/
 	struct page *retpage = __read_swap_cache_async(entry, gfp_mask,
-			vma, addr, &page_was_allocated, true);
+			vma, addr, &page_was_allocated, true, try_free_entry);
 
 	if (page_was_allocated)
 		swap_readpage(retpage, do_poll, plug);
 
+	/*DJL ADD BEGIN*/
+	if (count && page_was_allocated){
+		si = get_swap_device(entry);
+		if (get_fastest_swap_prio() == si->prio){
+			count_memcg_event_mm(vma->vm_mm, SWAPIN_FAST);
+		} else if (get_slowest_swap_prio() == si->prio){
+			count_memcg_event_mm(vma->vm_mm, SWAPIN_SLOW);
+		} else{
+			count_memcg_event_mm(vma->vm_mm, SWAPIN_MID);
+		}
+		put_swap_device(si);
+	}
+	/*DJL ADD END*/
 	return retpage;
 }
 
@@ -696,7 +724,7 @@ static unsigned int __swapin_nr_pages_boost(unsigned long prev_offset,
  * Caller must hold read mmap_lock if vmf->vma is not NULL.
  */
 struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t gfp_mask,
-				struct vm_fault *vmf)
+				struct vm_fault *vmf, int* try_free_entry)
 {
 	struct page *page;
 	unsigned long entry_offset = swp_offset(entry);
@@ -709,6 +737,7 @@ struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t gfp_mask,
 	bool do_poll = true, page_allocated;
 	struct vm_area_struct *vma = vmf->vma;
 	unsigned long addr = vmf->address;
+	int try_free;
 
 	mask = swapin_nr_pages(offset) - 1;
 	if (!mask)
@@ -728,7 +757,7 @@ struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t gfp_mask,
 		/* Ok, do the async read-ahead now */
 		page = __read_swap_cache_async(
 			swp_entry(swp_type(entry), offset),
-			gfp_mask, vma, addr, &page_allocated, true); //DJL doesn't support fast swapout
+			gfp_mask, vma, addr, &page_allocated, true, &try_free); //DJL doesn't support fast swapout
 		if (!page)
 			continue;
 		if (page_allocated) {
@@ -746,7 +775,7 @@ struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t gfp_mask,
 	lru_add_drain();	/* Push any new pages onto the LRU now */
 skip:
 	/* The page was likely read above, so no need for plugging here */
-	return read_swap_cache_async(entry, gfp_mask, vma, addr, do_poll, NULL);
+	return read_swap_cache_async(entry, gfp_mask, vma, addr, do_poll, NULL, false, try_free_entry);
 }
 
 int init_swap_address_space(unsigned int type, unsigned long nr_pages)
@@ -883,7 +912,7 @@ static void swap_ra_info(struct vm_fault *vmf,
  *
  */
 static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
-				       struct vm_fault *vmf)
+				       struct vm_fault *vmf, int* try_free_entry)
 {
 	struct blk_plug plug;
 	struct swap_iocb *splug = NULL;
@@ -896,6 +925,8 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 	swp_entry_t entry;
 	unsigned int i;
 	bool page_allocated;
+	int try_free;
+	*try_free_entry = 1;
 	struct vma_swap_readahead ra_info = {
 		.win = 1,
 	};
@@ -915,7 +946,8 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 			continue;
 		/*DJL ADD BEGIN*/
 		page = __read_swap_cache_async(entry, gfp_mask, vma,
-					       vmf->address, &page_allocated, (!enable_ra_fast_evict) || (i == ra_info.offset));
+					       vmf->address, &page_allocated, (!enable_ra_fast_evict) || (i == ra_info.offset), 
+						   &try_free);
 		/*DJL ADD END*/
 		if (!page)
 			continue;
@@ -925,13 +957,24 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				SetPageReadahead(page);
 				count_vm_event(SWAP_RA);
 			}
+
+			/*DJL ADD BEGIN*/
+			si = get_swap_device(entry);
+			trace_readahead_swap_readpage(page_folio(page), si);
+			if (get_fastest_swap_prio() == si->prio){
+				count_memcg_event_mm(vma->vm_mm, SWAPIN_FAST);
+			} else if (get_slowest_swap_prio() == si->prio){
+				count_memcg_event_mm(vma->vm_mm, SWAPIN_SLOW);
+			} else{
+				count_memcg_event_mm(vma->vm_mm, SWAPIN_MID);
+			}
+			put_swap_device(si);
+
+			if (i == ra_info.offset){
+				*try_free_entry = try_free;
+			}
+			/*DJL ADD END*/
 		}
-		/*DJL ADD BEGIN*/
-		si = get_swap_device(entry);
-		trace_readahead_swap_readpage(page_folio(page), si);
-		put_swap_device(si);
-		count_memcg_event_mm(vma->vm_mm, SWAPIN_SLOW);
-		/*DJL ADD END*/
 		put_page(page);
 	}
 	blk_finish_plug(&plug);
@@ -940,7 +983,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 skip:
 	/* The page was likely read above, so no need for plugging here */
 	return read_swap_cache_async(fentry, gfp_mask, vma, vmf->address,
-				     ra_info.win == 1, NULL);
+				     ra_info.win == 1, NULL, true, try_free_entry);
 }
 
 /**
@@ -956,11 +999,11 @@ skip:
  * or vma-based(ie, virtual address based on faulty address) readahead.
  */
 struct page *swapin_readahead(swp_entry_t entry, gfp_t gfp_mask,
-				struct vm_fault *vmf)
+				struct vm_fault *vmf, int* try_free_entry)
 {
 	return swap_use_vma_readahead() ?
-			swap_vma_readahead(entry, gfp_mask, vmf) :
-			swap_cluster_readahead(entry, gfp_mask, vmf);
+			swap_vma_readahead(entry, gfp_mask, vmf, try_free_entry) :
+			swap_cluster_readahead(entry, gfp_mask, vmf, try_free_entry);
 }
 
 #ifdef CONFIG_SYSFS

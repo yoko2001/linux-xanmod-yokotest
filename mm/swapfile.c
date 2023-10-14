@@ -1891,6 +1891,7 @@ static int unuse_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 	pte_t *pte;
 	struct swap_info_struct *si;
 	int ret = 0;
+	int try_free_entry;
 
 	si = swap_info[type];
 	pte = pte_offset_map(pmd, addr);
@@ -1919,7 +1920,7 @@ static int unuse_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 			};
 
 			page = swapin_readahead(entry, GFP_HIGHUSER_MOVABLE,
-						&vmf);
+						&vmf, &try_free_entry);
 			if (page)
 				folio = page_folio(page);
 		}

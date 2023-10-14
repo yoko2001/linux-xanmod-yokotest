@@ -47,15 +47,17 @@ struct page *read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 				   struct vm_area_struct *vma,
 				   unsigned long addr,
 				   bool do_poll,
-				   struct swap_iocb **plug);
+				   struct swap_iocb **plug,
+				   bool count,
+				   int* try_free_swap);  //DJL ADD PARA
 struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 				     struct vm_area_struct *vma,
 				     unsigned long addr,
-				     bool *new_page_allocated, bool no_ra);
+				     bool *new_page_allocated, bool no_ra, int* try_free_swap);
 struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t flag,
-				    struct vm_fault *vmf);
+				    struct vm_fault *vmf, int* try_free_entry);
 struct page *swapin_readahead(swp_entry_t entry, gfp_t flag,
-			      struct vm_fault *vmf);
+			      struct vm_fault *vmf, int* try_free_entry);
 
 static inline unsigned int folio_swap_flags(struct folio *folio)
 {
@@ -81,13 +83,13 @@ static inline void show_swap_cache_info(void)
 }
 
 static inline struct page *swap_cluster_readahead(swp_entry_t entry,
-				gfp_t gfp_mask, struct vm_fault *vmf)
+				gfp_t gfp_mask, struct vm_fault *vmf, int* try_free_entry)
 {
 	return NULL;
 }
 
 static inline struct page *swapin_readahead(swp_entry_t swp, gfp_t gfp_mask,
-			struct vm_fault *vmf)
+			struct vm_fault *vmf, int* try_free_entry)
 {
 	return NULL;
 }

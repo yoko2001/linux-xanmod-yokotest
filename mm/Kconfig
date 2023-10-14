@@ -1205,6 +1205,12 @@ config LRU_GEN_CGROUP_KSWAPD_BOOST
 	help
 	  This option enables background kswapd boosting reclamation
 
+config LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
+	bool "Enable by default"
+	depends on LRU_GEN
+	help
+	  This option enables punishment on false fast assign, make the entry 
+	  spare, as well as letting the good ones stay. (same as to slow entry)
 
 config LRU_GEN_STATS
 	bool "Full stats for debugging"
