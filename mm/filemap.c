@@ -951,7 +951,7 @@ int filemap_add_folio(struct address_space *mapping, struct folio *folio,
 		 */
 		WARN_ON_ONCE(folio_test_active(folio));
 		if (!(gfp & __GFP_WRITE) && shadow)
-			workingset_refault(folio, shadow, &temp);
+			workingset_refault(folio, shadow, &temp, 0, -2);
 		folio_add_lru(folio);
 	}
 	return ret;

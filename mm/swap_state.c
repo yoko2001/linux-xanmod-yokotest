@@ -427,7 +427,7 @@ out:
 /*DJL ADD BEGIN*/
 struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 			struct vm_area_struct *vma, unsigned long addr,
-			bool *new_page_allocated, bool no_ra, int* try_free_entry)
+			bool *new_page_allocated, bool no_ra, int* try_free_entry, unsigned long realaddr)
 /*DJL ADD END*/
 {
 	struct swap_info_struct *si;
@@ -436,6 +436,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 	/*DJL ADD BEGIN*/
 	struct lruvec *lruvec;
 	pg_data_t* pgdat;
+	int swap_level = -2;
 	/*DJL ADD END*/
 	*new_page_allocated = false;
 
@@ -520,10 +521,18 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 		// pr_err("swapin from fast [%d]", folio_test_swappriolow(folio));
 	}
 #endif
+	if (si->prio == get_fastest_swap_prio()){
+		swap_level = 1;
+	}
+	else if (si->prio == get_slowest_swap_prio()){
+		swap_level = -1;
+	}
+	else
+		swap_level = 0;
 
 	/*DJL ADD BEGIN*/
 	if (shadow){
-		workingset_refault(folio, shadow, try_free_entry);
+		workingset_refault(folio, shadow, try_free_entry, addr, swap_level);
 		if (vma && vma->vm_mm){
 			if (get_fastest_swap_prio() == si->prio){
 				count_memcg_event_mm(vma->vm_mm, WORKINGSET_REFAULT_FAST);
@@ -584,7 +593,7 @@ struct page *read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 	struct swap_info_struct *si;
 	/*DJL ADD END*/
 	struct page *retpage = __read_swap_cache_async(entry, gfp_mask,
-			vma, addr, &page_was_allocated, true, try_free_entry);
+			vma, addr, &page_was_allocated, true, try_free_entry, addr);
 
 	if (page_was_allocated)
 		swap_readpage(retpage, do_poll, plug);
@@ -757,7 +766,8 @@ struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t gfp_mask,
 		/* Ok, do the async read-ahead now */
 		page = __read_swap_cache_async(
 			swp_entry(swp_type(entry), offset),
-			gfp_mask, vma, addr, &page_allocated, true, &try_free); //DJL doesn't support fast swapout
+			gfp_mask, vma, addr, &page_allocated, true, &try_free, 
+			addr); //DJL doesn't support fast swapout
 		if (!page)
 			continue;
 		if (page_allocated) {
@@ -947,7 +957,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 		/*DJL ADD BEGIN*/
 		page = __read_swap_cache_async(entry, gfp_mask, vma,
 					       vmf->address, &page_allocated, (!enable_ra_fast_evict) || (i == ra_info.offset), 
-						   &try_free);
+						   &try_free, (((vmf->address >> PAGE_SHIFT) + (i - ra_info.offset))<<PAGE_SHIFT));
 		/*DJL ADD END*/
 		if (!page)
 			continue;

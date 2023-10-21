@@ -285,6 +285,28 @@ TRACE_EVENT(folio_inc_refs,
    __entry->ref)
 );
 
+TRACE_EVENT(do_anonymous_page,
+
+	TP_PROTO(struct folio *folio, unsigned long va),
+
+	TP_ARGS(folio, va),
+
+	TP_STRUCT__entry(
+		__field(struct folio *, folio)
+		__field(unsigned long, va)
+	),
+
+	TP_fast_assign(
+		__entry->folio  = folio;
+		__entry->va	= (va >> PAGE_SHIFT);
+	),
+
+	/* Flag format is based on page-types.c formatting for pagemap */
+	TP_printk("va[%lu]->folio[%p]",
+	__entry->va,
+	__entry->folio)
+);
+
 TRACE_EVENT(should_try_to_free_swap,
 
 	TP_PROTO(struct folio *folio, int allow, int low, int high, int fault_flags, int ksm),

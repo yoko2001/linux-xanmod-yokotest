@@ -16,6 +16,8 @@
 #include <linux/dax.h>
 #include <linux/fs.h>
 #include <linux/mm.h>
+#include <linux/slab.h>
+
 /*DJL ADD BEGIN*/
 #include <trace/events/lru_gen.h>
 /*DJL ADD END*/
@@ -187,6 +189,8 @@
  */
 static unsigned int bucket_order __read_mostly;
 
+static struct kmem_cache *shadow_entry_cache;
+
 static void *pack_shadow(int memcgid, pg_data_t *pgdat, unsigned long eviction,
 			 bool workingset)
 {
@@ -220,7 +224,7 @@ static void unpack_shadow(void *shadow, int *memcgidp, pg_data_t **pgdat,
 
 #ifdef CONFIG_LRU_GEN
 
-static void *lru_gen_eviction(struct folio *folio)
+static void *lru_gen_eviction(struct folio *folio, int swap_level)
 {
 	int hist;
 	unsigned long token;
@@ -243,11 +247,12 @@ static void *lru_gen_eviction(struct folio *folio)
 
 	hist = lru_hist_from_seq(min_seq);
 	atomic_long_add(delta, &lrugen->evicted[hist][type][tier]);
+	trace_folio_workingset_change(folio, 0, folio_test_swappriolow(folio), folio_test_swappriohigh(folio), pgdat, (unsigned short)mem_cgroup_id(memcg), token, refs, 0, swap_level);
 
 	return pack_shadow(mem_cgroup_id(memcg), pgdat, token, refs);
 }
 
-static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_entry)
+static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_entry, unsigned long va, int swap_level)
 {
 	int hist, tier, refs;
 	int memcg_id;
@@ -298,10 +303,10 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 			break;
 	};
 	/*DJL ADD END*/
-#ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
 	/*DJL ADD BEGIN*/
-	trace_folio_workingset_change(folio, folio_test_swappriolow(folio), folio_test_swappriohigh(folio), pgdat, (unsigned short)memcg_id, token, refs, 1);
+	trace_folio_workingset_change(folio, va, folio_test_swappriolow(folio), folio_test_swappriohigh(folio), pgdat, (unsigned short)memcg_id, token, refs, 1, swap_level);
 	/*DJL ADD END*/
+#ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
 	// folio_set_swappriohigh(folio);
 	
 	*try_free_entry = dist;
@@ -326,9 +331,9 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 	refs = (token & (BIT(LRU_REFS_WIDTH) - 1)) + workingset;
 	tier = lru_tier_from_refs(refs);
 	
-	/*DJL ADD BEGIN*/
-	trace_folio_workingset_change(folio, folio_test_swappriolow(folio), folio_test_swappriohigh(folio), pgdat, (unsigned short)memcg_id, token, refs, 1);
-	/*DJL ADD END*/
+	// /*DJL ADD BEGIN*/
+	// trace_folio_workingset_change(folio, va, folio_test_swappriolow(folio), folio_test_swappriohigh(folio), pgdat, (unsigned short)memcg_id, token, refs, 1, swap_level);
+	// /*DJL ADD END*/
 
 	atomic_long_add(delta, &lrugen->refaulted[hist][type][tier]);
 	mod_lruvec_state(lruvec, WORKINGSET_REFAULT_BASE + type, delta);
@@ -352,7 +357,7 @@ unlock:
 
 #else /* !CONFIG_LRU_GEN */
 
-static void *lru_gen_eviction(struct folio *folio)
+static void *lru_gen_eviction(struct folio *folio, int swap_level)
 {
 	return NULL;
 }
@@ -399,7 +404,7 @@ void workingset_age_nonresident(struct lruvec *lruvec, unsigned long nr_pages)
  * Return: a shadow entry to be stored in @folio->mapping->i_pages in place
  * of the evicted @folio so that a later refault can be detected.
  */
-void *workingset_eviction(struct folio *folio, struct mem_cgroup *target_memcg)
+void *workingset_eviction(struct folio *folio, struct mem_cgroup *target_memcg, int swap_level)
 {
 	struct pglist_data *pgdat = folio_pgdat(folio);
 	unsigned long eviction;
@@ -412,7 +417,7 @@ void *workingset_eviction(struct folio *folio, struct mem_cgroup *target_memcg)
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 
 	if (lru_gen_enabled())
-		return lru_gen_eviction(folio);
+		return lru_gen_eviction(folio, swap_level);
 
 	lruvec = mem_cgroup_lruvec(target_memcg, pgdat);
 	/* XXX: target_memcg can be NULL, go through lruvec */
@@ -433,7 +438,7 @@ void *workingset_eviction(struct folio *folio, struct mem_cgroup *target_memcg)
  * evicted folio in the context of the node and the memcg whose memory
  * pressure caused the eviction.
  */
-void workingset_refault(struct folio *folio, void *shadow, int* try_free_entry)
+void workingset_refault(struct folio *folio, void *shadow, int* try_free_entry, unsigned long va, int swap_level)
 {
 	bool file = folio_is_file_lru(folio);
 	struct mem_cgroup *eviction_memcg;
@@ -450,7 +455,7 @@ void workingset_refault(struct folio *folio, void *shadow, int* try_free_entry)
 	long nr;
 
 	if (lru_gen_enabled()) {
-		lru_gen_refault(folio, shadow, try_free_entry);
+		lru_gen_refault(folio, shadow, try_free_entry, va, swap_level);
 		return;
 	}
 
@@ -771,6 +776,19 @@ static struct shrinker workingset_shadow_shrinker = {
  */
 static struct lock_class_key shadow_nodes_key;
 
+static void shadow_entry_ctor(void *data)
+{
+	shadow_entry_t *entry = data;
+}
+
+static int shadow_entry_cache_init(void)
+{
+	shadow_entry_cache = kmem_cache_create("shadow_entry", sizeof(struct shadow_entry),
+			0, SLAB_TYPESAFE_BY_RCU|SLAB_PANIC|SLAB_ACCOUNT,
+			shadow_entry_ctor);
+	return 0;
+}
+
 static int __init workingset_init(void)
 {
 	unsigned int timestamp_bits;
@@ -800,6 +818,7 @@ static int __init workingset_init(void)
 	if (ret)
 		goto err_list_lru;
 	register_shrinker_prepared(&workingset_shadow_shrinker);
+	shadow_entry_cache_init();
 	return 0;
 err_list_lru:
 	free_prealloced_shrinker(&workingset_shadow_shrinker);

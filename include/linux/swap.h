@@ -356,8 +356,8 @@ static inline void folio_set_swap_entry(struct folio *folio, swp_entry_t entry)
 
 /* linux/mm/workingset.c */
 void workingset_age_nonresident(struct lruvec *lruvec, unsigned long nr_pages);
-void *workingset_eviction(struct folio *folio, struct mem_cgroup *target_memcg);
-void workingset_refault(struct folio *folio, void *shadow, int* try_free_entry);
+void *workingset_eviction(struct folio *folio, struct mem_cgroup *target_memcg, int swap_level);
+void workingset_refault(struct folio *folio, void *shadow, int* try_free_entry, unsigned long va, int swap_level);
 void workingset_activation(struct folio *folio);
 
 /* Only track the nodes of mappings with shadow entries */

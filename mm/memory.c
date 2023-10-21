@@ -3706,6 +3706,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	vm_fault_t ret = 0;
 	void *shadow = NULL;
 	/*DJL ADD BEGIN*/
+	int swap_level = -2;
 	int try_free_entry;
 	trace_do_swap_page(-1, folio);
 	/*DJL ADD END*/
@@ -3791,15 +3792,23 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 
 				shadow = get_shadow_from_swap_cache(entry);
 				/*DJL ADD BEGIN*/
+				if (get_fastest_swap_prio() == si->prio){
+					swap_level = 1;
+				}
+				else if (get_slowest_swap_prio() == si->prio){
+					swap_level = -1;
+				}
+				else swap_level = 0;
+
 				if (shadow){
- 					workingset_refault(folio, shadow, &try_free_entry);
-					if (get_fastest_swap_prio() == si->prio){
+ 					workingset_refault(folio, shadow, &try_free_entry, vmf->address,swap_level);
+					if (swap_level==1){
 						count_memcg_event_mm(vma->vm_mm, WORKINGSET_REFAULT_FAST);
 #ifdef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
-						try_free_entry = (try_free_entry > 2) ? 1 : 0; //dist = 2, 3 reschedule
+						try_free_entry = (try_free_entry > 1) ? 1 : 0; //dist = 2, 3 reschedule
 #endif
 					}
-					else if (get_slowest_swap_prio() == si->prio){
+					else if (swap_level == -1){
 						count_memcg_event_mm(vma->vm_mm, WORKINGSET_REFAULT_SLOW);
 #ifdef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
 						try_free_entry = (try_free_entry < 1) ? 1 : 0; //dist = 0 reschedule
@@ -4179,6 +4188,7 @@ static vm_fault_t do_anonymous_page(struct vm_fault *vmf)
 #ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
 	folio_set_swappriolow(folio);
 #endif
+	trace_do_anonymous_page(folio, vmf->address);
 	/*DJL ADD END*/
 setpte:
 	set_pte_at(vma->vm_mm, vmf->address, vmf->pte, entry);

@@ -1347,6 +1347,10 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 {
 	int refcount;
 	void *shadow = NULL;
+	/*DJL ADD BEGIN*/
+	struct swap_info_struct *si;
+	int swap_level = -2; 
+	/*DJL ADD END*/
 
 	BUG_ON(!folio_test_locked(folio));
 	BUG_ON(mapping != folio_mapping(folio));
@@ -1389,10 +1393,23 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	}
 
 	if (folio_test_swapcache(folio)) {
+		/*DJL ADD BEGIN*/
 		swp_entry_t swap = folio_swap_entry(folio);
+		si = get_swap_device(swap);
+		/*DJL ADD END*/
 
-		if (reclaimed && !mapping_exiting(mapping))
-			shadow = workingset_eviction(folio, target_memcg);
+		if (reclaimed && !mapping_exiting(mapping)){
+			if (get_fastest_swap_prio() == si->prio){
+				swap_level = 1;
+			}else if (get_slowest_swap_prio() == si->prio){
+				swap_level = -1;
+			}else {
+				swap_level = 0;
+			}
+			shadow = workingset_eviction(folio, target_memcg, swap_level);
+		}
+		if (si)
+			put_swap_device(si);
 		__delete_from_swap_cache(folio, swap, shadow);
 		mem_cgroup_swapout(folio, swap);
 		xa_unlock_irq(&mapping->i_pages);
@@ -1419,7 +1436,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		 */
 		if (reclaimed && folio_is_file_lru(folio) &&
 		    !mapping_exiting(mapping) && !dax_mapping(mapping))
-			shadow = workingset_eviction(folio, target_memcg);
+			shadow = workingset_eviction(folio, target_memcg, swap_level);
 		__filemap_remove_folio(folio, shadow);
 		xa_unlock_irq(&mapping->i_pages);
 		if (mapping_shrinkable(mapping))

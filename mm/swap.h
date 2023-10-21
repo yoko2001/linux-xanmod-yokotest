@@ -53,7 +53,8 @@ struct page *read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 				     struct vm_area_struct *vma,
 				     unsigned long addr,
-				     bool *new_page_allocated, bool no_ra, int* try_free_swap);
+				     bool *new_page_allocated, bool no_ra, 
+					 int* try_free_swap, unsigned long realaddr);
 struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t flag,
 				    struct vm_fault *vmf, int* try_free_entry);
 struct page *swapin_readahead(swp_entry_t entry, gfp_t flag,

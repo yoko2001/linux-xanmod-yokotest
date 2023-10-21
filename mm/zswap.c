@@ -920,7 +920,7 @@ static int zswap_get_swap_cache_page(swp_entry_t entry,
 	int temp;
 	/*DJL ADD BEGIN*/
 	*retpage = __read_swap_cache_async(entry, GFP_KERNEL,
-			NULL, 0, &page_was_allocated, true, &temp);
+			NULL, 0, &page_was_allocated, true, &temp, 0);
 	/*DJL ADD END*/
 	if (page_was_allocated)
 		return ZSWAP_SWAPCACHE_NEW;
