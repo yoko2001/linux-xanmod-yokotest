@@ -1021,7 +1021,9 @@ typedef struct {
 } swp_entry_t;
 
 typedef struct shadow_entry{
-	unsigned long shadow; //original shadow
+	unsigned long magic;
+	unsigned long timestamp; 
+	void* shadow;//original shadow
 }__aligned(2 * sizeof(unsigned long)) shadow_entry_t;
 
 /**

@@ -356,9 +356,27 @@ static inline void folio_set_swap_entry(struct folio *folio, swp_entry_t entry)
 
 /* linux/mm/workingset.c */
 void workingset_age_nonresident(struct lruvec *lruvec, unsigned long nr_pages);
-void *workingset_eviction(struct folio *folio, struct mem_cgroup *target_memcg, int swap_level);
+void *workingset_eviction(struct folio *folio, struct mem_cgroup *target_memcg, int swap_level, struct shadow_entry* se);
 void workingset_refault(struct folio *folio, void *shadow, int* try_free_entry, unsigned long va, int swap_level);
 void workingset_activation(struct folio *folio);
+bool entry_is_entry_ext(const void *entry);
+extern struct kmem_cache * get_shadow_entry_cache(void);
+static inline struct shadow_entry* shadow_entry_alloc(void){
+	struct shadow_entry* entry_ext = NULL;
+	if (!get_shadow_entry_cache()){
+		return entry_ext;
+	}
+	entry_ext = kmem_cache_alloc(get_shadow_entry_cache(), GFP_NOWAIT);// GFP_ATOMIC);
+	if (entry_ext){
+		entry_ext->magic = 0;
+		entry_ext->timestamp = 0;
+	}
+	return entry_ext;
+}
+static inline void shadow_entry_free(struct shadow_entry* entry_ext){
+	if (get_shadow_entry_cache() && entry_ext)
+		kmem_cache_free(get_shadow_entry_cache(), entry_ext);
+}
 
 /* Only track the nodes of mappings with shadow entries */
 void workingset_update_node(struct xa_node *node);

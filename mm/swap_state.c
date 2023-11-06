@@ -263,7 +263,6 @@ void clear_shadow_from_swap_cache(int type, unsigned long begin,
 {
 	unsigned long curr = begin;
 	void *old;
-
 	for (;;) {
 		swp_entry_t entry = swp_entry(type, curr);
 		struct address_space *address_space = swap_address_space(entry);
@@ -273,7 +272,11 @@ void clear_shadow_from_swap_cache(int type, unsigned long begin,
 
 		xa_lock_irq(&address_space->i_pages);
 		xas_for_each(&xas, old, end) {
-			if (!xa_is_value(old))
+			if (entry_is_entry_ext(old)){
+				pr_err("shadow ext free [%pK]", old);
+				shadow_entry_free(old);
+			}
+			if (!xa_is_value(old) && !entry_is_entry_ext(old))
 				continue;
 			xas_store(&xas, NULL);
 		}

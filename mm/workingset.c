@@ -190,6 +190,84 @@
 static unsigned int bucket_order __read_mostly;
 
 static struct kmem_cache *shadow_entry_cache;
+struct kmem_cache * get_shadow_entry_cache(void){return shadow_entry_cache;}
+
+const int shadow_entry_magic = 0xABCD1234; 
+
+bool entry_is_entry_ext(const void *entry){
+	struct shadow_entry* entry_ext = NULL;
+	if (xa_is_value(entry)) return false;
+	if (entry){
+		entry_ext = (struct shadow_entry*)entry;
+		if (entry_ext->magic != shadow_entry_magic){
+			pr_err("entry_is_entry_ext magic wrong ext[%pK]->shadow[%lu]",entry_ext , entry_ext->shadow);
+			return false;
+		}
+		if (!xa_is_value(entry_ext->shadow)){
+			pr_err("entry_is_entry_ext !xa_is_value ext[%pK]->shadow[%lu]",entry_ext , entry_ext->shadow);
+			return false;
+		}
+		return true;
+	}
+	return false;
+}
+
+static void *pack_shadow_ext(int memcgid, pg_data_t *pgdat, unsigned long eviction,
+			 bool workingset, struct shadow_entry* entry_ext)
+{
+	eviction &= EVICTION_MASK;
+	eviction = (eviction << MEM_CGROUP_ID_SHIFT) | memcgid;
+	eviction = (eviction << NODES_SHIFT) | pgdat->node_id;
+	eviction = (eviction << WORKINGSET_SHIFT) | workingset;
+	if (entry_ext){
+		entry_ext->shadow = xa_mk_value(eviction);
+		entry_ext->magic = shadow_entry_magic;
+	}
+	else{
+		pr_err("entry_ext[%pK]->shadow[%lu]", entry_ext, eviction);
+		return NULL;
+	}
+	if (((unsigned long)entry_ext & 0x11) != 0) {
+		pr_err("xarray err entry_ext[%pK]->shadow[%lu]", entry_ext, eviction);
+	}
+	return entry_ext;////xa_mk_value((unsigned long)entry_ext);
+}
+
+static void unpack_shadow_ext(void *shadow, int *memcgidp, pg_data_t **pgdat,
+			  unsigned long *evictionp, bool *workingsetp)
+{
+	struct shadow_entry* entry_ext = NULL;
+	unsigned long entry;
+	int memcgid, nid;
+	bool workingset;
+
+	if (!shadow){
+		pr_err("unpack_shadow_ext nullptr");
+	}
+	if (xa_is_value(shadow)){
+		entry = xa_to_value(shadow);
+	}
+	else if (entry_is_entry_ext(shadow)){
+		pr_err("got shadow_ext");
+		entry_ext = (struct shadow_entry*)shadow;
+		entry = xa_to_value(entry_ext->shadow);
+	}
+	else{
+		pr_err("unpack_shadow_ext xa err %p", shadow);
+	}
+
+	workingset = entry & ((1UL << WORKINGSET_SHIFT) - 1);
+	entry >>= WORKINGSET_SHIFT;
+	nid = entry & ((1UL << NODES_SHIFT) - 1);
+	entry >>= NODES_SHIFT;
+	memcgid = entry & ((1UL << MEM_CGROUP_ID_SHIFT) - 1);
+	entry >>= MEM_CGROUP_ID_SHIFT;
+
+	*memcgidp = memcgid;
+	*pgdat = NODE_DATA(nid);
+	*evictionp = entry;
+	*workingsetp = workingset;
+}
 
 static void *pack_shadow(int memcgid, pg_data_t *pgdat, unsigned long eviction,
 			 bool workingset)
@@ -224,7 +302,7 @@ static void unpack_shadow(void *shadow, int *memcgidp, pg_data_t **pgdat,
 
 #ifdef CONFIG_LRU_GEN
 
-static void *lru_gen_eviction(struct folio *folio, int swap_level)
+static void *lru_gen_eviction(struct folio *folio, int swap_level, struct shadow_entry* se)
 {
 	int hist;
 	unsigned long token;
@@ -237,6 +315,7 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level)
 	int tier = lru_tier_from_refs(refs);
 	struct mem_cgroup *memcg = folio_memcg(folio);
 	struct pglist_data *pgdat = folio_pgdat(folio);
+	void* ret;
 
 	BUILD_BUG_ON(LRU_GEN_WIDTH + LRU_REFS_WIDTH > BITS_PER_LONG - EVICTION_SHIFT);
 
@@ -249,7 +328,26 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level)
 	atomic_long_add(delta, &lrugen->evicted[hist][type][tier]);
 	trace_folio_workingset_change(folio, 0, folio_test_swappriolow(folio), folio_test_swappriohigh(folio), pgdat, (unsigned short)mem_cgroup_id(memcg), token, refs, 0, swap_level);
 
-	return pack_shadow(mem_cgroup_id(memcg), pgdat, token, refs);
+	if (!se){
+		ret = pack_shadow(mem_cgroup_id(memcg), pgdat, token, refs);
+		if (!xa_is_value(ret)){
+			pr_err("bug in pack_shadow");
+		}
+	}
+	else{
+		ret = pack_shadow_ext(mem_cgroup_id(memcg), pgdat, token, refs, se);
+		// if (!xa_is_value(ret)){
+		// 	pr_err("bug in pack_shadow");
+		// }
+		if (!entry_is_entry_ext(ret)){
+			pr_err("bug in pack_shadow_ext");
+		}
+		else{
+			// pr_err("shadow_ext[%pK] lru_gen_evivt", ret);
+		}
+	}
+	return ret;
+	// return pack_shadow(mem_cgroup_id(memcg), pgdat, token, refs);
 }
 
 static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_entry, unsigned long va, int swap_level)
@@ -270,8 +368,8 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 	int lasthist = -1;
 	/*DJL ADD END*/
 
-	unpack_shadow(shadow, &memcg_id, &pgdat, &token, &workingset);
-
+	// unpack_shadow(shadow, &memcg_id, &pgdat, &token, &workingset);
+	unpack_shadow_ext(shadow, &memcg_id, &pgdat, &token, &workingset);
 	if (pgdat != folio_pgdat(folio))
 		return;
 
@@ -352,7 +450,10 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 
 unlock:
 	rcu_read_unlock();
-
+	if (entry_is_entry_ext(shadow)){
+		pr_err("refualt free");
+		shadow_entry_free(shadow);
+	}
 }
 
 #else /* !CONFIG_LRU_GEN */
@@ -404,7 +505,7 @@ void workingset_age_nonresident(struct lruvec *lruvec, unsigned long nr_pages)
  * Return: a shadow entry to be stored in @folio->mapping->i_pages in place
  * of the evicted @folio so that a later refault can be detected.
  */
-void *workingset_eviction(struct folio *folio, struct mem_cgroup *target_memcg, int swap_level)
+void *workingset_eviction(struct folio *folio, struct mem_cgroup *target_memcg, int swap_level, struct shadow_entry* se)
 {
 	struct pglist_data *pgdat = folio_pgdat(folio);
 	unsigned long eviction;
@@ -417,7 +518,7 @@ void *workingset_eviction(struct folio *folio, struct mem_cgroup *target_memcg, 
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 
 	if (lru_gen_enabled())
-		return lru_gen_eviction(folio, swap_level);
+		return lru_gen_eviction(folio, swap_level ,se);
 
 	lruvec = mem_cgroup_lruvec(target_memcg, pgdat);
 	/* XXX: target_memcg can be NULL, go through lruvec */
@@ -784,7 +885,7 @@ static void shadow_entry_ctor(void *data)
 static int shadow_entry_cache_init(void)
 {
 	shadow_entry_cache = kmem_cache_create("shadow_entry", sizeof(struct shadow_entry),
-			0, SLAB_TYPESAFE_BY_RCU|SLAB_PANIC|SLAB_ACCOUNT,
+			(sizeof(long) * 4), SLAB_PANIC|SLAB_ACCOUNT,//SLAB_TYPESAFE_BY_RCU
 			shadow_entry_ctor);
 	return 0;
 }

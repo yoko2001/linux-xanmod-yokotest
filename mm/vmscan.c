@@ -73,7 +73,8 @@
 /*DJL ADD START*/
 #include <trace/events/lru_gen.h>
 /*DJL ADD END*/
-
+spinlock_t shadow_ext_lock;
+unsigned long ext_count;
 struct scan_control {
 	/* How many pages shrink_list() should reclaim */
 	unsigned long nr_to_reclaim;
@@ -1351,6 +1352,16 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	struct swap_info_struct *si;
 	int swap_level = -2; 
 	/*DJL ADD END*/
+	struct shadow_entry* shadow_ext = NULL;
+	spin_lock_irq(&shadow_ext_lock);
+	if (folio_test_swapcache(folio) && reclaimed && !mapping_exiting(mapping)){
+		shadow_ext = shadow_entry_alloc();
+	}
+	else{
+		shadow_ext = NULL;
+	}
+	ext_count ++;
+	spin_unlock_irq(&shadow_ext_lock);
 
 	BUG_ON(!folio_test_locked(folio));
 	BUG_ON(mapping != folio_mapping(folio));
@@ -1406,11 +1417,17 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 			}else {
 				swap_level = 0;
 			}
-			shadow = workingset_eviction(folio, target_memcg, swap_level);
+			shadow = workingset_eviction(folio, target_memcg, swap_level, shadow_ext);
+			if (shadow_ext && shadow != shadow_ext)
+				pr_err("workingset_eviction fail give shadow_ext [%pK]", shadow);
 		}
 		if (si)
 			put_swap_device(si);
-		__delete_from_swap_cache(folio, swap, shadow);
+		if (shadow_ext)
+			__delete_from_swap_cache(folio, swap, shadow_ext);
+		else
+			__delete_from_swap_cache(folio, swap, shadow);
+
 		mem_cgroup_swapout(folio, swap);
 		xa_unlock_irq(&mapping->i_pages);
 		put_swap_folio(folio, swap);
@@ -1436,7 +1453,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		 */
 		if (reclaimed && folio_is_file_lru(folio) &&
 		    !mapping_exiting(mapping) && !dax_mapping(mapping))
-			shadow = workingset_eviction(folio, target_memcg, swap_level);
+			shadow = workingset_eviction(folio, target_memcg, swap_level, NULL);
 		__filemap_remove_folio(folio, shadow);
 		xa_unlock_irq(&mapping->i_pages);
 		if (mapping_shrinkable(mapping))
@@ -1447,12 +1464,32 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 			free_folio(folio);
 	}
 
+	spin_lock_irq(&shadow_ext_lock);
+	if (shadow_ext && !(shadow == shadow_ext)){
+		shadow_entry_free(shadow_ext);
+		pr_err("fail alloc free");
+		ext_count--;
+	}
+	else{
+		pr_err("current allocated %lu", ext_count);
+	}
+	spin_unlock_irq(&shadow_ext_lock);
+
+	// if (shadow_ext)	
 	return 1;
+
 
 cannot_free:
 	xa_unlock_irq(&mapping->i_pages);
 	if (!folio_test_swapcache(folio))
 		spin_unlock(&mapping->host->i_lock);
+	spin_lock_irq(&shadow_ext_lock);
+	if (shadow_ext){
+		shadow_entry_free(shadow_ext);
+		ext_count--;
+	}
+	spin_unlock_irq(&shadow_ext_lock);
+
 	return 0;
 }
 
@@ -2454,6 +2491,7 @@ static unsigned int move_folios_to_lru(struct lruvec *lruvec,
 {
 	int nr_pages, nr_moved = 0;
 	LIST_HEAD(folios_to_free);
+	pr_err("enter move_folios at %s, line %d.", __FILE__, __LINE__);
 
 	while (!list_empty(list)) {
 		struct folio *folio = lru_to_folio(list);
@@ -2461,9 +2499,14 @@ static unsigned int move_folios_to_lru(struct lruvec *lruvec,
 		VM_BUG_ON_FOLIO(folio_test_lru(folio), folio);
 		list_del(&folio->lru);
 		if (unlikely(!folio_evictable(folio))) {
+			pr_err("tryunlock lru_lock at %s, line %d.", __FILE__, __LINE__);
 			spin_unlock_irq(&lruvec->lru_lock);
+			pr_err("unlock lru_lock at %s, line %d.", __FILE__, __LINE__);
+
 			folio_putback_lru(folio);
+			pr_err("try lru_lock at %s, line %d.", __FILE__, __LINE__);
 			spin_lock_irq(&lruvec->lru_lock);
+			pr_err("lock lru_lock at %s, line %d.", __FILE__, __LINE__);
 			continue;
 		}
 
@@ -2509,6 +2552,7 @@ static unsigned int move_folios_to_lru(struct lruvec *lruvec,
 	 * To save our caller's stack, now use input list for pages to free.
 	 */
 	list_splice(&folios_to_free, list);
+	pr_err("exit move_folios at %s, line %d.", __FILE__, __LINE__);
 
 	return nr_moved;
 }
@@ -2556,8 +2600,9 @@ static unsigned long shrink_inactive_list(unsigned long nr_to_scan,
 
 	lru_add_drain();
 
+	pr_err("try lru_lock at %s, line %d.", __FILE__, __LINE__);
 	spin_lock_irq(&lruvec->lru_lock);
-
+	pr_err("lock lru_lock at %s, line %d.", __FILE__, __LINE__);
 	nr_taken = isolate_lru_folios(nr_to_scan, lruvec, &folio_list,
 				     &nr_scanned, sc, lru);
 
@@ -2569,13 +2614,17 @@ static unsigned long shrink_inactive_list(unsigned long nr_to_scan,
 	__count_vm_events(PGSCAN_ANON + file, nr_scanned);
 
 	spin_unlock_irq(&lruvec->lru_lock);
+	pr_err("unlock lru_lock at %s, line %d.", __FILE__, __LINE__);
 
 	if (nr_taken == 0)
 		return 0;
 
 	nr_reclaimed = shrink_folio_list(&folio_list, pgdat, sc, &stat, false);
 
+	pr_err("try lru_lock at %s, line %d.", __FILE__, __LINE__);
 	spin_lock_irq(&lruvec->lru_lock);
+	pr_err("lock lru_lock at %s, line %d.", __FILE__, __LINE__);
+
 	move_folios_to_lru(lruvec, &folio_list);
 
 	__mod_node_page_state(pgdat, NR_ISOLATED_ANON + file, -nr_taken);
@@ -2585,6 +2634,7 @@ static unsigned long shrink_inactive_list(unsigned long nr_to_scan,
 	__count_memcg_events(lruvec_memcg(lruvec), item, nr_reclaimed);
 	__count_vm_events(PGSTEAL_ANON + file, nr_reclaimed);
 	spin_unlock_irq(&lruvec->lru_lock);
+	pr_err("unlock lru_lock at %s, line %d.", __FILE__, __LINE__);
 
 	lru_note_cost(lruvec, file, stat.nr_pageout, nr_scanned - nr_reclaimed);
 	mem_cgroup_uncharge_list(&folio_list);
@@ -2666,6 +2716,7 @@ static void shrink_active_list(unsigned long nr_to_scan,
 	lru_add_drain();
 
 	spin_lock_irq(&lruvec->lru_lock);
+	pr_err("lock lru_lock at %s, line %d.", __FILE__, __LINE__);
 
 	nr_taken = isolate_lru_folios(nr_to_scan, lruvec, &l_hold,
 				     &nr_scanned, sc, lru);
@@ -2677,6 +2728,7 @@ static void shrink_active_list(unsigned long nr_to_scan,
 	__count_memcg_events(lruvec_memcg(lruvec), PGREFILL, nr_scanned);
 
 	spin_unlock_irq(&lruvec->lru_lock);
+	pr_err("unlock lru_lock at %s, line %d.", __FILE__, __LINE__);
 
 	while (!list_empty(&l_hold)) {
 		struct folio *folio;
@@ -2726,6 +2778,7 @@ static void shrink_active_list(unsigned long nr_to_scan,
 	 * Move folios back to the lru list.
 	 */
 	spin_lock_irq(&lruvec->lru_lock);
+	pr_err("lock lru_lock at %s, line %d.", __FILE__, __LINE__);
 
 	nr_activate = move_folios_to_lru(lruvec, &l_active);
 	nr_deactivate = move_folios_to_lru(lruvec, &l_inactive);
@@ -2737,6 +2790,7 @@ static void shrink_active_list(unsigned long nr_to_scan,
 
 	__mod_node_page_state(pgdat, NR_ISOLATED_ANON + file, -nr_taken);
 	spin_unlock_irq(&lruvec->lru_lock);
+	pr_err("unlock lru_lock at %s, line %d.", __FILE__, __LINE__);
 
 	if (nr_rotated)
 		lru_note_cost(lruvec, file, 0, nr_rotated);
@@ -2890,10 +2944,12 @@ static void prepare_scan_count(pg_data_t *pgdat, struct scan_control *sc)
 	/*
 	 * Determine the scan balance between anon and file LRUs.
 	 */
+	pr_err("try spin_lock_irq at %s, line %d.", __FILE__, __LINE__);
 	spin_lock_irq(&target_lruvec->lru_lock);
 	sc->anon_cost = target_lruvec->anon_cost;
 	sc->file_cost = target_lruvec->file_cost;
 	spin_unlock_irq(&target_lruvec->lru_lock);
+	pr_err("spin_unlock_irq at %s, line %d.", __FILE__, __LINE__);
 
 	/*
 	 * Target desirable inactive:active list ratios for the anon
@@ -3772,7 +3828,7 @@ static int folio_inc_gen(struct lruvec *lruvec, struct folio *folio, bool reclai
 	unsigned long new_flags, old_flags = READ_ONCE(folio->flags);
 
 	VM_WARN_ON_ONCE_FOLIO(!(old_flags & LRU_GEN_MASK), folio);
-
+	pr_err("enter %s:%d", __FILE__, __LINE__);
 	do {
 		new_gen = ((old_flags & LRU_GEN_MASK) >> LRU_GEN_PGOFF) - 1;
 		/* folio_update_gen() has promoted this page? */
@@ -3789,6 +3845,7 @@ static int folio_inc_gen(struct lruvec *lruvec, struct folio *folio, bool reclai
 	} while (!try_cmpxchg(&folio->flags, &old_flags, new_flags));
 
 	lru_gen_update_size(lruvec, folio, old_gen, new_gen);
+	pr_err("exit %s:%d", __FILE__, __LINE__);
 
 	return new_gen;
 }
@@ -4409,8 +4466,9 @@ static void inc_max_seq(struct lruvec *lruvec, bool can_swap, bool force_scan)
 	int prev, next;
 	int type, zone;
 	struct lru_gen_folio *lrugen = &lruvec->lrugen;
-
+	pr_err("try lru_lock at %s, line %d.", __FILE__, __LINE__);
 	spin_lock_irq(&lruvec->lru_lock);
+	pr_err("lock lru_lock at %s, line %d.", __FILE__, __LINE__);
 
 	VM_WARN_ON_ONCE(!seq_is_valid(lruvec));
 
@@ -4458,6 +4516,7 @@ static void inc_max_seq(struct lruvec *lruvec, bool can_swap, bool force_scan)
 	smp_store_release(&lrugen->max_seq, lrugen->max_seq + 1);
 
 	spin_unlock_irq(&lruvec->lru_lock);
+	pr_err("unlock lru_lock at %s, line %d.", __FILE__, __LINE__);
 }
 
 static bool try_to_inc_max_seq(struct lruvec *lruvec, unsigned long max_seq,
@@ -4517,8 +4576,10 @@ done:
 
 	inc_max_seq(lruvec, can_swap, force_scan);
 	/* either this sees any waiters or they will see updated max_seq */
+	pr_err("wake_up_all call %s:%d", __FILE__, __LINE__);
 	if (wq_has_sleeper(&lruvec->mm_state.wait))
 		wake_up_all(&lruvec->mm_state.wait);
+	pr_err("after wake_up_all  %s:%d", __FILE__, __LINE__);
 
 	return true;
 }
@@ -5158,8 +5219,10 @@ static int evict_folios(struct lruvec *lruvec, struct scan_control *sc, int swap
 	if (list_empty(&list))
 		return scanned;
 retry:
+	pr_err("enter shrink_folio_list");
 	reclaimed = shrink_folio_list(&list, pgdat, sc, &stat, false);
 	sc->nr_reclaimed += reclaimed;
+	pr_err("after shrink_folio_list reclaimed %d", reclaimed);
 
 	list_for_each_entry_safe_reverse(folio, next, &list, lru) {
 		if (!folio_evictable(folio)) {
@@ -5189,14 +5252,17 @@ retry:
 		list_move(&folio->lru, &clean);
 		sc->nr_scanned -= folio_nr_pages(folio);
 	}
-
+	pr_err("try lru_lock at %s, line %d.", __FILE__, __LINE__);
 	spin_lock_irq(&lruvec->lru_lock);
+	pr_err("lock lru_lock at %s, line %d.", __FILE__, __LINE__);
 
 	move_folios_to_lru(lruvec, &list);
+	pr_err("after move_folios_to_lru at %s, line %d.", __FILE__, __LINE__);
 
 	walk = current->reclaim_state->mm_walk;
 	if (walk && walk->batched)
 		reset_batch_size(lruvec, walk);
+	pr_err("after reset_batch_size at %s, line %d.", __FILE__, __LINE__);
 
 	item = PGSTEAL_KSWAPD + reclaimer_offset();
 	if (!cgroup_reclaim(sc))
@@ -5207,8 +5273,10 @@ retry:
 	/*DJL ADD END*/
 	__count_memcg_events(memcg, item, reclaimed);
 	__count_vm_events(PGSTEAL_ANON + type, reclaimed);
+	pr_err("before spin_unlock_irq at %s, line %d.", __FILE__, __LINE__);
 
 	spin_unlock_irq(&lruvec->lru_lock);
+	pr_err("unlock lru_lock at %s, line %d.", __FILE__, __LINE__);
 
 	mem_cgroup_uncharge_list(&list);
 	free_unref_page_list(&list);
@@ -5220,6 +5288,7 @@ retry:
 		skip_retry = true;
 		goto retry;
 	}
+	pr_err("exit (return %d) evict_folios at %s, line %d.", scanned, __FILE__, __LINE__);
 
 	return scanned;
 }
@@ -5337,8 +5406,9 @@ static bool try_to_shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 		nr_to_scan = get_nr_to_scan(lruvec, sc, swappiness);
 		if (nr_to_scan <= 0)
 			break;
-
+		pr_err("call evict_folios %s:%d", __FILE__, __LINE__);
 		delta = evict_folios(lruvec, sc, swappiness);
+		pr_err("return from evict_folios %s:%d", __FILE__, __LINE__);
 		if (!delta)
 			break;
 
@@ -5348,7 +5418,7 @@ static bool try_to_shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 
 		if (sc->nr_reclaimed >= nr_to_reclaim)
 			break;
-
+		pr_err("call cond_resched %s:%d", __FILE__, __LINE__);
 		cond_resched();
 	}
 
@@ -5383,8 +5453,9 @@ static int shrink_one(struct lruvec *lruvec, struct scan_control *sc)
 	}
 
 	success = try_to_shrink_lruvec(lruvec, sc);
-
+	pr_err("enter shrink_slab");
 	shrink_slab(sc->gfp_mask, pgdat->node_id, memcg, sc->priority);
+	pr_err("exit shrink_slab");
 
 	if (!sc->proactive)
 		vmpressure(sc->gfp_mask, memcg, false, sc->nr_scanned - scanned,
@@ -6039,8 +6110,11 @@ static int run_eviction(struct lruvec *lruvec, unsigned long seq, struct scan_co
 		if (sc->nr_reclaimed >= nr_to_reclaim)
 			return 0;
 
-		if (!evict_folios(lruvec, sc, swappiness))
+		if (!evict_folios(lruvec, sc, swappiness)){
+			pr_err("fail return from evict_folios %s:%d", __FILE__, __LINE__);
 			return 0;
+		}
+		pr_err("return from evict_folios %s:%d", __FILE__, __LINE__);
 
 		cond_resched();
 	}
@@ -6266,7 +6340,10 @@ static int __init init_lru_gen(void)
 
 	debugfs_create_file("lru_gen", 0644, NULL, NULL, &lru_gen_rw_fops);
 	debugfs_create_file("lru_gen_full", 0444, NULL, NULL, &lru_gen_ro_fops);
-
+	
+	spin_lock_init(&shadow_ext_lock);
+	ext_count = 0;
+	
 	return 0;
 };
 late_initcall(init_lru_gen);
