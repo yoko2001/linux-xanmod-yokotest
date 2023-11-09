@@ -1023,6 +1023,7 @@ typedef struct {
 typedef struct shadow_entry{
 	unsigned long magic;
 	unsigned long timestamp; 
+	unsigned long hist_ts[3]; 
 	void* shadow;//original shadow
 }__aligned(2 * sizeof(unsigned long)) shadow_entry_t;
 

@@ -230,7 +230,7 @@ void page_cache_ra_unbounded(struct readahead_control *ractl,
 	for (i = 0; i < nr_to_read; i++) {
 		struct folio *folio = xa_load(&mapping->i_pages, index + i);
 
-		if (folio && !xa_is_value(folio)) {
+		if (folio && !xa_is_value(folio) && !entry_is_entry_ext(folio)) {
 			/*
 			 * Page already present?  Kick off the current batch
 			 * of contiguous pages before continuing with the
@@ -803,7 +803,7 @@ void readahead_expand(struct readahead_control *ractl,
 		unsigned long index = ractl->_index - 1;
 		struct folio *folio = xa_load(&mapping->i_pages, index);
 
-		if (folio && !xa_is_value(folio))
+		if (folio && !xa_is_value(folio) && !entry_is_entry_ext(folio))
 			return; /* Folio apparently present */
 
 		folio = filemap_alloc_folio(gfp_mask, 0);
@@ -830,7 +830,7 @@ void readahead_expand(struct readahead_control *ractl,
 		unsigned long index = ractl->_index + ractl->_nr_pages;
 		struct folio *folio = xa_load(&mapping->i_pages, index);
 
-		if (folio && !xa_is_value(folio))
+		if (folio && !xa_is_value(folio) && !entry_is_entry_ext(folio))
 			return; /* Folio apparently present */
 
 		folio = filemap_alloc_folio(gfp_mask, 0);

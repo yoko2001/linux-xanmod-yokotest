@@ -200,11 +200,11 @@ bool entry_is_entry_ext(const void *entry){
 	if (entry){
 		entry_ext = (struct shadow_entry*)entry;
 		if (entry_ext->magic != shadow_entry_magic){
-			pr_err("entry_is_entry_ext magic wrong ext[%pK]->shadow[%lu]",entry_ext , entry_ext->shadow);
+			// pr_err("entry_is_entry_ext magic wrong ext[%pK]->shadow[%lu]",entry_ext , entry_ext->shadow);
 			return false;
 		}
 		if (!xa_is_value(entry_ext->shadow)){
-			pr_err("entry_is_entry_ext !xa_is_value ext[%pK]->shadow[%lu]",entry_ext , entry_ext->shadow);
+			pr_err("entry_is_entry_ext !xa_is_value ext[%pK]->shadow[%pK]",entry_ext , entry_ext->shadow);
 			return false;
 		}
 		return true;
@@ -213,7 +213,7 @@ bool entry_is_entry_ext(const void *entry){
 }
 
 static void *pack_shadow_ext(int memcgid, pg_data_t *pgdat, unsigned long eviction,
-			 bool workingset, struct shadow_entry* entry_ext)
+			 bool workingset, struct shadow_entry* entry_ext, unsigned long min_seq)
 {
 	eviction &= EVICTION_MASK;
 	eviction = (eviction << MEM_CGROUP_ID_SHIFT) | memcgid;
@@ -222,6 +222,7 @@ static void *pack_shadow_ext(int memcgid, pg_data_t *pgdat, unsigned long evicti
 	if (entry_ext){
 		entry_ext->shadow = xa_mk_value(eviction);
 		entry_ext->magic = shadow_entry_magic;
+		entry_ext->timestamp = min_seq;
 	}
 	else{
 		pr_err("entry_ext[%pK]->shadow[%lu]", entry_ext, eviction);
@@ -234,7 +235,7 @@ static void *pack_shadow_ext(int memcgid, pg_data_t *pgdat, unsigned long evicti
 }
 
 static void unpack_shadow_ext(void *shadow, int *memcgidp, pg_data_t **pgdat,
-			  unsigned long *evictionp, bool *workingsetp)
+			  unsigned long *evictionp, bool *workingsetp, unsigned long* last_hist)
 {
 	struct shadow_entry* entry_ext = NULL;
 	unsigned long entry;
@@ -246,11 +247,12 @@ static void unpack_shadow_ext(void *shadow, int *memcgidp, pg_data_t **pgdat,
 	}
 	if (xa_is_value(shadow)){
 		entry = xa_to_value(shadow);
+		*last_hist = ULONG_MAX;
 	}
 	else if (entry_is_entry_ext(shadow)){
-		pr_err("got shadow_ext");
 		entry_ext = (struct shadow_entry*)shadow;
 		entry = xa_to_value(entry_ext->shadow);
+		*last_hist = entry_ext->timestamp;
 	}
 	else{
 		pr_err("unpack_shadow_ext xa err %p", shadow);
@@ -335,7 +337,7 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, struct shadow
 		}
 	}
 	else{
-		ret = pack_shadow_ext(mem_cgroup_id(memcg), pgdat, token, refs, se);
+		ret = pack_shadow_ext(mem_cgroup_id(memcg), pgdat, token, refs, se, min_seq);
 		// if (!xa_is_value(ret)){
 		// 	pr_err("bug in pack_shadow");
 		// }
@@ -349,6 +351,7 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, struct shadow
 	return ret;
 	// return pack_shadow(mem_cgroup_id(memcg), pgdat, token, refs);
 }
+extern spinlock_t shadow_ext_lock;
 
 static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_entry, unsigned long va, int swap_level)
 {
@@ -365,11 +368,11 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 	int delta = folio_nr_pages(folio);
 	/*DJL ADD BEGIN*/
 	int dist = -1;
-	int lasthist = -1;
+	unsigned long lasthist = ULONG_MAX;
 	/*DJL ADD END*/
 
 	// unpack_shadow(shadow, &memcg_id, &pgdat, &token, &workingset);
-	unpack_shadow_ext(shadow, &memcg_id, &pgdat, &token, &workingset);
+	unpack_shadow_ext(shadow, &memcg_id, &pgdat, &token, &workingset, &lasthist);
 	if (pgdat != folio_pgdat(folio))
 		return;
 
@@ -384,8 +387,13 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 
 	min_seq = READ_ONCE(lrugen->min_seq[type]);
 	/*DJL ADD BEGIN*/
-	lasthist = (token >> LRU_REFS_WIDTH) % MAX_NR_GENS;
-	dist = (min_seq + MAX_NR_GENS - lasthist ) % MAX_NR_GENS;
+	if (lasthist == ULONG_MAX){
+		lasthist = (token >> LRU_REFS_WIDTH) % MAX_NR_GENS;
+		dist = (min_seq + MAX_NR_GENS - lasthist ) % MAX_NR_GENS;		
+	}
+	else{
+		dist = (min_seq - lasthist);		
+	}
 	switch(dist){
 		case 0: 
 			count_memcg_events(memcg, WORKINGSET_REFAULT_DIST0, 1);
@@ -394,10 +402,17 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 			count_memcg_events(memcg, WORKINGSET_REFAULT_DIST1, 1);
 			break;
 		case 2: 
+		case 3: 
 			count_memcg_events(memcg, WORKINGSET_REFAULT_DIST2, 1);
 			break;
-		case 3: 
+		case 4: 
+		case 5: 
+		case 6: 
+		case 7: 
 			count_memcg_events(memcg, WORKINGSET_REFAULT_DIST3, 1);
+			break;
+		default:
+			count_memcg_events(memcg, WORKINGSET_REFAULT_DIST4, 1);
 			break;
 	};
 	/*DJL ADD END*/
@@ -409,12 +424,12 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 	
 	*try_free_entry = dist;
 
-	if (dist < 1){
+	if (dist < 2){
 		folio_swapprio_promote(folio);
 		if (folio_test_swappriolow(folio))
 			pr_err("folio[%p] promote fail", folio);		
 	}
-	else if (dist > 1){ //punishment
+	else if (dist > 3){ //punishment
 		folio_set_swappriolow(folio);
 		folio_clear_swappriohigh(folio);
 	}
@@ -449,11 +464,12 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 	}
 
 unlock:
+	// if (entry_is_entry_ext(shadow)){
+	// 	spin_lock_irq(&shadow_ext_lock);
+	// 	shadow_entry_free(shadow);
+	// 	spin_unlock_irq(&shadow_ext_lock);
+	// }
 	rcu_read_unlock();
-	if (entry_is_entry_ext(shadow)){
-		pr_err("refualt free");
-		shadow_entry_free(shadow);
-	}
 }
 
 #else /* !CONFIG_LRU_GEN */

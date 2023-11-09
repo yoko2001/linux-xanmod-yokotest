@@ -812,7 +812,8 @@ unsigned long shmem_partial_swap_usage(struct address_space *mapping,
 			continue;
 		if (xa_is_value(page))
 			swapped++;
-
+		if (entry_is_entry_ext(page))
+			pr_err("undefined sequence %s:%d", __FILE__, __LINE__);
 		if (need_resched()) {
 			xas_pause(&xas);
 			cond_resched_rcu();
@@ -887,7 +888,7 @@ static struct folio *shmem_get_partial_folio(struct inode *inode, pgoff_t index)
 	 */
 	folio = __filemap_get_folio(inode->i_mapping, index,
 					FGP_ENTRY | FGP_LOCK, 0);
-	if (!xa_is_value(folio))
+	if (!xa_is_value(folio) && !entry_is_entry_ext(folio))
 		return folio;
 	/*
 	 * But read a page back from swap if any of it is within i_size
@@ -937,7 +938,14 @@ static void shmem_undo_range(struct inode *inode, loff_t lstart, loff_t lend,
 							indices[i], folio);
 				continue;
 			}
-
+			if (entry_is_entry_ext(folio)) {
+				pr_err("undefined sequence %s:%d", __FILE__, __LINE__);
+				if (unfalloc)
+					continue;
+				nr_swaps_freed += !shmem_free_swap(mapping,
+							indices[i], folio);
+				continue;
+			}
 			if (!unfalloc || !folio_test_uptodate(folio))
 				truncate_inode_folio(mapping, folio);
 			folio_unlock(folio);
@@ -1010,7 +1018,8 @@ whole_folios:
 				nr_swaps_freed++;
 				continue;
 			}
-
+			if (entry_is_entry_ext(folio))
+				pr_err("undefined sequence %s:%d", __FILE__, __LINE__);
 			folio_lock(folio);
 
 			if (!unfalloc || !folio_test_uptodate(folio)) {
@@ -1195,7 +1204,8 @@ static int shmem_find_swap_entries(struct address_space *mapping,
 
 		if (!xa_is_value(folio))
 			continue;
-
+		if (entry_is_entry_ext(folio))
+			pr_err("undefined sequence %s:%d", __FILE__, __LINE__);
 		entry = radix_to_swp_entry(folio);
 		/*
 		 * swapin error entries can be found in the mapping. But they're
@@ -1233,7 +1243,7 @@ static int shmem_unuse_swap_entries(struct inode *inode,
 	for (i = 0; i < folio_batch_count(fbatch); i++) {
 		struct folio *folio = fbatch->folios[i];
 
-		if (!xa_is_value(folio))
+		if (!xa_is_value(folio) && !entry_is_entry_ext(folio))
 			continue;
 		error = shmem_swapin_folio(inode, indices[i],
 					  &folio, SGP_CACHE,
@@ -1744,7 +1754,7 @@ static int shmem_swapin_folio(struct inode *inode, pgoff_t index,
 	swp_entry_t swap;
 	int error;
 
-	VM_BUG_ON(!*foliop || !xa_is_value(*foliop));
+	VM_BUG_ON(!*foliop || (!xa_is_value(*foliop)));
 	swap = radix_to_swp_entry(*foliop);
 	*foliop = NULL;
 

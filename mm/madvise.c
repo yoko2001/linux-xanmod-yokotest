@@ -251,7 +251,7 @@ static void force_shm_swapin_readahead(struct vm_area_struct *vma,
 	xas_for_each(&xas, page, end_index) {
 		swp_entry_t swap;
 
-		if (!xa_is_value(page))
+		if (!xa_is_value(page) && !entry_is_entry_ext(page))
 			continue;
 		swap = radix_to_swp_entry(page);
 		/* There might be swapin error entries in shmem mapping. */

@@ -91,6 +91,8 @@ void *get_shadow_from_swap_cache(swp_entry_t entry)
 	page = xa_load(&address_space->i_pages, idx);
 	if (xa_is_value(page))
 		return page;
+	else if (entry_is_entry_ext(page))
+		return page;
 	return NULL;
 }
 
@@ -125,6 +127,10 @@ int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 			VM_BUG_ON_FOLIO(xas.xa_index != idx + i, folio);
 			old = xas_load(&xas);
 			if (xa_is_value(old)) {
+				if (shadowp)
+					*shadowp = old;
+			}
+			else if (entry_is_entry_ext(old)){
 				if (shadowp)
 					*shadowp = old;
 			}
@@ -257,6 +263,7 @@ void delete_from_swap_cache(struct folio *folio)
 	put_swap_folio(folio, entry);
 	folio_ref_sub(folio, folio_nr_pages(folio));
 }
+extern spinlock_t shadow_ext_lock;
 
 void clear_shadow_from_swap_cache(int type, unsigned long begin,
 				unsigned long end)
@@ -272,9 +279,12 @@ void clear_shadow_from_swap_cache(int type, unsigned long begin,
 
 		xa_lock_irq(&address_space->i_pages);
 		xas_for_each(&xas, old, end) {
-			if (entry_is_entry_ext(old)){
-				pr_err("shadow ext free [%pK]", old);
+			if (old && entry_is_entry_ext(old)){
+				// spin_lock_irq(&shadow_ext_lock);
 				shadow_entry_free(old);
+				// spin_unlock_irq(&shadow_ext_lock);
+				xas_store(&xas, NULL);
+				continue;
 			}
 			if (!xa_is_value(old) && !entry_is_entry_ext(old))
 				continue;
@@ -412,7 +422,7 @@ struct folio *filemap_get_incore_folio(struct address_space *mapping,
 		goto out;
 	if (!shmem_mapping(mapping))
 		return NULL;
-
+	pr_err("undefined result");
 	swp = radix_to_swp_entry(folio);
 	/* There might be swapin error entries in shmem mapping. */
 	if (non_swap_entry(swp))
@@ -521,7 +531,6 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 	folio_set_swappriolow(folio);  //set here so that only those got promoted again can go to fast
 	if (si->prio == get_fastest_swap_prio()){
 		folio_swapprio_promote(folio);
-		// pr_err("swapin from fast [%d]", folio_test_swappriolow(folio));
 	}
 #endif
 	if (si->prio == get_fastest_swap_prio()){
@@ -550,6 +559,13 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 #endif
 			}
 		}
+	}
+
+	//now shadow has been used
+	if (entry_is_entry_ext(shadow)){
+		// spin_lock_irq(&shadow_ext_lock);
+		shadow_entry_free(shadow);
+		// spin_unlock_irq(&shadow_ext_lock);
 	}
 	/*DJL ADD END*/
 

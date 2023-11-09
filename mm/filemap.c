@@ -290,7 +290,7 @@ static void page_cache_delete_batch(struct address_space *mapping,
 			break;
 
 		/* A swap/dax/shadow entry got inserted? Skip it. */
-		if (xa_is_value(folio))
+		if (xa_is_value(folio) || entry_is_entry_ext(folio))
 			continue;
 		/*
 		 * A page got inserted in our range? Skip it. We have our
@@ -487,6 +487,10 @@ bool filemap_range_has_page(struct address_space *mapping,
 		/* Shadow entries don't count */
 		if (xa_is_value(folio))
 			continue;
+		if (entry_is_entry_ext(folio)){
+			pr_err("undefined %s:%d", __FILE__, __LINE__);
+			continue;
+		}
 		/*
 		 * We don't need to try to pin this page; we're about to
 		 * release the RCU lock anyway.  It is enough to know that
@@ -644,6 +648,10 @@ bool filemap_range_has_writeback(struct address_space *mapping,
 			continue;
 		if (xa_is_value(folio))
 			continue;
+		if (entry_is_entry_ext(folio)){
+			pr_err("undefined %s:%d", __FILE__, __LINE__);
+			continue;
+		}
 		if (folio_test_dirty(folio) || folio_test_locked(folio) ||
 				folio_test_writeback(folio))
 			break;
@@ -878,7 +886,7 @@ noinline int __filemap_add_folio(struct address_space *mapping,
 		xas_lock_irq(&xas);
 		xas_for_each_conflict(&xas, entry) {
 			old = entry;
-			if (!xa_is_value(entry)) {
+			if (!xa_is_value(entry) && !entry_is_entry_ext(entry)) {
 				xas_set_err(&xas, -EEXIST);
 				goto unlock;
 			}
@@ -1772,6 +1780,9 @@ pgoff_t page_cache_next_miss(struct address_space *mapping,
 		void *entry = xas_next(&xas);
 		if (!entry || xa_is_value(entry))
 			break;
+		if (entry_is_entry_ext(entry))
+			pr_err("undefined %s:%d", __FILE__, __LINE__);
+
 		if (xas.xa_index == 0)
 			break;
 	}
@@ -1806,6 +1817,9 @@ pgoff_t page_cache_prev_miss(struct address_space *mapping,
 
 	while (max_scan--) {
 		void *entry = xas_prev(&xas);
+		if (!entry && entry_is_entry_ext(entry)){
+			pr_err("undefined %s:%d", __FILE__, __LINE__);
+		}
 		if (!entry || xa_is_value(entry))
 			break;
 		if (xas.xa_index == ULONG_MAX)
@@ -1863,7 +1877,7 @@ repeat:
 	 * A shadow entry of a recently evicted page, or a swap entry from
 	 * shmem/tmpfs.  Return it without attempting to raise page count.
 	 */
-	if (!folio || xa_is_value(folio))
+	if (!folio || xa_is_value(folio) || entry_is_entry_ext(folio))
 		goto out;
 
 	if (!folio_try_get_rcu(folio))
@@ -1923,6 +1937,13 @@ repeat:
 		if (fgp_flags & FGP_ENTRY)
 			return folio;
 		folio = NULL;
+	}
+	else if (entry_is_entry_ext(folio)){
+		if (fgp_flags & FGP_ENTRY){
+			pr_err("undefined %s:%d", __FILE__, __LINE__);
+			return folio;
+		}
+		folio = NULL; //this is corect
 	}
 	if (!folio)
 		goto no_page;
@@ -2017,7 +2038,7 @@ retry:
 	 * entry from shmem/tmpfs or a DAX entry.  Return it
 	 * without attempting to raise page count.
 	 */
-	if (!folio || xa_is_value(folio))
+	if (!folio || xa_is_value(folio) || entry_is_entry_ext(folio))
 		return folio;
 
 	if (!folio_try_get_rcu(folio))
@@ -2073,7 +2094,7 @@ unsigned find_get_entries(struct address_space *mapping, pgoff_t *start,
 		int idx = folio_batch_count(fbatch) - 1;
 
 		folio = fbatch->folios[idx];
-		if (!xa_is_value(folio) && !folio_test_hugetlb(folio))
+		if (!xa_is_value(folio) && !entry_is_entry_ext(folio) && !folio_test_hugetlb(folio))
 			nr = folio_nr_pages(folio);
 		*start = indices[idx] + nr;
 	}
@@ -2108,7 +2129,7 @@ unsigned find_lock_entries(struct address_space *mapping, pgoff_t *start,
 
 	rcu_read_lock();
 	while ((folio = find_get_entry(&xas, end, XA_PRESENT))) {
-		if (!xa_is_value(folio)) {
+		if (!xa_is_value(folio) && !entry_is_entry_ext(folio)) {
 			if (folio->index < *start)
 				goto put;
 			if (folio->index + folio_nr_pages(folio) - 1 > end)
@@ -2137,7 +2158,7 @@ put:
 		int idx = folio_batch_count(fbatch) - 1;
 
 		folio = fbatch->folios[idx];
-		if (!xa_is_value(folio) && !folio_test_hugetlb(folio))
+		if (!xa_is_value(folio) && !entry_is_entry_ext(folio) && !folio_test_hugetlb(folio))
 			nr = folio_nr_pages(folio);
 		*start = indices[idx] + nr;
 	}
@@ -2174,7 +2195,7 @@ unsigned filemap_get_folios(struct address_space *mapping, pgoff_t *start,
 	rcu_read_lock();
 	while ((folio = find_get_entry(&xas, end, XA_PRESENT)) != NULL) {
 		/* Skip over shadow, swap and DAX entries */
-		if (xa_is_value(folio))
+		if (xa_is_value(folio) || entry_is_entry_ext(folio))
 			continue;
 		if (!folio_batch_add(fbatch, folio)) {
 			unsigned long nr = folio_nr_pages(folio);
@@ -2245,7 +2266,7 @@ unsigned filemap_get_folios_contig(struct address_space *mapping,
 		 * If the entry has been swapped out, we can stop looking.
 		 * No current caller is looking for DAX entries.
 		 */
-		if (xa_is_value(folio))
+		if (xa_is_value(folio) || entry_is_entry_ext(folio))
 			goto update_start;
 
 		if (!folio_try_get_rcu(folio))
@@ -2312,7 +2333,7 @@ unsigned filemap_get_folios_tag(struct address_space *mapping, pgoff_t *start,
 		 * is lockless so there is a window for page reclaim to evict
 		 * a page we saw tagged. Skip over it.
 		 */
-		if (xa_is_value(folio))
+		if (xa_is_value(folio) || entry_is_entry_ext(folio))
 			continue;
 		if (!folio_batch_add(fbatch, folio)) {
 			unsigned long nr = folio_nr_pages(folio);
@@ -2379,6 +2400,10 @@ static void filemap_get_read_batch(struct address_space *mapping,
 	for (folio = xas_load(&xas); folio; folio = xas_next(&xas)) {
 		if (xas_retry(&xas, folio))
 			continue;
+		if (entry_is_entry_ext(folio)){
+			pr_err("undefined %s:%d", __FILE__, __LINE__);
+			break;
+		}
 		if (xas.xa_index > max || xa_is_value(folio))
 			break;
 		if (xa_is_sibling(folio))
@@ -2976,6 +3001,8 @@ static inline loff_t folio_seek_hole_data(struct xa_state *xas,
 {
 	const struct address_space_operations *ops = mapping->a_ops;
 	size_t offset, bsz = i_blocksize(mapping->host);
+	if (entry_is_entry_ext(folio))
+		pr_err("undefined %s:%d", __FILE__, __LINE__);
 
 	if (xa_is_value(folio) || folio_test_uptodate(folio))
 		return seek_data ? start : end;
@@ -3005,7 +3032,7 @@ unlock:
 
 static inline size_t seek_folio_size(struct xa_state *xas, struct folio *folio)
 {
-	if (xa_is_value(folio))
+	if (xa_is_value(folio) || entry_is_entry_ext(folio))
 		return PAGE_SIZE << xa_get_order(xas->xa, xas->xa_index);
 	return folio_size(folio);
 }
@@ -3060,14 +3087,14 @@ loff_t mapping_seek_hole_data(struct address_space *mapping, loff_t start,
 			break;
 		if (seek_size > PAGE_SIZE)
 			xas_set(&xas, pos >> PAGE_SHIFT);
-		if (!xa_is_value(folio))
+		if (!xa_is_value(folio) && !entry_is_entry_ext(folio))
 			folio_put(folio);
 	}
 	if (seek_data)
 		start = -ENXIO;
 unlock:
 	rcu_read_unlock();
-	if (folio && !xa_is_value(folio))
+	if (folio && !xa_is_value(folio) && !entry_is_entry_ext(folio))
 		folio_put(folio);
 	if (start > end)
 		return end;
@@ -3438,7 +3465,7 @@ static struct folio *next_uptodate_page(struct folio *folio,
 			return NULL;
 		if (xas_retry(xas, folio))
 			continue;
-		if (xa_is_value(folio))
+		if (xa_is_value(folio) || entry_is_entry_ext(folio))
 			continue;
 		if (folio_test_locked(folio))
 			continue;
