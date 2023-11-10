@@ -437,6 +437,33 @@ struct folio *filemap_get_incore_folio(struct address_space *mapping,
 out:
 	return folio;
 }
+static inline int should_try_change_swap_entry(int rf_dist, int swap_level, bool loop){
+	if (loop){
+		if (swap_level == 1){ //refault from fast
+#ifdef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
+			if (rf_dist > 1) return 1;
+#endif
+		}else if (swap_level == -1){ //refault from slow
+#ifdef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
+			if (rf_dist == 0) return 1;
+#endif
+		}
+	}
+	else{
+		if (swap_level == 1){ //refault from fast
+#ifdef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
+			if (rf_dist > 3) return 1;
+#endif
+		}
+		else if (swap_level == -1){	//refault from slow
+#ifdef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
+			if (rf_dist < 2) return 1;
+#endif
+		}
+	}
+	return 0;
+} 
+
 /*DJL ADD BEGIN*/
 struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 			struct vm_area_struct *vma, unsigned long addr,
@@ -452,6 +479,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 	int swap_level = -2;
 	/*DJL ADD END*/
 	*new_page_allocated = false;
+	int rf_dist_ts = -1;
 
 	for (;;) {
 		int err;
@@ -544,20 +572,17 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 
 	/*DJL ADD BEGIN*/
 	if (shadow){
-		workingset_refault(folio, shadow, try_free_entry, addr, swap_level);
+		workingset_refault(folio, shadow, &rf_dist_ts, addr, swap_level);
 		if (vma && vma->vm_mm){
 			if (get_fastest_swap_prio() == si->prio){
 				count_memcg_event_mm(vma->vm_mm, WORKINGSET_REFAULT_FAST);
-#ifdef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
-				*try_free_entry = (*try_free_entry > 1) ? 1 : 0; //dist = 1, 2, 3 reschedule
-#endif
 			}
 			else if (get_slowest_swap_prio() == si->prio){
 				count_memcg_event_mm(vma->vm_mm, WORKINGSET_REFAULT_SLOW);
-#ifdef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
-				*try_free_entry = (*try_free_entry < 1) ? 1 : 0; //dist = 0 reschedule
-#endif
 			}
+			try_free_entry = should_try_change_swap_entry(
+						rf_dist_ts >= MAX_NR_GENS ? rf_dist_ts - 4 : rf_dist_ts, 
+						swap_level, rf_dist_ts >= MAX_NR_GENS ? 0 : 1);
 		}
 	}
 

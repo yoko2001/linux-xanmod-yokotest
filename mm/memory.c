@@ -3684,6 +3684,32 @@ static vm_fault_t handle_pte_marker(struct vm_fault *vmf)
 	return VM_FAULT_SIGBUS;
 }
 
+static inline int should_try_change_swap_entry(int rf_dist, int swap_level, bool loop){
+	if (loop){
+		if (swap_level == 1){ //refault from fast
+#ifdef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
+			if (rf_dist > 1) return 1;
+#endif
+		}else if (swap_level == -1){ //refault from slow
+#ifdef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
+			if (rf_dist == 0) return 1;
+#endif
+		}
+	}
+	else{
+		if (swap_level == 1){ //refault from fast
+#ifdef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
+			if (rf_dist > 3) return 1;
+#endif
+		}
+		else if (swap_level == -1){	//refault from slow
+#ifdef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
+			if (rf_dist < 2) return 1;
+#endif
+		}
+	}
+	return 0;
+} 
 /*
  * We enter with non-exclusive mmap_lock (to exclude vma changes,
  * but allow concurrent faults), and pte mapped but not yet locked.
@@ -3707,6 +3733,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	void *shadow = NULL;
 	/*DJL ADD BEGIN*/
 	int swap_level = -2;
+	int rf_dist_ts;
 	int try_free_entry;
 	trace_do_swap_page(-1, folio);
 	/*DJL ADD END*/
@@ -3799,24 +3826,20 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 					swap_level = -1;
 				}
 				else swap_level = 0;
-
+				try_free_entry = 0;
 				if (shadow){
- 					workingset_refault(folio, shadow, &try_free_entry, vmf->address,swap_level);
+ 					workingset_refault(folio, shadow, &rf_dist_ts, vmf->address,swap_level);
 					if (swap_level==1){
 						count_memcg_event_mm(vma->vm_mm, WORKINGSET_REFAULT_FAST);
-#ifdef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
-						try_free_entry = (try_free_entry > 1) ? 1 : 0; //dist = 2, 3 reschedule
-#endif
 					}
 					else if (swap_level == -1){
 						count_memcg_event_mm(vma->vm_mm, WORKINGSET_REFAULT_SLOW);
-#ifdef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
-						try_free_entry = (try_free_entry < 1) ? 1 : 0; //dist = 0 reschedule
-#endif
 					}
+					// should force free and realloc the swap_entry
+					try_free_entry = should_try_change_swap_entry(
+						rf_dist_ts >= MAX_NR_GENS ? rf_dist_ts - 4 : rf_dist_ts, 
+						swap_level, rf_dist_ts >= MAX_NR_GENS ? 0 : 1);
 				}
-					// if (shadow)
-					// 	workingset_refault(folio, shadow);
 				/*DJL ADD END*/
 
 				folio_add_lru(folio);
@@ -3847,10 +3870,6 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 			if (page)
 				folio = page_folio(page);
 			swapcache = folio;
-			/*DJL ADD BEGIN*/
-			// if (page)
-			// 	count_memcg_event_mm(vma->vm_mm, SWAPIN_SLOW);
-			/*DJL ADD END*/
 		}
 
 		if (!folio) {

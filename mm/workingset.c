@@ -367,7 +367,7 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 	int type = folio_is_file_lru(folio);
 	int delta = folio_nr_pages(folio);
 	/*DJL ADD BEGIN*/
-	int dist = -1;
+	int dist = -1, dist_ret = -1;
 	unsigned long lasthist = ULONG_MAX;
 	/*DJL ADD END*/
 
@@ -390,9 +390,11 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 	if (lasthist == ULONG_MAX){
 		lasthist = (token >> LRU_REFS_WIDTH) % MAX_NR_GENS;
 		dist = (min_seq + MAX_NR_GENS - lasthist ) % MAX_NR_GENS;		
+		dist_ret = dist;
 	}
 	else{
-		dist = (min_seq - lasthist);		
+		dist = (min_seq - lasthist);
+		dist_ret = dist + MAX_NR_GENS;
 	}
 	switch(dist){
 		case 0: 
@@ -422,7 +424,7 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 #ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
 	// folio_set_swappriohigh(folio);
 	
-	*try_free_entry = dist;
+	*try_free_entry = dist_ret;
 
 	if (dist < 2){
 		folio_swapprio_promote(folio);
