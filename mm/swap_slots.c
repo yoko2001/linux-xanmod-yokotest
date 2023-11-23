@@ -323,7 +323,7 @@ static int refill_swap_slots_cache(struct swap_slots_cache *cache)
 	cache->cur = 0;
 	if (swap_slot_cache_active)
 		cache->nr = get_swap_pages(SWAP_SLOTS_CACHE_SIZE,
-					   cache->slots, 1, 0, &cache->prio);
+					   cache->slots, 1, 0, &cache->prio, &cache->left);
 	// if (fastest_swap_prio < cache->prio) fastest_swap_prio = cache->prio;
 	// if (slowest_swap_prio > cache->prio) slowest_swap_prio = cache->prio;
 	trace_refill_swap_slots(0, cache->nr, cache->prio);
@@ -340,7 +340,7 @@ static int refill_swap_slots_slow_cache(struct swap_slots_cache *cache)
 	cache->cur_slow = 0;
 	if (swap_slot_cache_active)
 		cache->nr_slow = get_swap_pages(SWAP_SLOTS_CACHE_SIZE,
-					   cache->slots_slow, 1, 1, &cache->prio_slow);	//DJL ADD PARAMETER
+					   cache->slots_slow, 1, 1, &cache->prio_slow, &cache->slow_left);	//DJL ADD PARAMETER
 	// if (slowest_swap_prio > cache->prio_slow) slowest_swap_prio = cache->prio_slow;
 	trace_refill_swap_slots(1, cache->nr_slow, cache->prio_slow);
 	return cache->nr_slow;
@@ -353,7 +353,7 @@ static int refill_swap_slots_fast_cache(struct swap_slots_cache *cache)
 	cache->cur_fast = 0;
 	if (swap_slot_cache_active)
 		cache->nr_fast = get_swap_pages(SWAP_SLOTS_CACHE_SIZE,
-					   cache->slots_fast, 1, 2, &cache->prio_fast);	//DJL ADD PARAMETER
+					   cache->slots_fast, 1, 2, &cache->prio_fast, &cache->fast_left);	//DJL ADD PARAMETER
 	// if (fastest_swap_prio < cache->prio_fast) fastest_swap_prio = cache->prio_fast;
 	trace_refill_swap_slots(2, cache->nr_fast, cache->prio_fast);
 	return cache->nr_fast;
@@ -390,7 +390,7 @@ direct_free:
 	}
 }
 
-swp_entry_t folio_alloc_swap(struct folio *folio)
+swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space)
 {
 	swp_entry_t entry;
 	struct swap_slots_cache *cache;
@@ -401,10 +401,12 @@ swp_entry_t folio_alloc_swap(struct folio *folio)
 	/*DJL ADD END*/
 	
 	entry.val = 0;
+	if (left_space)
+		*left_space = -3;
 
 	if (folio_test_large(folio)) {
 		if (IS_ENABLED(CONFIG_THP_SWAP) && arch_thp_swp_supported())
-			get_swap_pages(1, &entry, folio_nr_pages(folio), 0, &prio);
+			get_swap_pages(1, &entry, folio_nr_pages(folio), 0, &prio, NULL);
 		if (entry.val){
 			count_memcg_folio_events(folio, SWAPOUT_RAW, folio_nr_pages(folio));
 		}
@@ -447,7 +449,12 @@ repeat_slow:
 					entry = cache->slots_slow[cache->cur_slow];
 					cache->slots_slow[cache->cur_slow++].val = 0;
 					cache->nr_slow--;
+					if (left_space)*left_space = cache->slow_left;
 				} else if (refill_swap_slots_slow_cache(cache)) {
+					if (cache->prio == cache->prio_slow)
+						cache->left = cache->slow_left;
+					if (cache->prio_fast == cache->prio_slow)
+						cache->fast_left = cache->slow_left;
 					goto repeat_slow;
 				}
 			}
@@ -475,7 +482,12 @@ repeat_fast:
 					entry = cache->slots_fast[cache->cur_fast];
 					cache->slots_fast[cache->cur_fast++].val = 0;
 					cache->nr_fast--;
+					if (left_space) *left_space = cache->fast_left;
 				} else if (refill_swap_slots_fast_cache(cache)) {
+					if (cache->prio == cache->prio_fast)
+						cache->left = cache->fast_left;
+					if (cache->prio_slow == cache->prio_fast)
+						cache->slow_left = cache->fast_left;
 					goto repeat_fast;
 				}
 			}
@@ -498,7 +510,12 @@ repeat:
 				entry = cache->slots[cache->cur];
 				cache->slots[cache->cur++].val = 0;
 				cache->nr--;
+				if (left_space) *left_space = cache->left;
 			} else if (refill_swap_slots_cache(cache)) {
+				if (cache->prio_fast == cache->prio)
+					cache->fast_left = cache->left;
+				if (cache->prio_slow == cache->prio)
+					cache->slow_left = cache->left;
 				goto repeat;
 			}
 		}
@@ -515,7 +532,7 @@ repeat:
 		}
 	}
 
-	get_swap_pages(1, &entry, 1, 0, &prio);
+	get_swap_pages(1, &entry, 1, 0, &prio, NULL);
 	if (entry.val){
 		count_memcg_folio_events(folio, SWAPOUT_RAW, 1);
  	}

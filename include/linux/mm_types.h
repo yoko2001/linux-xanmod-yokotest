@@ -197,7 +197,9 @@ struct page {
 #ifdef CONFIG_MEMCG
 	unsigned long memcg_data;
 #endif
-
+#ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
+	void* shadow_ext;         /*shadow_ext that keeps refault message*/
+#endif
 	/*
 	 * On machines where all RAM is mapped into kernel address space,
 	 * we can simply calculate the virtual address. On machines with
@@ -322,6 +324,9 @@ struct folio {
 			atomic_t _refcount;
 #ifdef CONFIG_MEMCG
 			unsigned long memcg_data;
+#endif
+#ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
+			void* shadow_ext;         /*shadow_ext that keeps refault message*/
 #endif
 	/* private: the union with struct page is transitional */
 		};
@@ -1020,12 +1025,15 @@ typedef struct {
 	unsigned long val;
 } swp_entry_t;
 
+#define SE_HIST_SIZE	3
 typedef struct shadow_entry{
-	unsigned long magic;
-	unsigned long timestamp; 
-	unsigned long hist_ts[3]; 
+	unsigned short magic;
+	unsigned short timestamp; 
+#ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
+	unsigned short hist_ts[SE_HIST_SIZE]; 
+#endif
 	void* shadow;//original shadow
-}__aligned(2 * sizeof(unsigned long)) shadow_entry_t;
+}__aligned(sizeof(unsigned long)) shadow_entry_t;
 
 /**
  * enum fault_flag - Fault flag definitions.

@@ -1205,6 +1205,19 @@ config LRU_GEN_CGROUP_KSWAPD_BOOST
 	help
 	  This option enables background kswapd boosting reclamation
 
+config LRU_GEN_SHADOW_ENTRY_EXT
+	bool "Enable by default"
+	depends on LRU_GEN
+	help
+	  This option enables shadow entry extention's allocation
+
+config LRU_GEN_KEEP_REFAULT_HISTORY
+bool "Enable by default"
+	depends on LRU_GEN
+	help
+	  This option enables shadow_ext to keep 3 timestamp for 
+	  history refualt recds
+
 config LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
 	bool "Enable by default"
 	depends on LRU_GEN

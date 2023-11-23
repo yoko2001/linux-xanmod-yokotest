@@ -3828,7 +3828,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				else swap_level = 0;
 				try_free_entry = 0;
 				if (shadow){
- 					workingset_refault(folio, shadow, &rf_dist_ts, vmf->address,swap_level);
+ 					workingset_refault(folio, shadow, &rf_dist_ts, vmf->address,swap_level, entry);
 					if (swap_level==1){
 						count_memcg_event_mm(vma->vm_mm, WORKINGSET_REFAULT_FAST);
 					}

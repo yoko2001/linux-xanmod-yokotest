@@ -371,25 +371,90 @@ TRACE_EVENT(folio_delete_from_swap_cache,
                 __entry->folio, folio_test_readahead(__entry->folio), __entry->prio, folio_lru_gen(__entry->folio), __entry->refs)
 );
 
-TRACE_EVENT(folio_workingset_change,
+TRACE_EVENT(folio_ws_chg_se,
 
 	TP_PROTO(struct folio* folio, 
 		     unsigned long va,
-			 int low, int high,
+			 unsigned short cgroup_id, 
+			 unsigned long token, 
+			 int refs, 
+			 bool in,
+			 int swap_level,
+			 long swap_space_left,
+			 struct shadow_entry* se, 
+			 unsigned long swap_entry),
+
+	TP_ARGS(folio, va, cgroup_id, token, refs, in, swap_level, swap_space_left, se, swap_entry),
+
+	TP_STRUCT__entry(
+		__field(struct folio* ,folio)
+		__field(unsigned long , va)
+		__field(unsigned short, cgroup_id)
+		__field(unsigned long , token)
+		__field(int , refs)
+		__field(int, tiers)
+		__field(bool , in)
+		__field(int , swap_level)
+		__field(long , swap_space_left)
+		__field(struct shadow_entry* , se)
+		__field(unsigned long , swap_entry)
+	),
+
+	TP_fast_assign(
+		__entry->folio	= folio;
+		__entry->va	= (va >> PAGE_SHIFT);
+		__entry->cgroup_id	= cgroup_id;
+		__entry->token	= token;
+		__entry->refs	= refs;
+		__entry->tiers  = lru_tier_from_refs(refs);
+		__entry->in	= in;
+		__entry->swap_level	= swap_level;
+		__entry->swap_space_left	= swap_space_left;
+		__entry->se	= se;
+		__entry->swap_entry = swap_entry;
+	),
+
+	TP_printk("[%s%s]left[%ld] entry[%lx] va[%lx]->folio@[%lx]{[%s]ra[%d]gen[%d]}\
+{memcg:%d}min_seq[%lu];ref[%d];tier[%d] \
+se[ts[%d]hist[%d][%d][%d]]", 
+                __entry->in ? "RE<=" : "EV=>",
+				__entry->swap_level == 1 ? "f" : (
+				__entry->swap_level == 0 ? "m" : (
+				__entry->swap_level == -1 ? "s" : "unknown"
+				)),
+				__entry->swap_space_left,
+				__entry->swap_entry,
+				__entry->va,
+				(((unsigned long)(__entry->folio)) & (0xffffffffffff)), 
+				folio_test_swappriolow(__entry->folio) ? "s" : (
+				folio_test_swappriohigh(__entry->folio) ? "f" : "m"),
+				folio_test_readahead(__entry->folio),
+				folio_lru_gen(__entry->folio),
+				(unsigned short)__entry->cgroup_id,
+				(__entry->token >> LRU_REFS_WIDTH),
+				__entry->refs, __entry->tiers,
+				__entry->se->timestamp, __entry->se->hist_ts[0], 
+				__entry->se->hist_ts[1], __entry->se->hist_ts[2])
+);
+
+TRACE_EVENT(folio_ws_chg,
+
+	TP_PROTO(struct folio* folio, 
+		     unsigned long va,
 	         struct pglist_data *pgdat, 
 			 unsigned short cgroup_id, 
 			 unsigned long token, 
 			 int refs, 
 			 bool in,
-			 int swap_level),
+			 int swap_level, 
+			 long swap_space_left, 
+			 unsigned long swap_entry),
 
-	TP_ARGS(folio, va, low, high, pgdat, cgroup_id, token, refs, in, swap_level),
+	TP_ARGS(folio, va, pgdat, cgroup_id, token, refs, in, swap_level, swap_space_left, swap_entry),
 
 	TP_STRUCT__entry(
 		__field(struct folio* ,folio)
 		__field(unsigned long , va)
-		__field(int , low)
-		__field(int , high)
 		__field(struct pglist_data*, pgdat)
 		__field(unsigned short, cgroup_id)
 		__field(unsigned long , token)
@@ -397,37 +462,39 @@ TRACE_EVENT(folio_workingset_change,
 		__field(int, tiers)
 		__field(bool , in)
 		__field(int , swap_level)
+		__field(long , swap_space_left)
+		__field(unsigned long , swap_entry)
 	),
 
 	TP_fast_assign(
 		__entry->folio	= folio;
 		__entry->va	= (va >> PAGE_SHIFT);
-		__entry->low	= refs;
-		__entry->high	= high;
 		__entry->pgdat	= pgdat;
 		__entry->cgroup_id	= cgroup_id;
 		__entry->token	= token;
 		__entry->refs	= refs;
 		__entry->tiers  = lru_tier_from_refs(refs);
 		__entry->in	= in;
+		__entry->swap_entry	= swap_entry;
 		__entry->swap_level	= swap_level;
+		__entry->swap_space_left = swap_space_left;
 	),
 
-	TP_printk("[%s%s] va[%lu]->folio@[%p]{[%s]low[%d]high[%d]ra[%d]gen[%d]}{memcg:%d}{pglist[%p]} mins_seq[%lu], ref[%d] tier[%d]", 
-                __entry->in ? "REFAULT<=" : "EVICT=>",
-				__entry->swap_level == 1 ? "fast" : (
-				__entry->swap_level == 0 ? "mid" : (
-				__entry->swap_level == -1 ? "slow" : "unknown"
+	TP_printk("[%s%s]left[%ld] entry[%lx] va[%lx]->folio@[%lx]{[%s]ra[%d]gen[%d]}{memcg:%d}min_seq[%lu];ref[%d];tier[%d]", 
+                __entry->in ? "RE<=" : "EV=>",
+				__entry->swap_level == 1 ? "f" : (
+				__entry->swap_level == 0 ? "m" : (
+				__entry->swap_level == -1 ? "s" : "unknown"
 				)),
+				__entry->swap_space_left,
+				__entry->swap_entry,
 				__entry->va,
-				__entry->folio, 
-				folio_test_swappriolow(__entry->folio) ? "slow" : (
-				folio_test_swappriohigh(__entry->folio) ? "fast" : "mid"),
-				__entry->low, __entry->high,
+				(((unsigned long)(__entry->folio)) & (0xffffffffffff)), 
+				folio_test_swappriolow(__entry->folio) ? "s" : (
+				folio_test_swappriohigh(__entry->folio) ? "f" : "m"),
 				folio_test_readahead(__entry->folio),
 				folio_lru_gen(__entry->folio),
 				(unsigned short)__entry->cgroup_id,
-				__entry->pgdat,
 				(__entry->token >> LRU_REFS_WIDTH),
 				__entry->refs, __entry->tiers)
 );

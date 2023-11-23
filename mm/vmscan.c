@@ -1344,7 +1344,7 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
  * gets returned with a refcount of 0.
  */
 static int __remove_mapping(struct address_space *mapping, struct folio *folio,
-			    bool reclaimed, struct mem_cgroup *target_memcg)
+			    bool reclaimed, struct mem_cgroup *target_memcg, long swap_space_left)
 {
 	int refcount;
 	void *shadow = NULL;
@@ -1355,7 +1355,11 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	struct shadow_entry* shadow_ext = NULL;
 	// spin_lock_irq(&shadow_ext_lock);
 	if (folio_test_swapcache(folio) && reclaimed && !mapping_exiting(mapping)){
+#ifdef CONFIG_LRU_GEN_SHADOW_ENTRY_EXT
 		shadow_ext = shadow_entry_alloc();
+#else
+		shadow_ext = NULL;
+#endif 
 	}
 	else{
 		shadow_ext = NULL;
@@ -1408,7 +1412,9 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		swp_entry_t swap = folio_swap_entry(folio);
 		si = get_swap_device(swap);
 		/*DJL ADD END*/
-
+		//try get swap_space_left again
+		if (swap_space_left < -10)
+			swap_space_left = si->pages - si->inuse_pages;
 		if (reclaimed && !mapping_exiting(mapping)){
 			if (get_fastest_swap_prio() == si->prio){
 				swap_level = 1;
@@ -1417,7 +1423,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 			}else {
 				swap_level = 0;
 			}
-			shadow = workingset_eviction(folio, target_memcg, swap_level, shadow_ext);
+			shadow = workingset_eviction(folio, target_memcg, swap_level, swap_space_left, shadow_ext, swap);
 			if (shadow_ext && shadow != shadow_ext)
 				pr_err("workingset_eviction fail give shadow_ext [%pK]", shadow);
 		}
@@ -1432,6 +1438,8 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		xa_unlock_irq(&mapping->i_pages);
 		put_swap_folio(folio, swap);
 	} else {
+		swp_entry_t swap;
+		swap.val = -1;
 		shadow_ext = NULL;
 		void (*free_folio)(struct folio *);
 
@@ -1454,7 +1462,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		 */
 		if (reclaimed && folio_is_file_lru(folio) &&
 		    !mapping_exiting(mapping) && !dax_mapping(mapping))
-			shadow = workingset_eviction(folio, target_memcg, swap_level, NULL);
+			shadow = workingset_eviction(folio, target_memcg, swap_level, -7, NULL, swap);
 		__filemap_remove_folio(folio, shadow);
 		xa_unlock_irq(&mapping->i_pages);
 		if (mapping_shrinkable(mapping))
@@ -1509,7 +1517,7 @@ cannot_free:
  */
 long remove_mapping(struct address_space *mapping, struct folio *folio)
 {
-	if (__remove_mapping(mapping, folio, false, NULL)) {
+	if (__remove_mapping(mapping, folio, false, NULL, -1)) {
 		/*
 		 * Unfreezing the refcount with 1 effectively
 		 * drops the pagecache ref for us without requiring another
@@ -1734,6 +1742,7 @@ static unsigned int shrink_folio_list(struct list_head *folio_list,
 	unsigned int pgactivate = 0;
 	bool do_demote_pass;
 	struct swap_iocb *plug = NULL;
+	long swap_space_left;
 
 	memset(stat, 0, sizeof(*stat));
 	cond_resched();
@@ -1902,13 +1911,14 @@ retry:
 			folio_unlock(folio);
 			continue;
 		}
-
+		swap_space_left = -11;
 		/*
 		 * Anonymous process memory has backing store?
 		 * Try to allocate it some swap space here.
 		 * Lazyfree folio could be freed directly
 		 */
 		if (folio_test_anon(folio) && folio_test_swapbacked(folio)) {
+			swap_space_left = -12;
 			if (!folio_test_swapcache(folio)) {
 				if (!(sc->gfp_mask & __GFP_IO))
 					goto keep_locked;
@@ -1928,7 +1938,7 @@ retry:
 								folio_list))
 						goto activate_locked;
 				}
-				if (!add_to_swap(folio)) {
+				if (!add_to_swap(folio, &swap_space_left)) {
 					if (!folio_test_large(folio))
 						goto activate_locked_split;
 					/* Fallback to swap normal pages */
@@ -1938,7 +1948,7 @@ retry:
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 					count_vm_event(THP_SWPOUT_FALLBACK);
 #endif
-					if (!add_to_swap(folio))
+					if (!add_to_swap(folio, NULL))
 						goto activate_locked_split;
 				}
 			}
@@ -2121,9 +2131,15 @@ retry:
 			count_vm_events(PGLAZYFREED, nr_pages);
 			count_memcg_folio_events(folio, PGLAZYFREED, nr_pages);
 		} else if (!mapping || !__remove_mapping(mapping, folio, true,
-							 sc->target_mem_cgroup))
+							 sc->target_mem_cgroup, swap_space_left))
 			goto keep_locked;
 
+#ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
+		//after remove_mapping, eviction complete already
+		// if (folio->shadow_ext)
+		// 	shadow_entry_free(folio->shadow_ext);
+		// folio->shadow_ext = NULL;
+#endif	
 		folio_unlock(folio);
 free_it:
 		/*

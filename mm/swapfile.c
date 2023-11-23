@@ -1076,7 +1076,8 @@ static void swap_free_cluster(struct swap_info_struct *si, unsigned long idx)
 	swap_range_free(si, offset, SWAPFILE_CLUSTER);
 }
 
-int get_swap_pages(int n_goal, swp_entry_t swp_entries[], int entry_size , int tier, signed short* prio)
+int get_swap_pages(int n_goal, swp_entry_t swp_entries[], int entry_size , 
+				   int tier, signed short* prio, long* av_pg_before_assi)
 {
 	unsigned long size = swap_entry_size(entry_size);
 	struct swap_info_struct *si, *next;
@@ -1091,9 +1092,12 @@ int get_swap_pages(int n_goal, swp_entry_t swp_entries[], int entry_size , int t
 	WARN_ON_ONCE(n_goal > 1 && size == SWAPFILE_CLUSTER);
 
 	spin_lock(&swap_avail_lock);
-
+	if (av_pg_before_assi) 
+		*av_pg_before_assi = -5;
 	avail_pgs = atomic_long_read(&nr_swap_pages) / size;
 	if (avail_pgs <= 0) {
+		if (av_pg_before_assi) 
+			*av_pg_before_assi = -10; // not enough
 		spin_unlock(&swap_avail_lock);
 		goto noswap;
 	}
@@ -1145,8 +1149,11 @@ start_over:
 						    n_goal, swp_entries);
 		*prio = retprio = si->prio;
 		spin_unlock(&si->lock);
-		if (n_ret || size == SWAPFILE_CLUSTER)
+		if (n_ret || size == SWAPFILE_CLUSTER){
+			if (av_pg_before_assi) 
+				*av_pg_before_assi = si->pages - si->inuse_pages;
 			goto check_out;
+		}
 		cond_resched();
 
 		spin_lock(&swap_avail_lock);

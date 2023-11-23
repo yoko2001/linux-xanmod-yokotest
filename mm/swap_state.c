@@ -194,7 +194,7 @@ void __delete_from_swap_cache(struct folio *folio,
  * Context: Caller needs to hold the folio lock.
  * Return: Whether the folio was added to the swap cache.
  */
-bool add_to_swap(struct folio *folio)
+bool add_to_swap(struct folio *folio, long* left_space)
 {
 	swp_entry_t entry;
 	int err;
@@ -202,7 +202,7 @@ bool add_to_swap(struct folio *folio)
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 	VM_BUG_ON_FOLIO(!folio_test_uptodate(folio), folio);
 
-	entry = folio_alloc_swap(folio);
+	entry = folio_alloc_swap(folio, left_space);
 	if (!entry.val)
 		return false;
 
@@ -281,7 +281,7 @@ void clear_shadow_from_swap_cache(int type, unsigned long begin,
 		xas_for_each(&xas, old, end) {
 			if (old && entry_is_entry_ext(old)){
 				// spin_lock_irq(&shadow_ext_lock);
-				shadow_entry_free(old);
+				// shadow_entry_free(old);
 				// spin_unlock_irq(&shadow_ext_lock);
 				xas_store(&xas, NULL);
 				continue;
@@ -441,11 +441,11 @@ static inline int should_try_change_swap_entry(int rf_dist, int swap_level, bool
 	if (loop){
 		if (swap_level == 1){ //refault from fast
 #ifdef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
-			if (rf_dist > 1) return 1;
+			if (rf_dist > 2) return 1;
 #endif
 		}else if (swap_level == -1){ //refault from slow
 #ifdef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
-			if (rf_dist == 0) return 1;
+			if (rf_dist < 2) return 1;
 #endif
 		}
 	}
@@ -572,7 +572,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 
 	/*DJL ADD BEGIN*/
 	if (shadow){
-		workingset_refault(folio, shadow, &rf_dist_ts, addr, swap_level);
+		workingset_refault(folio, shadow, &rf_dist_ts, addr, swap_level, entry);
 		if (vma && vma->vm_mm){
 			if (get_fastest_swap_prio() == si->prio){
 				count_memcg_event_mm(vma->vm_mm, WORKINGSET_REFAULT_FAST);
@@ -587,11 +587,20 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 	}
 
 	//now shadow has been used
+#ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
+	folio->shadow_ext = NULL;
+	if (entry_is_entry_ext(shadow)){
+		// spin_lock_irq(&shadow_ext_lock);
+		folio->shadow_ext = shadow;
+		// spin_unlock_irq(&shadow_ext_lock);
+	}
+#else
 	if (entry_is_entry_ext(shadow)){
 		// spin_lock_irq(&shadow_ext_lock);
 		shadow_entry_free(shadow);
 		// spin_unlock_irq(&shadow_ext_lock);
 	}
+#endif
 	/*DJL ADD END*/
 
 	/* Caller will initiate read into locked folio */

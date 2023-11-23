@@ -356,13 +356,14 @@ static inline void folio_set_swap_entry(struct folio *folio, swp_entry_t entry)
 
 /* linux/mm/workingset.c */
 void workingset_age_nonresident(struct lruvec *lruvec, unsigned long nr_pages);
-void *workingset_eviction(struct folio *folio, struct mem_cgroup *target_memcg, int swap_level, struct shadow_entry* se);
-void workingset_refault(struct folio *folio, void *shadow, int* try_free_entry, unsigned long va, int swap_level);
+void *workingset_eviction(struct folio *folio, struct mem_cgroup *target_memcg, int swap_level, long swap_space_left, struct shadow_entry* se, swp_entry_t entry);
+void workingset_refault(struct folio *folio, void *shadow, int* try_free_entry, unsigned long va, int swap_level, swp_entry_t entry);
 void workingset_activation(struct folio *folio);
 bool entry_is_entry_ext(const void *entry);
 extern struct kmem_cache * get_shadow_entry_cache(void);
 static inline struct shadow_entry* shadow_entry_alloc(void){
 	struct shadow_entry* entry_ext = NULL;
+	int i;
 	if (!get_shadow_entry_cache()){
 		return entry_ext;
 	}
@@ -370,6 +371,11 @@ static inline struct shadow_entry* shadow_entry_alloc(void){
 	if (entry_ext){
 		entry_ext->magic = 0;
 		entry_ext->timestamp = 0;
+#ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
+		for (i = 0; i < SE_HIST_SIZE; i++){
+			entry_ext->hist_ts[i] = 0;
+		}
+#endif
 	}
 	return entry_ext;
 }
@@ -538,13 +544,14 @@ static inline long get_nr_swap_pages(void)
 }
 
 extern void si_swapinfo(struct sysinfo *);
-swp_entry_t folio_alloc_swap(struct folio *folio);
+swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space);
 bool folio_free_swap(struct folio *folio);
 void put_swap_folio(struct folio *folio, swp_entry_t entry);
 extern swp_entry_t get_swap_page_of_type(int);
 //DJL ADD BEGIN
 // extern int get_swap_pages(int n, swp_entry_t swp_entries[], int entry_size);
-extern int get_swap_pages(int n, swp_entry_t swp_entries[], int entry_size, int tier, signed short *prio);
+extern int get_swap_pages(int n, swp_entry_t swp_entries[], int entry_size, 
+							int tier, signed short *prio, long* av_pg_before_assi);
 //DJL ADD END
 extern int add_swap_count_continuation(swp_entry_t, gfp_t);
 extern void swap_shmem_alloc(swp_entry_t);
@@ -646,7 +653,7 @@ static inline int swp_swapcount(swp_entry_t entry)
 	return 0;
 }
 
-static inline swp_entry_t folio_alloc_swap(struct folio *folio)
+static inline swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space)
 {
 	swp_entry_t entry;
 	entry.val = 0;
