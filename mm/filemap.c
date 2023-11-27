@@ -141,7 +141,9 @@ static void page_cache_delete(struct address_space *mapping,
 
 	xas_store(&xas, shadow);
 	xas_init_marks(&xas);
-
+#ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
+	VM_BUG_ON_FOLIO(folio->shadow_ext, folio);
+#endif
 	folio->mapping = NULL;
 	/* Leave page->index set: truncation lookup relies upon it */
 	mapping->nrpages -= nr;
@@ -895,6 +897,12 @@ noinline int __filemap_add_folio(struct address_space *mapping,
 		if (old) {
 			if (shadowp)
 				*shadowp = old;
+#ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
+			else{
+				if (entry_is_entry_ext(old))
+					pr_err("__filemap_add_folio lost shadow_ext");
+			}
+#endif
 			/* entry may have been split before we acquired lock */
 			order = xa_get_order(xas.xa, xas.xa_index);
 			if (order > folio_order(folio)) {

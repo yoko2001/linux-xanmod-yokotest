@@ -3525,6 +3525,7 @@ void free_unref_page_list(struct list_head *list)
 	struct zone *locked_zone = NULL;
 	int batch_count = 0;
 	int migratetype;
+	struct folio* folio;
 
 	/* Prepare pages for freeing */
 	list_for_each_entry_safe(page, next, list, lru) {
@@ -3533,7 +3534,13 @@ void free_unref_page_list(struct list_head *list)
 			list_del(&page->lru);
 			continue;
 		}
-
+#ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
+		folio = page_folio(page);
+		if (folio->shadow_ext && entry_is_entry_ext(folio->shadow_ext)){
+			shadow_entry_free(folio->shadow_ext);
+			folio->shadow_ext = NULL;
+		}
+#endif		
 		/*
 		 * Free isolated pages directly to the allocator, see
 		 * comment in free_unref_page.

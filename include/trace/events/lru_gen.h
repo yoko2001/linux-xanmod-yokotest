@@ -370,7 +370,7 @@ TRACE_EVENT(folio_delete_from_swap_cache,
 	TP_printk("folio@[%p] fdfsc_ra[%d]=>prio[%d] gen[%d] refs[%d]", 
                 __entry->folio, folio_test_readahead(__entry->folio), __entry->prio, folio_lru_gen(__entry->folio), __entry->refs)
 );
-
+#ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 TRACE_EVENT(folio_ws_chg_se,
 
 	TP_PROTO(struct folio* folio, 
@@ -436,7 +436,7 @@ se[ts[%d]hist[%d][%d][%d]]",
 				__entry->se->timestamp, __entry->se->hist_ts[0], 
 				__entry->se->hist_ts[1], __entry->se->hist_ts[2])
 );
-
+#endif
 TRACE_EVENT(folio_ws_chg,
 
 	TP_PROTO(struct folio* folio, 

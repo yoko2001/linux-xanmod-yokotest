@@ -116,6 +116,12 @@ static int invalidate_exceptional_entry(struct address_space *mapping,
 	/* Handled by shmem itself, or for DAX we do nothing. */
 	if (shmem_mapping(mapping) || dax_mapping(mapping))
 		return 1;
+#ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
+	if (entry_is_entry_ext(entry)){
+		pr_err("invalidate_exceptional_entry");
+		shadow_entry_free(entry);
+	}
+#endif
 	clear_shadow_entry(mapping, index, entry);
 	return 1;
 }

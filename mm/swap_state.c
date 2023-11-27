@@ -96,6 +96,7 @@ void *get_shadow_from_swap_cache(swp_entry_t entry)
 	return NULL;
 }
 
+extern atomic_t ext_count;
 /*
  * add_to_swap_cache resembles filemap_add_folio on swapper_space,
  * but sets SwapCache flag and private instead of mapping and index.
@@ -126,13 +127,18 @@ int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 		for (i = 0; i < nr; i++) {
 			VM_BUG_ON_FOLIO(xas.xa_index != idx + i, folio);
 			old = xas_load(&xas);
-			if (xa_is_value(old)) {
+			if (xa_is_value(old)) { //files
 				if (shadowp)
 					*shadowp = old;
 			}
-			else if (entry_is_entry_ext(old)){
+			else if (entry_is_entry_ext(old)){ //swap
 				if (shadowp)
 					*shadowp = old;
+				else{
+					pr_err("add to swcache but free");
+					shadow_entry_free(old);
+					atomic_dec(&ext_count);
+				}
 			}
 			set_page_private(folio_page(folio, i), entry.val + i);
 			xas_store(&xas, folio);
@@ -152,6 +158,7 @@ unlock:
 	folio_ref_sub(folio, nr);
 	return xas_error(&xas);
 }
+extern spinlock_t shadow_ext_lock;
 
 /*
  * This must be called only on folios that have
@@ -175,6 +182,16 @@ void __delete_from_swap_cache(struct folio *folio,
 	for (i = 0; i < nr; i++) {
 		void *entry = xas_store(&xas, shadow);
 		VM_BUG_ON_PAGE(entry != folio, entry);
+#ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
+		// spin_lock_irq(&shadow_ext_lock);
+		// if (folio->shadow_ext && entry_is_entry_ext(folio->shadow_ext)){
+		// 	pr_err("delete_from_swap_cache has folio->shadow_ext");
+		// 	shadow_entry_free(folio->shadow_ext);
+		// 	folio->shadow_ext = NULL;
+		// 	atomic_dec(&ext_count);
+		// }
+		// spin_unlock_irq(&shadow_ext_lock);
+#endif
 		set_page_private(folio_page(folio, i), 0);
 		xas_next(&xas);
 	}
@@ -263,7 +280,6 @@ void delete_from_swap_cache(struct folio *folio)
 	put_swap_folio(folio, entry);
 	folio_ref_sub(folio, folio_nr_pages(folio));
 }
-extern spinlock_t shadow_ext_lock;
 
 void clear_shadow_from_swap_cache(int type, unsigned long begin,
 				unsigned long end)
@@ -280,10 +296,11 @@ void clear_shadow_from_swap_cache(int type, unsigned long begin,
 		xa_lock_irq(&address_space->i_pages);
 		xas_for_each(&xas, old, end) {
 			if (old && entry_is_entry_ext(old)){
-				// spin_lock_irq(&shadow_ext_lock);
-				// shadow_entry_free(old);
-				// spin_unlock_irq(&shadow_ext_lock);
+				// pr_err("reclaimed entry shouldnt have shadow_ext");
+				spin_lock_irq(&shadow_ext_lock);
+				shadow_entry_free(old);
 				xas_store(&xas, NULL);
+				spin_unlock_irq(&shadow_ext_lock);
 				continue;
 			}
 			if (!xa_is_value(old) && !entry_is_entry_ext(old))
@@ -580,7 +597,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 			else if (get_slowest_swap_prio() == si->prio){
 				count_memcg_event_mm(vma->vm_mm, WORKINGSET_REFAULT_SLOW);
 			}
-			try_free_entry = should_try_change_swap_entry(
+			*try_free_entry = should_try_change_swap_entry(
 						rf_dist_ts >= MAX_NR_GENS ? rf_dist_ts - 4 : rf_dist_ts, 
 						swap_level, rf_dist_ts >= MAX_NR_GENS ? 0 : 1);
 		}
@@ -588,17 +605,16 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 
 	//now shadow has been used
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
+	spin_lock_irq(&shadow_ext_lock);
 	folio->shadow_ext = NULL;
 	if (entry_is_entry_ext(shadow)){
-		// spin_lock_irq(&shadow_ext_lock);
 		folio->shadow_ext = shadow;
-		// spin_unlock_irq(&shadow_ext_lock);
 	}
+	spin_unlock_irq(&shadow_ext_lock);
 #else
 	if (entry_is_entry_ext(shadow)){
-		// spin_lock_irq(&shadow_ext_lock);
 		shadow_entry_free(shadow);
-		// spin_unlock_irq(&shadow_ext_lock);
+		atomic_dec(&ext_count);
 	}
 #endif
 	/*DJL ADD END*/

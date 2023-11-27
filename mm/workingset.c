@@ -211,6 +211,8 @@ bool entry_is_entry_ext(const void *entry){
 	}
 	return false;
 }
+extern spinlock_t shadow_ext_lock;
+extern atomic_t ext_count;
 
 /*
 THIS will also free old_entry_ext
@@ -234,6 +236,7 @@ static void *pack_shadow_ext(int memcgid, pg_data_t *pgdat, unsigned long evicti
 			}
 			entry_ext->hist_ts[0] = old_entry_ext->timestamp;
 			shadow_entry_free(old_entry_ext);
+			atomic_dec(&ext_count);
 		}
 #endif
 	}
@@ -348,10 +351,20 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, long swap_spa
 		if (!xa_is_value(ret)){
 			pr_err("bug in pack_shadow");
 		}
+#ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
+		// spin_lock_irq(&shadow_ext_lock);
+		if (folio->shadow_ext && entry_is_entry_ext(folio->shadow_ext)){
+			shadow_entry_free(folio->shadow_ext);
+			folio->shadow_ext = NULL;
+			atomic_dec(&ext_count);
+		}
+		// spin_unlock_irq(&shadow_ext_lock);
+#endif
 	}
 	else{
 		is_se = 1;
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
+		// spin_lock_irq(&shadow_ext_lock);
 		if (folio->shadow_ext){
 			ret = pack_shadow_ext(mem_cgroup_id(memcg), pgdat, token, refs, se, min_seq, folio->shadow_ext);
 		}
@@ -359,6 +372,7 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, long swap_spa
 			ret = pack_shadow_ext(mem_cgroup_id(memcg), pgdat, token, refs, se, min_seq, NULL);
 		}
 		folio->shadow_ext = NULL;
+		// spin_unlock_irq(&shadow_ext_lock);
 #else
 		ret = pack_shadow_ext(mem_cgroup_id(memcg), pgdat, token, refs, se, min_seq, NULL);
 #endif
@@ -382,7 +396,7 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, long swap_spa
 		else
 			trace_folio_ws_chg(folio, 0, pgdat, (unsigned short)mem_cgroup_id(memcg), token, refs, 0, swap_level, swap_space_left, (unsigned long)entry.val);
 #else
-		trace_folio_ws_chg(folio, 0, pgdat, (unsigned short)mem_cgroup_id(memcg), token, refs, 0, swap_level, swap_space_left);
+		trace_folio_ws_chg(folio, 0, pgdat, (unsigned short)mem_cgroup_id(memcg), token, refs, 0, swap_level, swap_space_left, (unsigned long)entry.val);
 #endif
 	}
 
@@ -505,11 +519,6 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 	}
 
 unlock:
-	// if (entry_is_entry_ext(shadow)){
-	// 	spin_lock_irq(&shadow_ext_lock);
-	// 	shadow_entry_free(shadow);
-	// 	spin_unlock_irq(&shadow_ext_lock);
-	// }
 	rcu_read_unlock();
 }
 

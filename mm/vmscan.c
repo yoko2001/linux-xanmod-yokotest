@@ -74,7 +74,8 @@
 #include <trace/events/lru_gen.h>
 /*DJL ADD END*/
 spinlock_t shadow_ext_lock;
-unsigned long ext_count;
+atomic_t ext_count = ATOMIC_INIT(0);
+
 struct scan_control {
 	/* How many pages shrink_list() should reclaim */
 	unsigned long nr_to_reclaim;
@@ -1353,10 +1354,10 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	int swap_level = -2; 
 	/*DJL ADD END*/
 	struct shadow_entry* shadow_ext = NULL;
-	// spin_lock_irq(&shadow_ext_lock);
 	if (folio_test_swapcache(folio) && reclaimed && !mapping_exiting(mapping)){
 #ifdef CONFIG_LRU_GEN_SHADOW_ENTRY_EXT
 		shadow_ext = shadow_entry_alloc();
+		atomic_inc(&ext_count);
 #else
 		shadow_ext = NULL;
 #endif 
@@ -1364,8 +1365,6 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	else{
 		shadow_ext = NULL;
 	}
-	ext_count ++;
-	// spin_unlock_irq(&shadow_ext_lock);
 
 	BUG_ON(!folio_test_locked(folio));
 	BUG_ON(mapping != folio_mapping(folio));
@@ -1429,7 +1428,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		}
 		if (si)
 			put_swap_device(si);
-		if (shadow_ext)
+		if (shadow_ext && shadow == shadow_ext)
 			__delete_from_swap_cache(folio, swap, shadow_ext);
 		else
 			__delete_from_swap_cache(folio, swap, shadow);
@@ -1473,19 +1472,16 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 			free_folio(folio);
 	}
 
-	// spin_lock_irq(&shadow_ext_lock);
-	if (shadow_ext && shadow && !(shadow == shadow_ext)){
+	if (shadow_ext && !(shadow == shadow_ext)){
 		pr_err("fail alloc free %d", __LINE__);
 		shadow_entry_free(shadow_ext);
-		ext_count--;
+		atomic_dec(&ext_count);
 	}
-	else{
-		if (!ext_count % 1000)
-			pr_err("current allocated %lu", ext_count);
+#ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
+	if (folio->shadow_ext){
+		pr_err("shouldn't happen here");
 	}
-	// spin_unlock_irq(&shadow_ext_lock);
-
-	// if (shadow_ext)	
+#endif
 	return 1;
 
 
@@ -1493,13 +1489,11 @@ cannot_free:
 	xa_unlock_irq(&mapping->i_pages);
 	if (!folio_test_swapcache(folio))
 		spin_unlock(&mapping->host->i_lock);
-	// spin_lock_irq(&shadow_ext_lock);
 	if (shadow_ext){
 		shadow_entry_free(shadow_ext);
-		ext_count--;
+		atomic_dec(&ext_count);
 	}
-	// spin_unlock_irq(&shadow_ext_lock);
-
+	
 	return 0;
 }
 
@@ -2136,10 +2130,12 @@ retry:
 
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 		//after remove_mapping, eviction complete already
-		// if (folio->shadow_ext)
-		// 	shadow_entry_free(folio->shadow_ext);
-		// folio->shadow_ext = NULL;
-#endif	
+		if (folio->shadow_ext && entry_is_entry_ext(folio->shadow_ext)) {
+			pr_err("shouldn't happen %s:%d",__FILE__, __LINE__);
+			shadow_entry_free(folio->shadow_ext);
+		}
+		folio->shadow_ext = NULL;
+#endif
 		folio_unlock(folio);
 free_it:
 		/*
@@ -6320,7 +6316,7 @@ static int __init init_lru_gen(void)
 	debugfs_create_file("lru_gen_full", 0444, NULL, NULL, &lru_gen_ro_fops);
 	
 	spin_lock_init(&shadow_ext_lock);
-	ext_count = 0;
+	atomic_set(&ext_count, 0);
 	
 	return 0;
 };

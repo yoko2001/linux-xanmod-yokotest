@@ -363,7 +363,6 @@ bool entry_is_entry_ext(const void *entry);
 extern struct kmem_cache * get_shadow_entry_cache(void);
 static inline struct shadow_entry* shadow_entry_alloc(void){
 	struct shadow_entry* entry_ext = NULL;
-	int i;
 	if (!get_shadow_entry_cache()){
 		return entry_ext;
 	}
@@ -372,7 +371,7 @@ static inline struct shadow_entry* shadow_entry_alloc(void){
 		entry_ext->magic = 0;
 		entry_ext->timestamp = 0;
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
-		for (i = 0; i < SE_HIST_SIZE; i++){
+		for (int i = 0; i < SE_HIST_SIZE; i++){
 			entry_ext->hist_ts[i] = 0;
 		}
 #endif

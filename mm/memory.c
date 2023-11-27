@@ -4204,9 +4204,9 @@ static vm_fault_t do_anonymous_page(struct vm_fault *vmf)
 	folio_add_new_anon_rmap(folio, vma, vmf->address);
 	folio_add_lru_vma(folio, vma);
 	/*DJL ADD BEGIN*/
-#ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
-	folio_set_swappriolow(folio);
-#endif
+// #ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
+// 	folio_set_swappriolow(folio);
+// #endif
 	trace_do_anonymous_page(folio, vmf->address);
 	/*DJL ADD END*/
 setpte:
