@@ -416,7 +416,7 @@ TRACE_EVENT(folio_ws_chg_se,
 
 	TP_printk("[%s%s]left[%ld] entry[%lx] va[%lx]->folio@[%lx]{[%s]ra[%d]gen[%d]}\
 {memcg:%d}min_seq[%lu];ref[%d];tier[%d] \
-se[ts[%d]hist[%d][%d][%d]]", 
+se[memcg[%d]hist[%d][%d][%d]]", 
                 __entry->in ? "RE<=" : "EV=>",
 				__entry->swap_level == 1 ? "f" : (
 				__entry->swap_level == 0 ? "m" : (
@@ -433,7 +433,7 @@ se[ts[%d]hist[%d][%d][%d]]",
 				(unsigned short)__entry->cgroup_id,
 				(__entry->token >> LRU_REFS_WIDTH),
 				__entry->refs, __entry->tiers,
-				__entry->se->timestamp, __entry->se->hist_ts[0], 
+				__entry->se->memcg_id, __entry->se->hist_ts[0], 
 				__entry->se->hist_ts[1], __entry->se->hist_ts[2])
 );
 #endif

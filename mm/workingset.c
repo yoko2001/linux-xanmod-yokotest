@@ -228,13 +228,15 @@ static void *pack_shadow_ext(int memcgid, pg_data_t *pgdat, unsigned long evicti
 	if (entry_ext){
 		entry_ext->shadow = xa_mk_value(eviction);
 		entry_ext->magic = shadow_entry_magic;
-		entry_ext->timestamp = (unsigned short)(min_seq % 65535);
+		entry_ext->memcg_id = memcgid;
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 		if (old_entry_ext){
-			for(i = 0; i < SE_HIST_SIZE - 1; i++){
-				entry_ext->hist_ts[i+1] = old_entry_ext->hist_ts[i];
+			if (entry_ext->memcg_id == old_entry_ext->memcg_id){
+				for(i = 0; i < SE_HIST_SIZE - 1; i++){
+					entry_ext->hist_ts[i+1] = old_entry_ext->hist_ts[i];
+				}
+				entry_ext->hist_ts[0] = min_seq % 65535;
 			}
-			entry_ext->hist_ts[0] = old_entry_ext->timestamp;
 			shadow_entry_free(old_entry_ext);
 			atomic_dec(&ext_count);
 		}
@@ -268,7 +270,7 @@ static void unpack_shadow_ext(void *shadow, int *memcgidp, pg_data_t **pgdat,
 	else if (entry_is_entry_ext(shadow)){
 		entry_ext = (struct shadow_entry*)shadow;
 		entry = xa_to_value(entry_ext->shadow);
-		*last_hist = entry_ext->timestamp;
+		*last_hist = entry_ext->hist_ts[0];
 	}
 	else{
 		pr_err("unpack_shadow_ext xa err %p", shadow);

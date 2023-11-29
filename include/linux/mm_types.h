@@ -1028,10 +1028,9 @@ typedef struct {
 #define SE_HIST_SIZE	3
 typedef struct shadow_entry{
 	unsigned short magic;
-	unsigned short timestamp; 
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 	unsigned short hist_ts[SE_HIST_SIZE]; 
-	unsigned short hist_ext[SE_HIST_SIZE]; 
+	int memcg_id; 
 #endif
 	void* shadow;//original shadow
 }__aligned(sizeof(unsigned long)) shadow_entry_t;

@@ -369,7 +369,7 @@ static inline struct shadow_entry* shadow_entry_alloc(void){
 	entry_ext = kmem_cache_alloc(get_shadow_entry_cache(), GFP_NOWAIT);// GFP_ATOMIC);
 	if (entry_ext){
 		entry_ext->magic = 0;
-		entry_ext->timestamp = 0;
+		entry_ext->memcg_id = -8;
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 		for (int i = 0; i < SE_HIST_SIZE; i++){
 			entry_ext->hist_ts[i] = 0;
