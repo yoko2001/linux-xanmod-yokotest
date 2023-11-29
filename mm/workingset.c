@@ -237,6 +237,9 @@ static void *pack_shadow_ext(int memcgid, pg_data_t *pgdat, unsigned long evicti
 				}
 				entry_ext->hist_ts[0] = min_seq % 65535;
 			}
+			else{
+				pr_err("bug in entry_ext->memcg_id");
+			}
 			shadow_entry_free(old_entry_ext);
 			atomic_dec(&ext_count);
 		}
