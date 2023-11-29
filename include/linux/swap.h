@@ -379,8 +379,10 @@ static inline struct shadow_entry* shadow_entry_alloc(void){
 	return entry_ext;
 }
 static inline void shadow_entry_free(struct shadow_entry* entry_ext){
-	if (get_shadow_entry_cache() && entry_ext)
-		kmem_cache_free(get_shadow_entry_cache(), entry_ext);
+	if (get_shadow_entry_cache() && entry_ext){
+		entry_ext->magic = 0;
+		kmem_cache_free(get_shadow_entry_cache(), entry_ext);		
+	}
 }
 
 /* Only track the nodes of mappings with shadow entries */
@@ -557,7 +559,7 @@ extern void swap_shmem_alloc(swp_entry_t);
 extern int swap_duplicate(swp_entry_t);
 extern int swapcache_prepare(swp_entry_t);
 extern void swap_free(swp_entry_t);
-extern void swapcache_free_entries(swp_entry_t *entries, int n);
+extern void swapcache_free_entries(swp_entry_t *entries, int n,  int free);
 extern int free_swap_and_cache(swp_entry_t);
 int swap_type_of(dev_t device, sector_t offset);
 int find_first_swap(dev_t *device);

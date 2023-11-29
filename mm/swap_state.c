@@ -282,7 +282,7 @@ void delete_from_swap_cache(struct folio *folio)
 }
 
 void clear_shadow_from_swap_cache(int type, unsigned long begin,
-				unsigned long end)
+				unsigned long end, int free)
 {
 	unsigned long curr = begin;
 	void *old;
@@ -295,16 +295,16 @@ void clear_shadow_from_swap_cache(int type, unsigned long begin,
 
 		xa_lock_irq(&address_space->i_pages);
 		xas_for_each(&xas, old, end) {
-			if (old && entry_is_entry_ext(old)){
+			if (!xa_is_value(old) && !entry_is_entry_ext(old))
+				continue;
+			if (free && old && entry_is_entry_ext(old)){
 				// pr_err("reclaimed entry shouldnt have shadow_ext");
 				spin_lock_irq(&shadow_ext_lock);
-				shadow_entry_free(old);
 				xas_store(&xas, NULL);
+				shadow_entry_free(old);
 				spin_unlock_irq(&shadow_ext_lock);
 				continue;
 			}
-			if (!xa_is_value(old) && !entry_is_entry_ext(old))
-				continue;
 			xas_store(&xas, NULL);
 		}
 		xa_unlock_irq(&address_space->i_pages);
@@ -612,10 +612,12 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 	}
 	spin_unlock_irq(&shadow_ext_lock);
 #else
+	spin_lock_irq(&shadow_ext_lock);
 	if (entry_is_entry_ext(shadow)){
 		shadow_entry_free(shadow);
 		atomic_dec(&ext_count);
 	}
+	spin_unlock_irq(&shadow_ext_lock);
 #endif
 	/*DJL ADD END*/
 

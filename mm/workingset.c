@@ -354,10 +354,11 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, long swap_spa
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 		// spin_lock_irq(&shadow_ext_lock);
 		if (folio->shadow_ext && entry_is_entry_ext(folio->shadow_ext)){
+			pr_err("bug2 in pack_shadow");
 			shadow_entry_free(folio->shadow_ext);
-			folio->shadow_ext = NULL;
 			atomic_dec(&ext_count);
 		}
+		folio->shadow_ext = NULL;
 		// spin_unlock_irq(&shadow_ext_lock);
 #endif
 	}
@@ -365,7 +366,7 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, long swap_spa
 		is_se = 1;
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 		// spin_lock_irq(&shadow_ext_lock);
-		if (folio->shadow_ext){
+		if (folio->shadow_ext && entry_is_entry_ext(folio->shadow_ext)){
 			ret = pack_shadow_ext(mem_cgroup_id(memcg), pgdat, token, refs, se, min_seq, folio->shadow_ext);
 		}
 		else{

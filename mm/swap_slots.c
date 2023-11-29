@@ -211,7 +211,7 @@ static void drain_slots_cache_cpu(unsigned int cpu, unsigned int type,
 	cache = &per_cpu(swp_slots, cpu);
 	if ((type & SLOTS_CACHE) && cache->slots) {
 		mutex_lock(&cache->alloc_lock);
-		swapcache_free_entries(cache->slots + cache->cur, cache->nr);
+		swapcache_free_entries(cache->slots + cache->cur, cache->nr, 1);
 		cache->cur = 0;
 		cache->nr = 0;
 		if (free_slots && cache->slots) {
@@ -222,7 +222,7 @@ static void drain_slots_cache_cpu(unsigned int cpu, unsigned int type,
 	}
 	if ((type & SLOTS_CACHE_FAST) && cache->slots_fast) {
 		mutex_lock(&cache->alloc_lock);
-		swapcache_free_entries(cache->slots_fast + cache->cur_fast, cache->nr_fast);
+		swapcache_free_entries(cache->slots_fast + cache->cur_fast, cache->nr_fast, 1);
 		cache->cur_fast = 0;
 		cache->nr_fast = 0;
 		if (free_slots && cache->slots_fast) {
@@ -233,7 +233,7 @@ static void drain_slots_cache_cpu(unsigned int cpu, unsigned int type,
 	}
 	if ((type & SLOTS_CACHE_SLOW) && cache->slots_slow) {
 		mutex_lock(&cache->alloc_lock);
-		swapcache_free_entries(cache->slots_slow + cache->cur_slow, cache->nr_slow);
+		swapcache_free_entries(cache->slots_slow + cache->cur_slow, cache->nr_slow, 1);
 		cache->cur_slow = 0;
 		cache->nr_slow = 0;
 		if (free_slots && cache->slots_slow) {
@@ -244,7 +244,7 @@ static void drain_slots_cache_cpu(unsigned int cpu, unsigned int type,
 	}
 	if ((type & SLOTS_CACHE_RET) && cache->slots_ret) {
 		spin_lock_irq(&cache->free_lock);
-		swapcache_free_entries(cache->slots_ret, cache->n_ret);
+		swapcache_free_entries(cache->slots_ret, cache->n_ret, 1);
 		cache->n_ret = 0;
 		if (free_slots && cache->slots_ret) {
 			slots = cache->slots_ret;
@@ -379,14 +379,14 @@ void free_swap_slot(swp_entry_t entry)
 			 * Set it to 0 to indicate it is available for
 			 * allocation in global pool
 			 */
-			swapcache_free_entries(cache->slots_ret, cache->n_ret);
+			swapcache_free_entries(cache->slots_ret, cache->n_ret, 1);
 			cache->n_ret = 0;
 		}
 		cache->slots_ret[cache->n_ret++] = entry;
 		spin_unlock_irq(&cache->free_lock);
 	} else {
 direct_free:
-		swapcache_free_entries(&entry, 1);
+		swapcache_free_entries(&entry, 1, 1);
 	}
 }
 

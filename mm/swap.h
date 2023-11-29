@@ -37,7 +37,7 @@ void __delete_from_swap_cache(struct folio *folio,
 			      swp_entry_t entry, void *shadow);
 void delete_from_swap_cache(struct folio *folio);
 void clear_shadow_from_swap_cache(int type, unsigned long begin,
-				  unsigned long end);
+				  unsigned long end, int free);
 struct folio *swap_cache_get_folio(swp_entry_t entry,
 		struct vm_area_struct *vma, unsigned long addr);
 struct folio *filemap_get_incore_folio(struct address_space *mapping,

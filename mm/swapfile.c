@@ -753,7 +753,7 @@ static void update_swap_prio_mark(void){
 /*DJL ADD END*/
 
 static void swap_range_free(struct swap_info_struct *si, unsigned long offset,
-			    unsigned int nr_entries)
+			    unsigned int nr_entries, int free)
 {
 	unsigned long begin = offset;
 	unsigned long end = offset + nr_entries - 1;
@@ -782,7 +782,7 @@ static void swap_range_free(struct swap_info_struct *si, unsigned long offset,
 			swap_slot_free_notify(si->bdev, offset);
 		offset++;
 	}
-	clear_shadow_from_swap_cache(si->type, begin, end);
+	clear_shadow_from_swap_cache(si->type, begin, end, free);
 }
 
 static void set_cluster_next(struct swap_info_struct *si, unsigned long next)
@@ -1073,7 +1073,7 @@ static void swap_free_cluster(struct swap_info_struct *si, unsigned long idx)
 	cluster_set_count_flag(ci, 0, 0);
 	free_cluster(si, idx);
 	unlock_cluster(ci);
-	swap_range_free(si, offset, SWAPFILE_CLUSTER);
+	swap_range_free(si, offset, SWAPFILE_CLUSTER, 1);
 }
 
 int get_swap_pages(int n_goal, swp_entry_t swp_entries[], int entry_size , 
@@ -1353,7 +1353,7 @@ static unsigned char __swap_entry_free(struct swap_info_struct *p,
 	return usage;
 }
 
-static void swap_entry_free(struct swap_info_struct *p, swp_entry_t entry)
+static void swap_entry_free(struct swap_info_struct *p, swp_entry_t entry, int free)
 {
 	struct swap_cluster_info *ci;
 	unsigned long offset = swp_offset(entry);
@@ -1367,7 +1367,7 @@ static void swap_entry_free(struct swap_info_struct *p, swp_entry_t entry)
 	unlock_cluster(ci);
 
 	mem_cgroup_uncharge_swap(entry, 1);
-	swap_range_free(p, offset, 1);
+	swap_range_free(p, offset, 1, free);
 }
 
 /*
@@ -1457,7 +1457,7 @@ static int swp_entry_cmp(const void *ent1, const void *ent2)
 	return (int)swp_type(*e1) - (int)swp_type(*e2);
 }
 
-void swapcache_free_entries(swp_entry_t *entries, int n)
+void swapcache_free_entries(swp_entry_t *entries, int n, int free)
 {
 	struct swap_info_struct *p, *prev;
 	int i;
@@ -1478,7 +1478,7 @@ void swapcache_free_entries(swp_entry_t *entries, int n)
 	for (i = 0; i < n; ++i) {
 		p = swap_info_get_cont(entries[i], prev);
 		if (p)
-			swap_entry_free(p, entries[i]);
+			swap_entry_free(p, entries[i], free);
 		prev = p;
 	}
 	if (p)

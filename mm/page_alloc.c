@@ -3513,7 +3513,7 @@ void free_unref_page(struct page *page, unsigned int order)
 	}
 	pcp_trylock_finish(UP_flags);
 }
-
+extern spinlock_t shadow_ext_lock;
 /*
  * Free a list of 0-order pages
  */
@@ -3536,10 +3536,12 @@ void free_unref_page_list(struct list_head *list)
 		}
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 		folio = page_folio(page);
+		spin_lock_irq(&shadow_ext_lock);
 		if (folio->shadow_ext && entry_is_entry_ext(folio->shadow_ext)){
 			shadow_entry_free(folio->shadow_ext);
-			folio->shadow_ext = NULL;
 		}
+		folio->shadow_ext = NULL;
+		spin_unlock_irq(&shadow_ext_lock);
 #endif		
 		/*
 		 * Free isolated pages directly to the allocator, see
