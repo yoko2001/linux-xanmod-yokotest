@@ -3536,13 +3536,18 @@ void free_unref_page_list(struct list_head *list)
 		}
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 		folio = page_folio(page);
-		spin_lock_irq(&shadow_ext_lock);
-		if (folio->shadow_ext && entry_is_entry_ext(folio->shadow_ext)){
-			shadow_entry_free(folio->shadow_ext);
+		// spin_lock_irq(&shadow_ext_lock);
+		if (folio->shadow_ext){
+			if (entry_is_entry_ext(folio->shadow_ext)){
+				shadow_entry_free(folio->shadow_ext);
+			}
+			else{
+				pr_err("free_unref_page_list folio[%lx] has broken shadow_ext", (unsigned long)folio->shadow_ext);
+			}		
 		}
 		folio->shadow_ext = NULL;
-		spin_unlock_irq(&shadow_ext_lock);
-#endif		
+		// spin_unlock_irq(&shadow_ext_lock);
+#endif
 		/*
 		 * Free isolated pages directly to the allocator, see
 		 * comment in free_unref_page.

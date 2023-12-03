@@ -361,6 +361,8 @@ void workingset_refault(struct folio *folio, void *shadow, int* try_free_entry, 
 void workingset_activation(struct folio *folio);
 bool entry_is_entry_ext(const void *entry);
 extern struct kmem_cache * get_shadow_entry_cache(void);
+extern const unsigned short shadow_entry_magic; 
+extern const unsigned short shadow_entry_invalidmagic; 
 static inline struct shadow_entry* shadow_entry_alloc(void){
 	struct shadow_entry* entry_ext = NULL;
 	if (!get_shadow_entry_cache()){
@@ -380,7 +382,7 @@ static inline struct shadow_entry* shadow_entry_alloc(void){
 }
 static inline void shadow_entry_free(struct shadow_entry* entry_ext){
 	if (get_shadow_entry_cache() && entry_ext){
-		entry_ext->magic = 0;
+		entry_ext->magic = shadow_entry_invalidmagic;
 		kmem_cache_free(get_shadow_entry_cache(), entry_ext);		
 	}
 }

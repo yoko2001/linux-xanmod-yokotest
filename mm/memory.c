@@ -3735,6 +3735,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	int swap_level = -2;
 	int rf_dist_ts;
 	int try_free_entry;
+	struct address_space *address_space;
+
 	trace_do_swap_page(-1, folio);
 	/*DJL ADD END*/
 	if (!pte_unmap_same(vmf))
@@ -3793,6 +3795,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	swapcache = folio;
 
 	if (!folio) {
+		address_space = swap_address_space(entry);
 		/*DJL ADD BEGIN*/
 		trace_do_swap_page(0, folio);
 		/*DJL ADD END*/
@@ -3827,6 +3830,13 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				}
 				else swap_level = 0;
 				try_free_entry = 0;
+#ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
+				xa_lock_irq(&address_space->i_pages);
+				if (folio->shadow_ext){
+					pr_err("allocated folio has shadow??");
+					folio->shadow_ext = NULL; // might lost
+				}
+#endif
 				if (shadow){
  					workingset_refault(folio, shadow, &rf_dist_ts, vmf->address,swap_level, entry);
 					if (swap_level==1){
@@ -3841,7 +3851,9 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 						swap_level, rf_dist_ts >= MAX_NR_GENS ? 0 : 1);
 				}
 				/*DJL ADD END*/
-
+#ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
+				xa_unlock_irq(&address_space->i_pages);
+#endif
 				folio_add_lru(folio);
 
 				/* To provide entry to swap_readpage() */
@@ -4010,6 +4022,18 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		}
 	}
 
+#ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
+// 	//locked now
+	address_space = swap_address_space(entry);
+	if (address_space){
+		xa_lock_irq(&address_space->i_pages);
+		if (shadow && (!folio->shadow_ext) && entry_is_entry_ext(shadow)){
+			folio->shadow_ext = shadow;
+		}
+		xa_unlock_irq(&address_space->i_pages);		
+	}
+#endif
+
 	/*
 	 * Remove the swap entry and conditionally try to free up the swapcache.
 	 * We're already holding a reference on the page but haven't mapped it
@@ -4090,6 +4114,10 @@ out:
 		put_swap_device(si);
 	return ret;
 out_nomap:
+#ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
+	if (folio)
+		folio->shadow_ext = NULL;
+#endif
 	pte_unmap_unlock(vmf->pte, vmf->ptl);
 out_page:
 	folio_unlock(folio);

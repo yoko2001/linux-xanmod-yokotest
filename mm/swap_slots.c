@@ -532,7 +532,7 @@ repeat:
 		}
 	}
 
-	get_swap_pages(1, &entry, 1, 0, &prio, NULL);
+	get_swap_pages(1, &entry, 1, 0, &prio, left_space);
 	if (entry.val){
 		count_memcg_folio_events(folio, SWAPOUT_RAW, 1);
  	}

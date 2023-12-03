@@ -2130,13 +2130,13 @@ retry:
 
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 		//after remove_mapping, eviction complete already
-		spin_lock_irq(&shadow_ext_lock);
+		// spin_lock_irq(&shadow_ext_lock);
 		if (folio->shadow_ext && entry_is_entry_ext(folio->shadow_ext)) {
 			pr_err("shouldn't happen %s:%d",__FILE__, __LINE__);
 			shadow_entry_free(folio->shadow_ext);
 		}
 		folio->shadow_ext = NULL;
-		spin_unlock_irq(&shadow_ext_lock);
+		// spin_unlock_irq(&shadow_ext_lock);
 #endif
 		folio_unlock(folio);
 free_it:

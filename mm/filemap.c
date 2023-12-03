@@ -1886,9 +1886,11 @@ repeat:
 	 * A shadow entry of a recently evicted page, or a swap entry from
 	 * shmem/tmpfs.  Return it without attempting to raise page count.
 	 */
-	if (!folio || xa_is_value(folio) || entry_is_entry_ext(folio))
+	if (!folio || xa_is_value(folio))
 		goto out;
-
+	if (entry_is_entry_ext(folio)){
+		goto out;
+	}
 	if (!folio_try_get_rcu(folio))
 		goto repeat;
 

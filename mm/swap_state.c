@@ -298,11 +298,11 @@ void clear_shadow_from_swap_cache(int type, unsigned long begin,
 			if (!xa_is_value(old) && !entry_is_entry_ext(old))
 				continue;
 			if (free && old && entry_is_entry_ext(old)){
-				// pr_err("reclaimed entry shouldnt have shadow_ext");
-				spin_lock_irq(&shadow_ext_lock);
+				// pr_err("clear_shadow_from_s [%lx]", old);
+				// spin_lock_irq(&shadow_ext_lock);
 				xas_store(&xas, NULL);
-				shadow_entry_free(old);
-				spin_unlock_irq(&shadow_ext_lock);
+				// shadow_entry_free(old);
+				// spin_unlock_irq(&shadow_ext_lock);
 				continue;
 			}
 			xas_store(&xas, NULL);
@@ -605,19 +605,20 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 
 	//now shadow has been used
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
-	spin_lock_irq(&shadow_ext_lock);
+	// spin_lock_irq(&shadow_ext_lock);
+	VM_BUG_ON_FOLIO(folio, folio->shadow_ext);
 	folio->shadow_ext = NULL;
 	if (entry_is_entry_ext(shadow)){
 		folio->shadow_ext = shadow;
 	}
-	spin_unlock_irq(&shadow_ext_lock);
+	// spin_unlock_irq(&shadow_ext_lock);
 #else
-	spin_lock_irq(&shadow_ext_lock);
+	// spin_lock_irq(&shadow_ext_lock);
 	if (entry_is_entry_ext(shadow)){
 		shadow_entry_free(shadow);
 		atomic_dec(&ext_count);
 	}
-	spin_unlock_irq(&shadow_ext_lock);
+	// spin_unlock_irq(&shadow_ext_lock);
 #endif
 	/*DJL ADD END*/
 

@@ -193,18 +193,18 @@ static struct kmem_cache *shadow_entry_cache;
 struct kmem_cache * get_shadow_entry_cache(void){return shadow_entry_cache;}
 
 const unsigned short shadow_entry_magic = 0xABCD; 
+const unsigned short shadow_entry_invalidmagic = 0xDCBA; 
 
 bool entry_is_entry_ext(const void *entry){
-	struct shadow_entry* entry_ext = NULL;
 	if (xa_is_value(entry)) return false;
 	if (entry){
-		entry_ext = (struct shadow_entry*)entry;
-		if (entry_ext->magic != shadow_entry_magic){
-			// pr_err("entry_is_entry_ext magic wrong ext[%pK]->shadow[%lu]",entry_ext , entry_ext->shadow);
+		if (((struct shadow_entry*)entry)->magic != shadow_entry_magic){
+			// if (((struct shadow_entry*)entry)->magic == shadow_entry_invalidmagic)
+			// 	pr_err("entry was invalied ext[%lx]",entry);
 			return false;
 		}
-		if (!xa_is_value(entry_ext->shadow)){
-			pr_err("entry_is_entry_ext !xa_is_value ext[%pK]->shadow[%pK]",entry_ext , entry_ext->shadow);
+		if (!xa_is_value(((struct shadow_entry*)entry)->shadow)){
+			pr_err("entry_is_entry_ext !xa_is_value ext[%lx]",entry);
 			return false;
 		}
 		return true;
@@ -218,7 +218,8 @@ extern atomic_t ext_count;
 THIS will also free old_entry_ext
  */
 static void *pack_shadow_ext(int memcgid, pg_data_t *pgdat, unsigned long eviction,
-			 bool workingset, struct shadow_entry* entry_ext, unsigned long min_seq, struct shadow_entry* old_entry_ext)
+			 bool workingset, struct shadow_entry* entry_ext, unsigned long min_seq, struct shadow_entry* old_entry_ext,
+			 struct folio* folio, swp_entry_t entry)
 {
 	int i;
 	eviction &= EVICTION_MASK;
@@ -238,19 +239,29 @@ static void *pack_shadow_ext(int memcgid, pg_data_t *pgdat, unsigned long evicti
 				entry_ext->hist_ts[0] = min_seq % 65535;
 			}
 			else{
-				pr_err("bug in entry_ext->memcg_id");
+				for(i = 1; i < SE_HIST_SIZE; i++){
+					entry_ext->hist_ts[i] = 0;
+				}
+				entry_ext->hist_ts[0] = min_seq % 65535;
 			}
+			trace_shadow_ext_transfer(folio, memcgid, entry_ext, old_entry_ext, entry.val);
 			shadow_entry_free(old_entry_ext);
 			atomic_dec(&ext_count);
+		}
+		else{
+			for(i = 1; i < SE_HIST_SIZE; i++){
+				entry_ext->hist_ts[i] = 0;
+			}
+			entry_ext->hist_ts[0] = min_seq % 65535;
 		}
 #endif
 	}
 	else{
-		pr_err("entry_ext[%pK]->shadow[%lu]", entry_ext, eviction);
+		pr_err("entry_ext[%lx]->shadow[%lx]", entry_ext, eviction);
 		return NULL;
 	}
 	if (((unsigned long)entry_ext & 3) != 0) {
-		pr_err("xarray err entry_ext[%pK]->shadow[%lu]", entry_ext, eviction);
+		pr_err("xarray err entry_ext[%lx]->shadow[%lx]", entry_ext, eviction);
 	}
 	return entry_ext;////xa_mk_value((unsigned long)entry_ext);
 }
@@ -350,8 +361,8 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, long swap_spa
 	hist = lru_hist_from_seq(min_seq);
 	atomic_long_add(delta, &lrugen->evicted[hist][type][tier]);
 
+	is_se = 0;
 	if (!se){
-		is_se = 0;
 		ret = pack_shadow(mem_cgroup_id(memcg), pgdat, token, refs);
 		if (!xa_is_value(ret)){
 			pr_err("bug in pack_shadow");
@@ -371,16 +382,23 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, long swap_spa
 		is_se = 1;
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 		// spin_lock_irq(&shadow_ext_lock);
-		if (folio->shadow_ext && entry_is_entry_ext(folio->shadow_ext)){
-			ret = pack_shadow_ext(mem_cgroup_id(memcg), pgdat, token, refs, se, min_seq, folio->shadow_ext);
+		if (folio->shadow_ext){
+			if	(entry_is_entry_ext(folio->shadow_ext)){
+				ret = pack_shadow_ext(mem_cgroup_id(memcg), pgdat, token, refs, se, min_seq, folio->shadow_ext, folio, entry);
+			}
+			else{
+				pr_err("folio->has broken shadow_ext %s:%d", __FILE__, __LINE__);
+				ret = pack_shadow_ext(mem_cgroup_id(memcg), pgdat, token, refs, se, min_seq, NULL, folio, entry);
+			} 
 		}
 		else{
-			ret = pack_shadow_ext(mem_cgroup_id(memcg), pgdat, token, refs, se, min_seq, NULL);
+			// pr_err("folio[%lx] has no shadow_ext[%lx]", folio, folio->shadow_ext);
+			ret = pack_shadow_ext(mem_cgroup_id(memcg), pgdat, token, refs, se, min_seq, NULL, folio, entry);
 		}
 		folio->shadow_ext = NULL;
 		// spin_unlock_irq(&shadow_ext_lock);
 #else
-		ret = pack_shadow_ext(mem_cgroup_id(memcg), pgdat, token, refs, se, min_seq, NULL);
+		ret = pack_shadow_ext(mem_cgroup_id(memcg), pgdat, token, refs, se, min_seq, NULL, folio, entry);
 #endif
 		// if (!xa_is_value(ret)){
 		// 	pr_err("bug in pack_shadow");
@@ -389,7 +407,7 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, long swap_spa
 			pr_err("bug in pack_shadow_ext");
 		}
 		else{
-			// pr_err("shadow_ext[%pK] lru_gen_evivt", ret);
+			// pr_err("shadow_ext[%lx] lru_gen_evivt", ret);
 		}
 	}
 	
@@ -478,7 +496,14 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 	};
 	/*DJL ADD END*/
 	/*DJL ADD BEGIN*/
+#ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
+	if (shadow && entry_is_entry_ext(shadow))
+		trace_folio_ws_chg_se(folio, va, (unsigned short)memcg_id, token, refs, 1, swap_level, -2, shadow, entry);
+	else
+		trace_folio_ws_chg(folio, va,  pgdat, (unsigned short)memcg_id, token, refs, 1, swap_level, -2, entry);
+#else
 	trace_folio_ws_chg(folio, va,  pgdat, (unsigned short)memcg_id, token, refs, 1, swap_level, -2, entry);
+#endif
 	/*DJL ADD END*/
 #ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
 	// folio_set_swappriohigh(folio);
@@ -953,7 +978,6 @@ static struct lock_class_key shadow_nodes_key;
 
 static void shadow_entry_ctor(void *data)
 {
-	shadow_entry_t *entry = data;
 }
 
 static int shadow_entry_cache_init(void)
