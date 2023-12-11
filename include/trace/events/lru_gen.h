@@ -349,6 +349,84 @@ TRACE_EVENT(refill_swap_slots,
                 __entry->prio)
 );
 
+TRACE_EVENT(swap_scan_change_state, 
+	TP_PROTO(int type, long left, long total),
+
+	TP_ARGS(type, left , total),
+
+	TP_STRUCT__entry(
+		__field(int ,type)
+		__field(long ,left)
+		__field(long ,total)
+	),
+
+	TP_fast_assign(
+		__entry->type	= type;
+		__entry->left	= left;
+		__entry->total	= total;
+	),
+
+	TP_printk("state[%s][%d] left[%ld],totel[%ld]", 
+                (__entry->type == 0) ? "deactivate" : (
+				(__entry->type == 1) ? "activate" : "unknown"),
+				__entry->type,
+                __entry->left,
+                __entry->total)
+);
+
+TRACE_EVENT(scan_entries_savior, 
+	TP_PROTO(int memcg_id, unsigned long old_seq, unsigned long min_seq, int threshold),
+
+	TP_ARGS(memcg_id, old_seq , min_seq, threshold),
+
+	TP_STRUCT__entry(
+		__field(int ,memcg_id)
+		__field(unsigned long ,old_seq)
+		__field(unsigned long ,min_seq)
+		__field(int ,threshold)
+	),
+
+	TP_fast_assign(
+		__entry->memcg_id	= memcg_id;
+		__entry->old_seq	= old_seq;
+		__entry->min_seq	= min_seq;
+		__entry->threshold	= threshold;
+	),
+
+	TP_printk("seq[%d]-seq[%ld]=[%ld] threshold[%ld],memcg[%d]", 
+                __entry->min_seq,
+				__entry->old_seq,
+				__entry->min_seq - __entry->old_seq,
+				__entry->threshold,
+                __entry->memcg_id)
+);
+
+TRACE_EVENT(swap_shadow_scan_next, 
+	TP_PROTO(unsigned int start, unsigned int end, int scanned, int memcg_id),
+
+	TP_ARGS(start, end , scanned, memcg_id),
+
+	TP_STRUCT__entry(
+		__field(unsigned int ,start)
+		__field(unsigned int ,end)
+		__field(int ,scanned)
+		__field(int ,memcg_id)
+	),
+
+	TP_fast_assign(
+		__entry->start	= start;
+		__entry->end	= end;
+		__entry->scanned	= scanned;
+		__entry->memcg_id	= memcg_id;
+	),
+
+	TP_printk("offset[%d-%d] scanned[%d],memcg[%d]", 
+                __entry->start,
+				__entry->end,
+				__entry->scanned,
+                __entry->memcg_id)
+);
+
 TRACE_EVENT(folio_delete_from_swap_cache,
 
 	TP_PROTO(struct folio* folio, int refs, int prio),

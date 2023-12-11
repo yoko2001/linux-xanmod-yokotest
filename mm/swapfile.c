@@ -39,6 +39,7 @@
 #include <linux/swapfile.h>
 #include <linux/export.h>
 #include <linux/swap_slots.h>
+#include <linux/swap_scan_slot.h>
 #include <linux/sort.h>
 #include <linux/completion.h>
 
@@ -46,6 +47,8 @@
 #include <linux/swapops.h>
 #include <linux/swap_cgroup.h>
 #include "swap.h"
+
+#include <trace/events/lru_gen.h>
 
 static bool swap_count_continued(struct swap_info_struct *, pgoff_t,
 				 unsigned char);
@@ -285,8 +288,29 @@ static void discard_swap_cluster(struct swap_info_struct *si,
 /*DJL ADD BEGIN*/
 static signed short fastest_swap_prio = -30000;
 static signed short slowest_swap_prio = 30000;
+static struct swap_info_struct * fastest_swap_si = NULL;
 signed short get_fastest_swap_prio(void){return fastest_swap_prio;}
 signed short get_slowest_swap_prio(void){return slowest_swap_prio;}
+struct swap_info_struct * global_fastest_swap_si(void){
+	if (!fastest_swap_si)
+		goto gfsi_bad_nofile;
+	if (!percpu_ref_tryget_live(&fastest_swap_si->users))
+		goto gfsi_out;
+	/*
+	 * Guarantee the si->users are checked before accessing other
+	 * fields of swap_info_struct.
+	 *
+	 * Paired with the spin_unlock() after setup_swap_info() in
+	 * enable_swap_info().
+	 */
+	smp_rmb();
+
+	return fastest_swap_si;
+gfsi_bad_nofile:
+	pr_err("%s gfsi_bad_nofile", __FILE__);
+gfsi_out:
+	return NULL;
+}
 static void update_swap_prio_mark(void);
 /*DJL ADD END*/
 
@@ -738,6 +762,9 @@ static void update_swap_prio_mark(void){
 	for_each_node(nid) {
 		fast = plist_first_entry(&swap_avail_heads[nid], struct swap_info_struct, avail_lists[nid]);
 		slow = plist_last_entry(&swap_avail_heads[nid], struct swap_info_struct, avail_lists[nid]);
+		if (fast != fastest_swap_si){
+			fastest_swap_si = fast;
+		}
 		if (fast->prio > fastest_swap_prio) {
 			fastest_swap_prio = fast->prio;
 			pr_err("fastest_swap_prio => %d", fastest_swap_prio);
@@ -1150,8 +1177,11 @@ start_over:
 		*prio = retprio = si->prio;
 		spin_unlock(&si->lock);
 		if (n_ret || size == SWAPFILE_CLUSTER){
-			if (av_pg_before_assi) 
+			if (av_pg_before_assi){
 				*av_pg_before_assi = si->pages - si->inuse_pages;
+			}
+			if (retprio == get_fastest_swap_prio())
+				check_swap_scan_active(si, si->pages - si->inuse_pages, si->pages);
 			goto check_out;
 		}
 		cond_resched();
@@ -2094,6 +2124,39 @@ static unsigned int find_next_to_unuse(struct swap_info_struct *si,
 	return i;
 }
 
+/* si is ok */
+void swap_shadow_scan_next(struct swap_info_struct * si, struct lruvec * lruvec, 
+		unsigned long* scanned, unsigned long* saved)
+{
+	unsigned int type;
+	unsigned int start, end;
+	struct address_space *mapping;
+	swp_entry_t entry;
+	int threshold;
+
+	if (!si)
+		return;
+	threshold = SEQ_DIFF_THRESHOLD;
+	type = si->type;
+	start = si->swap_scan_cur_bit = max_t(unsigned int, 0, si->swap_scan_cur_bit);
+	end = min_t(unsigned int, si->swap_scan_cur_bit + si->swap_scan_batch_nr, si->max);
+
+
+	entry = swp_entry(type, 0);
+	mapping = swap_address_space(entry);
+
+	*scanned = swap_scan_entries_savior(mapping, lruvec, start, end, type, threshold);
+
+	trace_swap_shadow_scan_next(start, end, *scanned, mem_cgroup_id(lruvec_memcg(lruvec)));
+
+	if (unlikely(si->max == end)){
+		si->swap_scan_cur_bit = 0;
+	}
+	else{
+		si->swap_scan_cur_bit = end;
+	}
+}
+
 static int try_to_unuse(unsigned int type)
 {
 	struct mm_struct *prev_mm;
@@ -2515,6 +2578,7 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 	spin_unlock(&swap_lock);
 
 	disable_swap_slots_cache_lock();
+	disable_swap_scan_slot_lock();
 
 	set_current_oom_origin();
 	err = try_to_unuse(p->type);
@@ -2524,10 +2588,12 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 		/* re-insert swap space back into swap_list */
 		reinsert_swap_info(p);
 		reenable_swap_slots_cache_unlock();
+		reenable_swap_scan_slot_unlock();
 		goto out_dput;
 	}
 
 	reenable_swap_slots_cache_unlock();
+	reenable_swap_scan_slot_unlock();
 
 	/*
 	 * Wait for swap operations protected by get/put_swap_device()
@@ -3250,7 +3316,7 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 		prio =
 		  (swap_flags & SWAP_FLAG_PRIO_MASK) >> SWAP_FLAG_PRIO_SHIFT;
 	enable_swap_info(p, prio, swap_map, cluster_info, frontswap_map);
-
+	
 	pr_info("Adding %uk swap on %s.  Priority:%d extents:%d across:%lluk %s%s%s%s%s\n",
 		p->pages<<(PAGE_SHIFT-10), name->name, p->prio,
 		nr_extents, (unsigned long long)span<<(PAGE_SHIFT-10),
@@ -3306,6 +3372,13 @@ out:
 		inode_unlock(inode);
 	if (!error)
 		enable_swap_slots_cache();
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
+	if (!error){	
+		enable_swap_scan_slot();
+		p->swap_scan_cur_bit = p->lowest_bit;
+		p->swap_scan_batch_nr = SWAP_SLOTS_SCAN_MIN;
+	}
+#endif
 	return error;
 }
 

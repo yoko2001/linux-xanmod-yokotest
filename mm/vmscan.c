@@ -160,6 +160,12 @@ struct scan_control {
 	/* Number of pages freed so far during a call to shrink_zones() */
 	unsigned long nr_reclaimed;
 
+	/* Incremented by the number of shadow entry in fasteszt that were scanned */
+	unsigned long nr_entry_scanned;
+
+	/* Incremented by the number of shadow entry in fasteszt that were scanned */
+	unsigned long nr_entry_saved;
+
 	struct {
 		unsigned int dirty;
 		unsigned int unqueued_dirty;
@@ -1468,8 +1474,13 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 			inode_add_lru(mapping->host);
 		spin_unlock(&mapping->host->i_lock);
 
-		if (free_folio)
+		if (free_folio){
+			if (folio->shadow_ext){
+				shadow_entry_free(folio->shadow_ext);
+				folio->shadow_ext = NULL;
+			}
 			free_folio(folio);
+		}
 	}
 
 	if (shadow_ext && !(shadow == shadow_ext)){
@@ -5606,6 +5617,22 @@ static void set_initial_priority(struct pglist_data *pgdat, struct scan_control 
 	sc->priority = clamp(priority, 0, DEF_PRIORITY);
 }
 
+static void swap_scan_savior(struct scan_control *sc, struct lruvec * lruvec)
+{
+	struct swap_info_struct * si;
+	unsigned long nr_entry_saved, nr_entry_scanned;
+	
+	nr_entry_scanned = nr_entry_saved = 0;
+	si = global_fastest_swap_si();
+	if (si){
+		swap_shadow_scan_next(si, lruvec, &nr_entry_scanned, &nr_entry_saved);
+	}
+	sc->nr_entry_scanned = nr_entry_scanned;
+	sc->nr_entry_saved = nr_entry_saved;
+
+	put_swap_device(si);
+}
+
 // static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *sc)
 static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *sc, int force)
 {
@@ -5651,6 +5678,12 @@ static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *
 	clear_mm_walk();
 
 	blk_finish_plug(&plug);
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
+	if (current_is_kswapd()){
+		if (pgdat->prio_lruvec)
+			swap_scan_savior(sc, pgdat->prio_lruvec);
+	}
+#endif
 done:
 	/* kswapd should never fail */
 	pgdat->kswapd_failures = 0;
@@ -7570,9 +7603,6 @@ restart:
 		 */
 		sc.may_writepage = !laptop_mode && !nr_boost_reclaim;
 		sc.may_swap = !nr_boost_reclaim;
-		/*DJL ADD BEGIN*/
-		trace_balance_pgdat(nr_boost_reclaim, sc.may_writepage, sc.may_swap);
-		/*DJL ADD END*/
 
 		/*
 		 * Do some background aging, to give pages a chance to be
@@ -7587,7 +7617,10 @@ restart:
 		 */
 		if (sc.priority < DEF_PRIORITY - 2)
 			sc.may_writepage = 1;
-
+		/*DJL ADD BEGIN*/
+		if (sc.may_writepage)
+			trace_balance_pgdat(nr_boost_reclaim, balanced, sc.may_writepage, sc.may_swap);
+		/*DJL ADD END*/
 		/* Call soft limit reclaim before calling shrink_node. */
 		sc.nr_scanned = 0;
 		nr_soft_scanned = 0;

@@ -42,7 +42,8 @@ struct folio *swap_cache_get_folio(swp_entry_t entry,
 		struct vm_area_struct *vma, unsigned long addr);
 struct folio *filemap_get_incore_folio(struct address_space *mapping,
 		pgoff_t index);
-
+void swap_shadow_scan_next(struct swap_info_struct * si, struct lruvec * lruvec, 
+		unsigned long* scanned, unsigned long* saved);
 struct page *read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 				   struct vm_area_struct *vma,
 				   unsigned long addr,

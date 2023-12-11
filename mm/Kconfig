@@ -1193,33 +1193,33 @@ config LRU_GEN_ENABLED
 	  This option enables the multi-gen LRU by default.
 
 config LRU_GEN_PASSIVE_SWAP_ALLOC
-	bool "Enable by default"
+	bool "Passively allocating high-prio entry"
 	depends on LRU_GEN
 	help
 	  This option enables passive swap entry allocation, only refaulted folio
 	  gets fast slots
 
 config LRU_GEN_CGROUP_KSWAPD_BOOST
-	bool "Enable by default"
+	bool "Enable memcgroup level kswapd"
 	depends on LRU_GEN
 	help
 	  This option enables background kswapd boosting reclamation
 
 config LRU_GEN_SHADOW_ENTRY_EXT
-	bool "Enable by default"
+	bool "Store more info in shadow_entry"
 	depends on LRU_GEN
 	help
 	  This option enables shadow entry extention's allocation
 
 config LRU_GEN_KEEP_REFAULT_HISTORY
-bool "Enable by default"
-	depends on LRU_GEN
+	bool "Keeps REFAULT history of last 3 evictions"
+	depends on LRU_GEN_SHADOW_ENTRY_EXT
 	help
 	  This option enables shadow_ext to keep 3 timestamp for 
 	  history refualt recds
 
 config LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
-	bool "Enable by default"
+	bool "Punish false fast swap assignment"
 	depends on LRU_GEN
 	help
 	  This option enables punishment on false fast assign, make the entry 
@@ -1233,6 +1233,13 @@ config LRU_GEN_STATS
 	  from evicted generations for debugging purpose.
 
 	  This option has a per-memcg and per-node memory overhead.
+
+config LRU_GEN_STALE_SWP_ENTRY_SAVIOR
+	bool "scan & free stale fast swap entries"
+	depends on LRU_GEN_KEEP_REFAULT_HISTORY
+	help
+	  This option enables background scan on those higher priority swap
+	  devices, it marks those stale entries using lru_gen hist refault
 # }
 
 source "mm/damon/Kconfig"

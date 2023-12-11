@@ -65,24 +65,27 @@ TRACE_EVENT(mm_vmscan_kswapd_sleep,
 
 TRACE_EVENT(balance_pgdat,
 
-	TP_PROTO(unsigned long nr_boost_reclaim, unsigned int may_writepage, unsigned int may_unmap),
+	TP_PROTO(unsigned long nr_boost_reclaim, unsigned long nr_balanced, unsigned int may_writepage, unsigned int may_unmap),
 
-	TP_ARGS(nr_boost_reclaim, may_writepage, may_unmap),
+	TP_ARGS(nr_boost_reclaim, nr_balanced, may_writepage, may_unmap),
 
 	TP_STRUCT__entry(
 		__field(	unsigned long,	nr_boost_reclaim	)
+		__field(	unsigned long,	nr_balanced	)
 		__field(	unsigned int,	may_writepage	)
 		__field(	unsigned int,	may_unmap	)
 	),
 
 	TP_fast_assign(
 		__entry->nr_boost_reclaim	= nr_boost_reclaim;
+		__entry->nr_balanced	= nr_balanced;
 		__entry->may_writepage	= may_writepage;
 		__entry->may_unmap	= may_unmap;
 	),
 
-	TP_printk("nr_boost_reclaim[%lu] may_writepage[%u] may_unmap[%u]", 
-			__entry->nr_boost_reclaim, __entry->may_writepage, __entry->may_unmap)
+	TP_printk("nr_boost_reclaim[%lu] balanced[%lu] may_writepage[%u] may_unmap[%u]", 
+			__entry->nr_boost_reclaim, __entry->nr_balanced, 
+			__entry->may_writepage, __entry->may_unmap)
 );
 
 TRACE_EVENT(mm_vmscan_kswapd_wake,

@@ -291,6 +291,10 @@ struct swap_info_struct {
 	unsigned long *frontswap_map;	/* frontswap in-use, one bit per page */
 	atomic_t frontswap_pages;	/* frontswap pages in-use counter */
 #endif
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
+	unsigned int swap_scan_cur_bit;  /*start point of next shadow scan*/
+	unsigned int swap_scan_batch_nr; /*likely num of next shadow scan*/
+#endif
 	spinlock_t lock;		/*
 					 * protect map scan related fields like
 					 * swap_map, lowest_bit, highest_bit,
@@ -468,7 +472,11 @@ extern int sysctl_min_slab_ratio;
 
 extern signed short get_fastest_swap_prio(void);
 extern signed short get_slowest_swap_prio(void);
-
+extern struct swap_info_struct * global_fastest_swap_si(void);
+int add_to_scan_slot(swp_entry_t entry);
+unsigned swap_scan_entries_savior(struct address_space *mapping, 
+         struct lruvec * lruvec, pgoff_t start, pgoff_t end, 
+		 int type, int threshold);
 #ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
 static inline int folio_swapprio_demote(struct folio* folio){
 	if (folio_test_swappriohigh(folio)){
@@ -548,6 +556,7 @@ static inline long get_nr_swap_pages(void)
 
 extern void si_swapinfo(struct sysinfo *);
 swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space);
+void check_swap_scan_active(struct swap_info_struct *si, long left, long total);
 bool folio_free_swap(struct folio *folio);
 void put_swap_folio(struct folio *folio, swp_entry_t entry);
 extern swp_entry_t get_swap_page_of_type(int);
@@ -562,6 +571,7 @@ extern int swap_duplicate(swp_entry_t);
 extern int swapcache_prepare(swp_entry_t);
 extern void swap_free(swp_entry_t);
 extern void swapcache_free_entries(swp_entry_t *entries, int n,  int free);
+extern void swap_scan_save_entries(swp_entry_t *entries, int n);
 extern int free_swap_and_cache(swp_entry_t);
 int swap_type_of(dev_t device, sector_t offset);
 int find_first_swap(dev_t *device);

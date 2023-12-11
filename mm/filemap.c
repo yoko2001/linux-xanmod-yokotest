@@ -48,6 +48,8 @@
 #include <asm/tlbflush.h>
 #include "internal.h"
 
+#include <trace/events/lru_gen.h>
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/filemap.h>
 
@@ -2064,6 +2066,51 @@ retry:
 reset:
 	xas_reset(xas);
 	goto retry;
+}
+
+unsigned swap_scan_entries_savior(struct address_space *mapping, 
+        struct lruvec * target_lruvec, pgoff_t start, pgoff_t end, 
+		int type, int threshold)
+{
+	int scan_count, save_count;
+	struct folio *folio;
+	struct shadow_entry* entry_ext;
+	int memcg_id;
+	int target_memcg_id;
+	struct lru_gen_folio *lrugen;
+	unsigned long min_seq, old_seq;
+	swp_entry_t entry;
+	unsigned long offset;
+	unsigned count_choosed;
+
+	count_choosed = 0;
+	XA_STATE(xas, &mapping->i_pages, start);
+	target_memcg_id = mem_cgroup_id(lruvec_memcg(target_lruvec));
+	lrugen = &target_lruvec->lrugen;
+	min_seq = READ_ONCE(lrugen->min_seq[type]);
+	scan_count = save_count = 0;
+	rcu_read_lock();
+	while ((folio = find_get_entry(&xas, end, XA_PRESENT)) != NULL) {
+		if(entry_is_entry_ext(folio)){
+			entry_ext = (struct shadow_entry*)folio;
+			memcg_id = entry_ext->memcg_id;
+			if (target_memcg_id == memcg_id){ //match check it
+				old_seq = entry_ext->hist_ts[0];
+				if (old_seq == 0) {
+					pr_err("inner swap_address shadow_ext got hist_ts[0] == 0");
+				}
+				if (min_seq - old_seq >= threshold){
+					trace_scan_entries_savior(memcg_id, old_seq, min_seq, threshold);
+					offset = xas.xa_index;
+					entry = swp_entry(type, offset);
+					add_to_scan_slot(entry);
+				}
+			}
+		}
+	}
+	rcu_read_unlock();
+
+	return count_choosed;
 }
 
 /**
