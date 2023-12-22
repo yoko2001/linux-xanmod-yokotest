@@ -1391,13 +1391,13 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				case 2: //PAGE_SUCCESS
 					//check if sync io
 					if (folio_test_dirty(folio)){ //unexpected
-						pr_err("PAGE_SUCCESS dirty folio[%p]", folio);
+						pr_err("PAGE_SUCCESS dirty folio[%pK]", folio);
 					}					
 					if (folio_test_writeback(folio)){//sync, under wb						
 						list_add(&folio->lru, &folio_list_wb); 	
 						//check later in vmscan
 						list_for_each_entry_safe(folio, next, &folio_list_wb, lru){
-							pr_err("folio->lru[%p] {p[%p]n[%p]} next[%p]", 
+							pr_err("folio->lru[%pK] {p[%pK]n[%pK]} next[%pK]", 
 									&folio->lru, folio->lru.prev, folio->lru.next, next);
 						}
 					}
@@ -1431,7 +1431,7 @@ scceed_pageout:
 
 skip_this_save:
 			if (reset_private){
-				pr_err("reset folio[%p] private [%lu]", folio, ori_pri_entry.val);
+				pr_err("reset folio[%pK] private [%lu]", folio, ori_pri_entry.val);
 				set_page_private(folio_page(folio, 0), ori_pri_entry.val);
 			}
 
@@ -1450,15 +1450,14 @@ skip_this_save:
 		swap_read_unplug(splug_save);
 		pr_err("after swap_read_unplug");
 		list_for_each_entry_safe(folio, next, &folio_list_wb, lru){
-			pr_err("folio->lru[%p] {p[%p]n[%p]} next[%p]", 
+			pr_err("folio->lru[%pK] {p[%pK]n[%pK]} next[%pK]", 
 					&folio->lru, folio->lru.prev, folio->lru.next, next);
 		}
 		// lru_add_drain();
-
 		//add to lru_gen
 		if (lruvec && lrugen){
-			pr_err("add to saved_folios");
-			spin_lock_irq(&lruvec->savestale_lock);
+			pr_err("add to saved_folios lruvec[%pK]", lruvec);
+			spin_lock_irq(&lruvec->lru_lock);
 			while (!list_empty(&folio_list_wb)) {
 				num_moved++;
 				if (num_moved > entry_saved){
@@ -1467,26 +1466,35 @@ skip_this_save:
 				}
 				struct folio * folio = lru_to_folio(&folio_list_wb);
 				VM_BUG_ON_FOLIO(!folio_test_writeback(folio), folio);
-				pr_err("add_to_lruvec_saved_folios folio[%p]", folio);
-				pr_err("folio[%p]{p[%p]n[%p]} saved_folios{p[%p]n[%p]} folio_list_wb{p[%p]n[%p]}", 
+				pr_err("add_to_lruvec_saved_folios folio[%pK]", folio);
+				pr_err("folio[%pK]{p[%pK]n[%pK]} saved_folios{p[%pK]n[%pK]} folio_list_wb{p[%pK]n[%pK]}", 
 						&folio->lru, folio->lru.prev, folio->lru.next,
 						lrugen->saved_folios.prev, lrugen->saved_folios.next, 
 						folio_list_wb.prev, folio_list_wb.next);
 				//list_move(&folio->lru, &lrugen->saved_folios);
-				list_del(&folio->lru);
-				pr_err("del folio[%p]{p[%p]n[%p]} saved_folios{p[%p]n[%p]} folio_list_wb{p[%p]n[%p]}", 
-						&folio->lru, folio->lru.prev, folio->lru.next,
-						lrugen->saved_folios.prev, lrugen->saved_folios.next, 
-						folio_list_wb.prev, folio_list_wb.next);
-				list_add(&folio->lru, &lrugen->saved_folios); 
-				pr_err("add folio[%p]{p[%p]n[%p]} saved_folios{p[%p]n[%p]} folio_list_wb{p[%p]n[%p]}", 
+				// list_del(&folio->lru);
+				// pr_err("del folio[%pK]{p[%pK]n[%pK]} saved_folios{p[%pK]n[%pK]} folio_list_wb{p[%pK]n[%pK]}", 
+				// 		&folio->lru, folio->lru.prev, folio->lru.next,
+				// 		lrugen->saved_folios.prev, lrugen->saved_folios.next, 
+				// 		folio_list_wb.prev, folio_list_wb.next);
+				list_move_tail(&folio->lru, &lrugen->saved_folios); 
+				pr_err("add folio[%pK]{p[%pK]n[%pK]} saved_folios{p[%pK]n[%pK]} folio_list_wb{p[%pK]n[%pK]}", 
 						&folio->lru, folio->lru.prev, folio->lru.next,
 						lrugen->saved_folios.prev, lrugen->saved_folios.next, 
 						folio_list_wb.prev, folio_list_wb.next);
 				// folio_unlock(folio);
 				trace_add_to_lruvec_saved_folios(lruvec, folio, num_moved);	
+								list_for_each_entry_safe(folio, next, &lrugen->saved_folios, lru){
+					pr_err("saved_folios: folio->lru[%pK] {p[%pK]n[%pK]} next[%pK]", 
+						&folio->lru, folio->lru.prev, folio->lru.next, next);
+				}
+				list_for_each_entry_safe(folio, next, &folio_list_wb, lru){
+					pr_err("saved_folios: folio->lru[%pK] {p[%pK]n[%pK]} next[%pK]", 
+						&folio->lru, folio->lru.prev, folio->lru.next, next);
+				}
 			}
-			spin_unlock_irq(&lruvec->savestale_lock);
+			spin_unlock_irq(&lruvec->lru_lock);
+			pr_err("finish adding to lruvec[%pK]", lruvec);
 		}
 		else{
 			struct folio* folio = NULL;

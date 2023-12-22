@@ -30,7 +30,8 @@
 static void __end_swap_bio_write(struct bio *bio)
 {
 	struct page *page = bio_first_page_all(bio);
-
+	if (folio_test_stalesaved(page_folio(page)))
+		pr_err("__end_swap_bio_write on stale folio[%pK]",page_folio(page) );
 	if (bio->bi_status) {
 		pr_err("__end_swap_bio_write fail");
 		SetPageError(page);
@@ -185,7 +186,7 @@ int swap_writepage(struct page *page, struct writeback_control *wbc)
 	struct folio *folio = page_folio(page);
 	int ret;
 	if (folio_test_stalesaved(folio)){
-		pr_err("swap_writepage on staled folio[%p]", folio);
+		pr_err("swap_writepage on staled folio[%pK]", folio);
 	} //skip folio_free_swap for staled folio
 	else if (folio_free_swap(folio)) {
 		folio_unlock(folio);
@@ -373,8 +374,10 @@ static void swap_writepage_bdev_async(struct page *page,
 	unlock_page(page);
 	submit_bio(bio);
 	if (folio_test_stalesaved(folio)){
-		pr_err("swap_writepage_bdev_async submited folio[%p] wb[%d]", 
+		pr_err("swap_writepage_bdev_async submited folio[%pK] wb[%d]", 
 				folio, folio_test_writeback(folio));
+		pr_err("after submit_bio folio[%pK]{p[%pk]n[%pK]}", 
+				folio, folio->lru.prev, folio->lru.next);
 	}
 }
 

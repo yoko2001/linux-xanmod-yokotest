@@ -1354,11 +1354,11 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 int pageout_save(struct folio *folio, struct address_space *mapping, struct swap_iocb **plug){
 	struct swap_info_struct *sis = page_swap_info(folio_page(folio, 0));
 	if (sis->flags & SWP_SYNCHRONOUS_IO){
-		pr_err("folio[%p] was backed by sync io bdev", folio);
+		pr_err("folio[%pK] was backed by sync io bdev", folio);
 		return PAGE_KEEP;
 	}
 	if (!is_page_cache_freeable_save(folio)){
-		pr_err("pageout_save folio[%p] ref err [%d]-[%d]<>1 + [%ld] ", 
+		pr_err("pageout_save folio[%pK] ref err [%d]-[%d]<>1 + [%ld] ", 
 				folio, folio_ref_count(folio), 
 				folio_test_private(folio), folio_nr_pages(folio));
 		return PAGE_KEEP;
@@ -1498,7 +1498,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 			}
 			shadow = workingset_eviction(folio, target_memcg, swap_level, swap_space_left, shadow_ext, swap);
 			if (shadow_ext && shadow != shadow_ext)
-				pr_err("workingset_eviction fail give shadow_ext [%pK]", shadow);
+				pr_err("workingset_eviction fail give shadow_ext [%pKK]", shadow);
 		}
 		if (si)
 			put_swap_device(si);
@@ -1808,21 +1808,27 @@ unsigned int check_saved_folios_wb(struct lruvec *lruvec,
 	unsigned int nr_reclaimed = 0;
 	struct lru_gen_folio *lrugen = &lruvec->lrugen;
 	struct list_head *saved_folios = &lrugen->saved_folios;
+	int scanned = 0;
 	LIST_HEAD(ret_folios);
 	LIST_HEAD(folio_list);
 	LIST_HEAD(saved_sb_complete_list);
 //load out pages
-	spin_lock_irq(&lruvec->savestale_lock);
+	spin_lock_irq(&lruvec->lru_lock);
 	while (!list_empty(saved_folios)) {
 		struct folio *folio;
 		folio = lru_to_folio(saved_folios);
-		list_move(&folio->lru, &folio_list);
+		list_del(&folio->lru);
+		pr_err("lruvec[%pK] check_s_f_wbfolio->lru[%pK] {p[%pK]n[%pK]}", 
+				lruvec, folio, folio->lru.prev, folio->lru.next);
+		list_add(&folio->lru, &folio_list);
+		scanned += 1;
+		if (scanned >= 20) break; //for safety
 	}
-	spin_unlock_irq(&lruvec->savestale_lock);
+	spin_unlock_irq(&lruvec->lru_lock);
 
 	if (list_empty(&folio_list))
 		return 0;
-	pr_err("check_saved_folios_wb, do check");
+	pr_err("check_saved_folios_wb, do check [%d] folios", scanned);
 
 	while (!list_empty(&folio_list)) {
 		struct folio *folio;
@@ -1831,7 +1837,7 @@ unsigned int check_saved_folios_wb(struct lruvec *lruvec,
 
 		cond_resched();
 		folio = lru_to_folio(&folio_list);
-		pr_err("check_saved_folios_wb, folio [%p]", folio);
+		pr_err("check_saved_folios_wb, folio [%pK]", folio);
 
 		list_del(&folio->lru);
 
@@ -1845,7 +1851,7 @@ unsigned int check_saved_folios_wb(struct lruvec *lruvec,
 		VM_BUG_ON_FOLIO(!folio_test_swapbacked(folio), folio);
 		// VM_BUG_ON_FOLIO(!folio_test_swapcache(folio), folio);
 		if (folio_test_swapcache(folio))
-			pr_err("folio_swapcached [%p][%s:%d]", folio, 
+			pr_err("folio_swapcached [%pK][%s:%d]", folio, 
 					__FILE__, __LINE__);
 		VM_BUG_ON_FOLIO(folio_test_large(folio), folio);
 		VM_BUG_ON_FOLIO(folio_mapped(folio), folio);
@@ -1868,15 +1874,15 @@ unsigned int check_saved_folios_wb(struct lruvec *lruvec,
 				goto keep_locked_next_time;
 			} else {
 				folio_unlock(folio);
-				pr_err("try wait folio wb[%p]", folio);
+				pr_err("try wait folio wb[%pK]", folio);
 				folio_wait_writeback(folio);
 				/* then go back and try same folio again */
 				if (folio_test_writeback(folio)){
-					pr_err("folio[%p] should not bit pg_wb", folio);
+					pr_err("folio[%pK] should not bit pg_wb", folio);
 					folio_test_clear_writeback(folio);
 				}
 				list_add_tail(&folio->lru, &folio_list);
-				pr_err("success wait folio wb[%p]", folio);
+				pr_err("success wait folio wb[%pK]", folio);
 				continue;
 			}
 		}
@@ -1884,14 +1890,14 @@ unsigned int check_saved_folios_wb(struct lruvec *lruvec,
 			nr_reclaimed += nr_pages;
 			folio_unlock(folio);
 			list_add(&folio->lru, &saved_sb_complete_list);
-			pr_err("folio[%p] add to saved_sb_complete_list", folio);
+			pr_err("folio[%pK] add to saved_sb_complete_list", folio);
 			continue;
 		}
 keep_locked_next_time:
 		folio_unlock(folio);
 keep_next_time:
 		list_add(&folio->lru, &ret_folios);
-		pr_err("folio[%p] keep_next_time", folio);
+		pr_err("folio[%pK] keep_next_time", folio);
 		VM_BUG_ON_FOLIO(folio_test_lru(folio) || folio_test_unevictable(folio), folio);
 	}
 	if (!list_empty(&saved_sb_complete_list)){
