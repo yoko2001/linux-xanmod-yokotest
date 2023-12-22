@@ -140,7 +140,8 @@ IF_HAVE_PG_ARCH_X(PG_arch_3,		"arch_3"	)		\
 IF_HAVE_PG_SKIP_KASAN_POISON(PG_skip_kasan_poison, "skip_kasan_poison")		\
 IF_HAVE_PG_SWAP_PRIORITY_LOW(PG_swappriolow, "swap_priority_low")		\
 IF_HAVE_PG_SWAP_PRIORITY_LOW(PG_swappriohigh, "swap_priority_high")		\
-IF_HAVE_PG_SWAP_PRIORITY_LOW(PG_readaheaded, "page_was_readaheaded")	
+IF_HAVE_PG_SWAP_PRIORITY_LOW(PG_readaheaded, "page_was_readaheaded")	\
+IF_HAVE_PG_SWAP_PRIORITY_LOW(PG_stalesaved, "page_was_saved_stale_entry")
 
 #define show_page_flags(flags)						\
 	(flags) ? __print_flags(flags, "|",				\

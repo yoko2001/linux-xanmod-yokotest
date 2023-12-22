@@ -414,6 +414,7 @@ void lru_note_cost(struct lruvec *lruvec, bool file,
 void lru_note_cost_refault(struct folio *);
 void folio_add_lru(struct folio *);
 void folio_add_lru_ra(struct folio *);
+void folio_add_lru_save(struct folio *);
 void folio_add_lru_vma(struct folio *, struct vm_area_struct *);
 void mark_page_accessed(struct page *);
 void folio_mark_accessed(struct folio *);
@@ -587,7 +588,9 @@ extern int init_swap_address_space(unsigned int type, unsigned long nr_pages);
 extern void exit_swap_address_space(unsigned int type);
 extern struct swap_info_struct *get_swap_device(swp_entry_t entry);
 sector_t swap_page_sector(struct page *page);
-
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
+extern int pageout_save(struct folio *folio, struct address_space *mapping, struct swap_iocb **plug);
+#endif
 static inline void put_swap_device(struct swap_info_struct *si)
 {
 	percpu_ref_put(&si->users);

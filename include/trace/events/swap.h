@@ -338,6 +338,62 @@ TRACE_EVENT(should_try_to_free_swap,
 	__entry->low, __entry->high,
 	__entry->fault_flags, __entry->ksm)
 );
+
+TRACE_EVENT(vma_ra_save_stale,
+
+	TP_PROTO(unsigned long swpentry, unsigned long swpentry_to, int saved, int prio_in, int prio_out),
+
+	TP_ARGS(swpentry, swpentry_to, saved, prio_in, prio_out),
+
+	TP_STRUCT__entry(
+		__field(unsigned long, swpentry)
+		__field(unsigned long, swpentry_to)
+		__field(int , saved)
+		__field(int , prio_in)
+		__field(int , prio_out)
+	),
+
+	TP_fast_assign(
+		__entry->swpentry  = swpentry;
+		__entry->swpentry_to  = swpentry_to;
+		__entry->saved	= saved;
+		__entry->prio_in	= prio_in;
+		__entry->prio_out	= prio_out;
+	),
+
+	/* Flag format is based on page-types.c formatting for pagemap */
+	TP_printk("entry[%lu]->entry[%lu] id in batch[%d] prio[%d->%d]",
+	__entry->swpentry,
+	__entry->swpentry_to,
+	__entry->saved,
+	__entry->prio_in,
+	__entry->prio_out
+	)
+);
+
+TRACE_EVENT(add_to_lruvec_saved_folios,
+	TP_PROTO(struct lruvec *lruvec, struct folio *folio, int num_moved),
+
+	TP_ARGS(lruvec, folio, num_moved),
+
+	TP_STRUCT__entry(
+		__field(struct lruvec *, lruvec)
+		__field(struct folio *, folio)
+		__field(int, num_moved)
+	),
+
+	TP_fast_assign(
+		__entry->folio  = folio;
+		__entry->lruvec  = lruvec;
+		__entry->num_moved  = num_moved;
+	),
+
+	/* Flag format is based on page-types.c formatting for pagemap */
+	TP_printk("folio[%p]->lruvec[%p] num[%d]",
+	__entry->folio,
+	__entry->lruvec,
+	__entry->num_moved)
+);
 /*DJL ADD END*/
 #endif /* _TRACE_SWAP_H */
 #include <trace/define_trace.h>

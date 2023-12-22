@@ -28,6 +28,14 @@ extern struct address_space *swapper_spaces[];
 	(&swapper_spaces[swp_type(entry)][swp_offset(entry) \
 		>> SWAP_ADDRESS_SPACE_SHIFT])
 
+/* One swap address space rmap for each 512M swap space */
+#define SWAP_ADDRESS_SPACE_REMAP_SHIFT	(14 + 3)
+#define SWAP_ADDRESS_SPACE_REMAP_PAGES	(1 << SWAP_ADDRESS_SPACE_REMAP_SHIFT)
+extern struct address_space *swapper_spaces_remap[];
+#define swap_address_space_remap(entry)			    \
+	(&swapper_spaces_remap[swp_type(entry)][swp_offset(entry) \
+		>> SWAP_ADDRESS_SPACE_REMAP_SHIFT])
+
 void show_swap_cache_info(void);
 bool add_to_swap(struct folio *folio,  long* left_space);
 void *get_shadow_from_swap_cache(swp_entry_t entry);
@@ -54,8 +62,10 @@ struct page *read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 				     struct vm_area_struct *vma,
 				     unsigned long addr,
-				     bool *new_page_allocated, bool no_ra, 
-					 int* try_free_swap, unsigned long realaddr);
+				     bool *new_page_allocated, 
+					 bool no_ra, 
+					 int* try_free_swap, 
+					 unsigned long realaddr);
 struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t flag,
 				    struct vm_fault *vmf, int* try_free_entry);
 struct page *swapin_readahead(swp_entry_t entry, gfp_t flag,

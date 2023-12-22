@@ -1429,6 +1429,7 @@ const char * const vmstat_text[] = {
 	"workingset_refault_dist_2",
 	"workingset_refault_dist_3",
 	"workingset_refault_dist_4",
+	"swap_save_stale",
 #endif
 /*DJL ADD END*/
 #endif /* CONFIG_VM_EVENT_COUNTERS || CONFIG_MEMCG */

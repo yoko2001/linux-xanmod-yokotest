@@ -2082,9 +2082,9 @@ unsigned swap_scan_entries_savior(struct address_space *mapping,
 	swp_entry_t entry;
 	unsigned long offset;
 	unsigned count_choosed;
+	XA_STATE(xas, &mapping->i_pages, start);
 
 	count_choosed = 0;
-	XA_STATE(xas, &mapping->i_pages, start);
 	target_memcg_id = mem_cgroup_id(lruvec_memcg(target_lruvec));
 	lrugen = &target_lruvec->lrugen;
 	min_seq = READ_ONCE(lrugen->min_seq[type]);
@@ -2104,6 +2104,7 @@ unsigned swap_scan_entries_savior(struct address_space *mapping,
 					offset = xas.xa_index;
 					entry = swp_entry(type, offset);
 					add_to_scan_slot(entry);
+					count_choosed ++;
 				}
 			}
 		}

@@ -552,6 +552,24 @@ void folio_add_lru_ra(struct folio *folio)
 EXPORT_SYMBOL(folio_add_lru_ra);
 /*DJL ADD END*/
 
+void folio_add_lru_save(struct folio * folio){
+	struct folio_batch *fbatch;
+
+	VM_BUG_ON_FOLIO(folio_test_active(folio) &&
+			folio_test_unevictable(folio), folio);
+	VM_BUG_ON_FOLIO(folio_test_lru(folio), folio);
+
+	folio_clear_active(folio);
+	//set readahead here
+	folio_set_stalesaved(folio);
+	folio_get(folio);
+	local_lock(&cpu_fbatches.lock);
+	fbatch = this_cpu_ptr(&cpu_fbatches.lru_add);
+	folio_batch_add_and_move(fbatch, folio, lru_add_fn);
+	local_unlock(&cpu_fbatches.lock);
+}
+EXPORT_SYMBOL(folio_add_lru_save);
+
 /**
  * folio_add_lru_vma() - Add a folio to the appropate LRU list for this VMA.
  * @folio: The folio to be added to the LRU.

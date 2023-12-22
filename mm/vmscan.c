@@ -1111,6 +1111,11 @@ static inline int is_page_cache_freeable(struct folio *folio)
 		1 + folio_nr_pages(folio);
 }
 
+static inline int is_page_cache_freeable_save(struct folio *folio)
+{
+	return folio_ref_count(folio) ==
+		3 + folio_nr_pages(folio); //one for ori cache; one for new entry
+}
 /*
  * We detected a synchronous write error writing a folio out.  Probably
  * -ENOSPC.  We need to propagate that into the address_space for a subsequent
@@ -1346,6 +1351,69 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 	return PAGE_CLEAN;
 }
 
+int pageout_save(struct folio *folio, struct address_space *mapping, struct swap_iocb **plug){
+	struct swap_info_struct *sis = page_swap_info(folio_page(folio, 0));
+	if (sis->flags & SWP_SYNCHRONOUS_IO){
+		pr_err("folio[%p] was backed by sync io bdev", folio);
+		return PAGE_KEEP;
+	}
+	if (!is_page_cache_freeable_save(folio)){
+		pr_err("pageout_save folio[%p] ref err [%d]-[%d]<>1 + [%ld] ", 
+				folio, folio_ref_count(folio), 
+				folio_test_private(folio), folio_nr_pages(folio));
+		return PAGE_KEEP;
+	}
+	if (!mapping) {
+		/*
+		 * Some data journaling orphaned folios can have
+		 * folio->mapping == NULL while being dirty with clean buffers.
+		 */
+		if (folio_test_private(folio)) {
+			if (try_to_free_buffers(folio)) {
+				folio_clear_dirty(folio);
+				pr_info("%s: orphaned folio\n", __func__);
+				return PAGE_CLEAN;
+			}
+		}
+		return PAGE_KEEP;
+	}
+	if (mapping->a_ops->writepage == NULL)
+		return PAGE_ACTIVATE;
+	if (!folio_test_dirty(folio))
+		pr_err("pageout_save should receive dirty folio");
+	if (folio_clear_dirty_for_io_save(folio)) {
+		int res;
+		struct writeback_control wbc = {
+			.sync_mode = WB_SYNC_NONE,
+			.nr_to_write = SWAP_CLUSTER_MAX,
+			.range_start = 0,
+			.range_end = LLONG_MAX,
+			.for_reclaim = 1,
+			.swap_plug = plug,
+		};
+
+		folio_set_reclaim(folio);
+		res = mapping->a_ops->writepage(&folio->page, &wbc);
+		if (res < 0){
+			pr_err("call handle_write_error");
+			handle_write_error(mapping, folio, res);
+		}
+		if (res == AOP_WRITEPAGE_ACTIVATE) {
+			folio_clear_reclaim(folio);
+			return PAGE_ACTIVATE;
+		}
+
+		if (!folio_test_writeback(folio)) {
+			/* synchronous write or broken a_ops? */
+			folio_clear_reclaim(folio);
+			pr_err("synchronous write or broken a_ops [%s:%d]", __FILE__, __LINE__);
+		}
+		// node_stat_add_folio(folio, NR_VMSCAN_WRITE);
+		return PAGE_SUCCESS;
+	}
+	return PAGE_CLEAN;
+}
+ 
 /*
  * Same as remove_mapping, but if the folio is removed from the mapping, it
  * gets returned with a refcount of 0.
@@ -1732,6 +1800,113 @@ static bool may_enter_fs(struct folio *folio, gfp_t gfp_mask)
 	 */
 	return !data_race(folio_swap_flags(folio) & SWP_FS_OPS);
 }
+
+#ifdef CONFIG_LRU_GEN
+unsigned int check_saved_folios_wb(struct lruvec *lruvec, 
+		struct pglist_data *pgdat, struct scan_control *sc)
+{
+	unsigned int nr_reclaimed = 0;
+	struct lru_gen_folio *lrugen = &lruvec->lrugen;
+	struct list_head *saved_folios = &lrugen->saved_folios;
+	LIST_HEAD(ret_folios);
+	LIST_HEAD(folio_list);
+	LIST_HEAD(saved_sb_complete_list);
+//load out pages
+	spin_lock_irq(&lruvec->savestale_lock);
+	while (!list_empty(saved_folios)) {
+		struct folio *folio;
+		folio = lru_to_folio(saved_folios);
+		list_move(&folio->lru, &folio_list);
+	}
+	spin_unlock_irq(&lruvec->savestale_lock);
+
+	if (list_empty(&folio_list))
+		return 0;
+	pr_err("check_saved_folios_wb, do check");
+
+	while (!list_empty(&folio_list)) {
+		struct folio *folio;
+		unsigned int nr_pages;
+		bool dirty, writeback;
+
+		cond_resched();
+		folio = lru_to_folio(&folio_list);
+		pr_err("check_saved_folios_wb, folio [%p]", folio);
+
+		list_del(&folio->lru);
+
+		// if (!folio_trylock(folio))
+		// 	goto keep_next_time;
+		VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
+
+		VM_BUG_ON_FOLIO(folio_test_active(folio), folio);
+		VM_BUG_ON_FOLIO(folio_evictable(folio), folio);
+		VM_BUG_ON_FOLIO(!folio_test_anon(folio), folio);
+		VM_BUG_ON_FOLIO(!folio_test_swapbacked(folio), folio);
+		// VM_BUG_ON_FOLIO(!folio_test_swapcache(folio), folio);
+		if (folio_test_swapcache(folio))
+			pr_err("folio_swapcached [%p][%s:%d]", folio, 
+					__FILE__, __LINE__);
+		VM_BUG_ON_FOLIO(folio_test_large(folio), folio);
+		VM_BUG_ON_FOLIO(folio_mapped(folio), folio);
+		VM_BUG_ON_FOLIO(folio_is_file_lru(folio), folio);
+		VM_BUG_ON_FOLIO(folio_test_dirty(folio), folio); 
+			//should have been cleared in pageout
+
+		nr_pages = folio_nr_pages(folio);
+		folio_check_dirty_writeback(folio, &dirty, &writeback);
+		
+		if (folio_test_writeback(folio)) {
+			if (current_is_kswapd() &&
+			    folio_test_reclaim(folio) &&
+			    test_bit(PGDAT_WRITEBACK, &pgdat->flags)) {
+				goto keep_locked_next_time;
+			} else if (writeback_throttling_sane(sc) ||
+			    !folio_test_reclaim(folio) ||
+			    !may_enter_fs(folio, sc->gfp_mask)) {
+				folio_set_reclaim(folio);
+				goto keep_locked_next_time;
+			} else {
+				folio_unlock(folio);
+				pr_err("try wait folio wb[%p]", folio);
+				folio_wait_writeback(folio);
+				/* then go back and try same folio again */
+				if (folio_test_writeback(folio)){
+					pr_err("folio[%p] should not bit pg_wb", folio);
+					folio_test_clear_writeback(folio);
+				}
+				list_add_tail(&folio->lru, &folio_list);
+				pr_err("success wait folio wb[%p]", folio);
+				continue;
+			}
+		}
+		else{
+			nr_reclaimed += nr_pages;
+			folio_unlock(folio);
+			list_add(&folio->lru, &saved_sb_complete_list);
+			pr_err("folio[%p] add to saved_sb_complete_list", folio);
+			continue;
+		}
+keep_locked_next_time:
+		folio_unlock(folio);
+keep_next_time:
+		list_add(&folio->lru, &ret_folios);
+		pr_err("folio[%p] keep_next_time", folio);
+		VM_BUG_ON_FOLIO(folio_test_lru(folio) || folio_test_unevictable(folio), folio);
+	}
+	if (!list_empty(&saved_sb_complete_list)){
+		pr_err("call free_unref_page_list");
+		free_unref_page_list(&saved_sb_complete_list); //free these pages
+	}
+	
+//load out pages
+	spin_lock_irq(&lruvec->lru_lock);
+	list_splice(&ret_folios, saved_folios); //return back, check next time
+	spin_unlock_irq(&lruvec->lru_lock);
+
+	return nr_reclaimed;
+}
+#endif
 
 /*
  * shrink_folio_list() returns the number of reclaimed pages
@@ -5197,8 +5372,10 @@ static int evict_folios(struct lruvec *lruvec, struct scan_control *sc, int swap
 	int type;
 	int scanned;
 	int reclaimed;
+	int reclaimed_saved;
 	LIST_HEAD(list);
 	LIST_HEAD(clean);
+	LIST_HEAD(saved_sb_complete_list); //saved entry complete wb to slow, reclaim
 	struct folio *folio;
 	struct folio *next;
 	enum vm_event_item item;
@@ -5221,6 +5398,13 @@ static int evict_folios(struct lruvec *lruvec, struct scan_control *sc, int swap
 
 	if (list_empty(&list))
 		return scanned;
+
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
+	if (!current_is_kswapd()){
+		reclaimed_saved = check_saved_folios_wb(lruvec, pgdat, sc);
+		sc->nr_reclaimed += reclaimed_saved;		
+	}
+#endif
 retry:
 	reclaimed = shrink_folio_list(&list, pgdat, sc, &stat, false);
 	sc->nr_reclaimed += reclaimed;
@@ -6289,7 +6473,9 @@ void lru_gen_init_lruvec(struct lruvec *lruvec)
 
 	for_each_gen_type_zone(gen, type, zone)
 		INIT_LIST_HEAD(&lrugen->folios[gen][type][zone]);
-
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
+	INIT_LIST_HEAD(&lrugen->saved_folios);
+#endif
 	lruvec->mm_state.seq = MIN_NR_GENS;
 	init_waitqueue_head(&lruvec->mm_state.wait);
 }

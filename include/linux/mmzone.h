@@ -436,6 +436,10 @@ struct lru_gen_folio {
 	/* per-node lru_gen_folio list for global reclaim */
 	struct hlist_nulls_node list;
 #endif
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
+	/* the multi-gen LRU saving lists, check when evict folios to migrate swap slots*/
+	struct list_head saved_folios;
+#endif
 };
 
 enum {
@@ -612,6 +616,7 @@ struct lruvec {
 	struct list_head		lists[NR_LRU_LISTS];
 	/* per lruvec lru_lock for memcg */
 	spinlock_t			lru_lock;
+	spinlock_t			savestale_lock;
 	/*
 	 * These track the cost of reclaiming one LRU - file or anon -
 	 * over the other. As the observed cost of reclaiming one LRU

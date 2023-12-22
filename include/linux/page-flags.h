@@ -144,6 +144,7 @@ enum pageflags {
 	PG_swappriohigh,
 	PG_swappriolow,
 	PG_readaheaded,
+	PG_stalesaved,
 #endif
 /*DJL ADD END*/
 	__NR_PAGEFLAGS,
@@ -515,6 +516,8 @@ PAGEFLAG(SwapPrioLow, swappriolow, PF_HEAD)
 	TESTCLEARFLAG(SwapPrioLow, swappriolow, PF_HEAD)
 PAGEFLAG(ReadAheaded, readaheaded, PF_HEAD)
 	TESTCLEARFLAG(ReadAheaded, readaheaded, PF_HEAD)
+PAGEFLAG(StaleSaved, stalesaved, PF_HEAD)
+	TESTCLEARFLAG(StaleSaved, stalesaved, PF_HEAD)
 /*DJL ADD END*/
 
 /*

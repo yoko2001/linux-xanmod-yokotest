@@ -32,6 +32,7 @@ static void __end_swap_bio_write(struct bio *bio)
 	struct page *page = bio_first_page_all(bio);
 
 	if (bio->bi_status) {
+		pr_err("__end_swap_bio_write fail");
 		SetPageError(page);
 		/*
 		 * We failed to write the page out to swap-space.
@@ -183,8 +184,10 @@ int swap_writepage(struct page *page, struct writeback_control *wbc)
 {
 	struct folio *folio = page_folio(page);
 	int ret;
-
-	if (folio_free_swap(folio)) {
+	if (folio_test_stalesaved(folio)){
+		pr_err("swap_writepage on staled folio[%p]", folio);
+	} //skip folio_free_swap for staled folio
+	else if (folio_free_swap(folio)) {
 		folio_unlock(folio);
 		return 0;
 	}
@@ -354,6 +357,8 @@ static void swap_writepage_bdev_async(struct page *page,
 		struct writeback_control *wbc, struct swap_info_struct *sis)
 {
 	struct bio *bio;
+	struct folio* folio;
+	folio = page_folio(page);
 
 	bio = bio_alloc(sis->bdev, 1,
 			REQ_OP_WRITE | REQ_SWAP | wbc_to_write_flags(wbc),
@@ -367,6 +372,10 @@ static void swap_writepage_bdev_async(struct page *page,
 	set_page_writeback(page);
 	unlock_page(page);
 	submit_bio(bio);
+	if (folio_test_stalesaved(folio)){
+		pr_err("swap_writepage_bdev_async submited folio[%p] wb[%d]", 
+				folio, folio_test_writeback(folio));
+	}
 }
 
 void __swap_writepage(struct page *page, struct writeback_control *wbc)

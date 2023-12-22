@@ -2977,6 +2977,84 @@ bool folio_clear_dirty_for_io(struct folio *folio)
 }
 EXPORT_SYMBOL(folio_clear_dirty_for_io);
 
+/*
+ * Clear a folio's dirty flag, while caring for dirty memory accounting.
+ * Returns true if the folio was previously dirty.
+ *
+ * This is for preparing to put the folio under writeout.  We leave
+ * the folio tagged as dirty in the xarray so that a concurrent
+ * write-for-sync can discover it via a PAGECACHE_TAG_DIRTY walk.
+ * The ->writepage implementation will run either folio_start_writeback()
+ * or folio_mark_dirty(), at which stage we bring the folio's dirty flag
+ * and xarray dirty tag back into sync.
+ *
+ * This incoherency between the folio's dirty flag and xarray tag is
+ * unfortunate, but it only exists while the folio is locked.
+ */
+bool folio_clear_dirty_for_io_save(struct folio *folio)
+{
+	struct address_space *mapping = folio_mapping(folio);
+	bool ret = false;
+
+	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
+
+	if (mapping && mapping_can_writeback(mapping)) {
+		struct inode *inode = mapping->host;
+		struct bdi_writeback *wb;
+		struct wb_lock_cookie cookie = {};
+
+		/*
+		 * Yes, Virginia, this is indeed insane.
+		 *
+		 * We use this sequence to make sure that
+		 *  (a) we account for dirty stats properly
+		 *  (b) we tell the low-level filesystem to
+		 *      mark the whole folio dirty if it was
+		 *      dirty in a pagetable. Only to then
+		 *  (c) clean the folio again and return 1 to
+		 *      cause the writeback.
+		 *
+		 * This way we avoid all nasty races with the
+		 * dirty bit in multiple places and clearing
+		 * them concurrently from different threads.
+		 *
+		 * Note! Normally the "folio_mark_dirty(folio)"
+		 * has no effect on the actual dirty bit - since
+		 * that will already usually be set. But we
+		 * need the side effects, and it can help us
+		 * avoid races.
+		 *
+		 * We basically use the folio "master dirty bit"
+		 * as a serialization point for all the different
+		 * threads doing their things.
+		 */
+		if (folio_mkclean(folio))
+			folio_mark_dirty(folio);
+		/*
+		 * We carefully synchronise fault handlers against
+		 * installing a dirty pte and marking the folio dirty
+		 * at this point.  We do this by having them hold the
+		 * page lock while dirtying the folio, and folios are
+		 * always locked coming in here, so we get the desired
+		 * exclusion.
+		 */
+		wb = unlocked_inode_to_wb_begin(inode, &cookie);
+		if (folio_test_dirty(folio)){
+			pr_err("folio_clear_dirty_for_io_save 1 folio[%p]", folio);
+		}
+		if (folio_test_clear_dirty(folio)) {
+			long nr = folio_nr_pages(folio);
+			lruvec_stat_mod_folio(folio, NR_FILE_DIRTY, -nr);
+			zone_stat_mod_folio(folio, NR_ZONE_WRITE_PENDING, -nr);
+			wb_stat_mod(wb, WB_RECLAIMABLE, -nr);
+			ret = true;
+		}
+		unlocked_inode_to_wb_end(inode, &cookie);
+		return ret;
+	}
+	return folio_test_clear_dirty(folio);
+}
+
 static void wb_inode_writeback_start(struct bdi_writeback *wb)
 {
 	atomic_inc(&wb->writeback_inodes);

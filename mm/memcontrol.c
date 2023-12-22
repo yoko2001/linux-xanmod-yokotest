@@ -720,6 +720,7 @@ static const unsigned int memcg_vm_event_stat[] = {
 	WORKINGSET_REFAULT_DIST2,
 	WORKINGSET_REFAULT_DIST3,
 	WORKINGSET_REFAULT_DIST4,
+	SWAP_STALE_SAVE,
 #endif
 /*DJL ADD END*/
 };

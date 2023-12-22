@@ -1853,8 +1853,10 @@ static int unuse_pte(struct vm_area_struct *vma, pmd_t *pmd,
 
 	swapcache = page;
 	page = ksm_might_need_to_copy(page, vma, addr);
-	if (unlikely(!page))
+	if (unlikely(!page)){
+		pr_err("unuse_pte bad swap [%lu] type[%d]", entry.val, swp_type(entry));
 		return -ENOMEM;
+	}
 	else if (unlikely(PTR_ERR(page) == -EHWPOISON))
 		hwposioned = true;
 
@@ -1965,7 +1967,7 @@ static int unuse_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 			swp_count = READ_ONCE(si->swap_map[offset]);
 			if (swp_count == 0 || swp_count == SWAP_MAP_BAD)
 				goto try_next;
-
+			pr_err("unuse_pte_range bad swap [%lu] type[%d]", entry.val, si->type);
 			return -ENOMEM;
 		}
 
@@ -2136,13 +2138,16 @@ void swap_shadow_scan_next(struct swap_info_struct * si, struct lruvec * lruvec,
 
 	if (!si)
 		return;
+	if (!(si->flags & SWP_SYNCHRONOUS_IO))
+		return;
+
 	threshold = SEQ_DIFF_THRESHOLD;
 	type = si->type;
 	start = si->swap_scan_cur_bit = max_t(unsigned int, 0, si->swap_scan_cur_bit);
 	end = min_t(unsigned int, si->swap_scan_cur_bit + si->swap_scan_batch_nr, si->max);
 
 
-	entry = swp_entry(type, 0);
+	entry = swp_entry(type, start);
 	mapping = swap_address_space(entry);
 
 	*scanned = swap_scan_entries_savior(mapping, lruvec, start, end, type, threshold);
@@ -2586,6 +2591,7 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 
 	if (err) {
 		/* re-insert swap space back into swap_list */
+		pr_err("swapoff fail reinsert type[%d]", p->type);
 		reinsert_swap_info(p);
 		reenable_swap_slots_cache_unlock();
 		reenable_swap_scan_slot_unlock();

@@ -248,6 +248,11 @@ static inline bool lru_gen_add_folio(struct lruvec *lruvec, struct folio *folio,
 	else
 		seq = lrugen->min_seq[type];
 
+	if (folio_test_clear_stalesaved(folio)){ 
+		//force evict fast
+		seq = lrugen->min_seq[type];
+		reclaiming = true;
+	}
 	gen = lru_gen_from_seq(seq);
 	flags = (gen + 1UL) << LRU_GEN_PGOFF;
 	/* see the comment on MIN_NR_GENS about PG_active */

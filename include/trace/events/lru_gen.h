@@ -374,6 +374,29 @@ TRACE_EVENT(swap_scan_change_state,
                 __entry->total)
 );
 
+TRACE_EVENT(add_to_scan_slot, 
+	TP_PROTO(int cpu, int cur, int nr),
+
+	TP_ARGS(cpu, cur , nr),
+
+	TP_STRUCT__entry(
+		__field(int ,cpu)
+		__field(int ,cur)
+		__field(int ,nr)
+	),
+
+	TP_fast_assign(
+		__entry->cpu	= cpu;
+		__entry->cur	= cur;
+		__entry->nr	= nr;
+	),
+
+	TP_printk("cpu[%d] cur[%d/%d]", 
+                __entry->cpu,
+				__entry->cur,
+                __entry->nr)
+);
+
 TRACE_EVENT(scan_entries_savior, 
 	TP_PROTO(int memcg_id, unsigned long old_seq, unsigned long min_seq, int threshold),
 
@@ -393,7 +416,7 @@ TRACE_EVENT(scan_entries_savior,
 		__entry->threshold	= threshold;
 	),
 
-	TP_printk("seq[%d]-seq[%ld]=[%ld] threshold[%ld],memcg[%d]", 
+	TP_printk("seq[%ld]-seq[%ld]=[%ld] threshold[%d],memcg[%d]", 
                 __entry->min_seq,
 				__entry->old_seq,
 				__entry->min_seq - __entry->old_seq,
