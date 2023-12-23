@@ -1819,17 +1819,25 @@ unsigned int check_saved_folios_wb(struct lruvec *lruvec,
 	while (!list_empty(saved_folios)) {
 		struct folio *folio;
 		folio = lru_to_folio(saved_folios);
-		list_del(&folio->lru);
-		pr_err("lruvec[%pK] check_s_f_wbfolio->lru[%pK] {p[%pK]n[%pK]}", 
-				lruvec, folio, folio->lru.prev, folio->lru.next);
-		list_add(&folio->lru, &folio_list);
+		pr_err("check_s_f_wb lruvec[%pK] saved_folios[%pK]{p[%pK]n[%pK]} folio->lru[%pK] {p[%pK]n[%pK]}", 
+				lruvec, saved_folios, saved_folios->prev,  saved_folios->next,
+				folio, folio->lru.prev, folio->lru.next);
+		list_move(&folio->lru, &folio_list);
+		pr_err("check_s_f_wb lruvec[%pK] saved_folios[%pK]{p[%pK]n[%pK]} folio->lru[%pK] {p[%pK]n[%pK]} folio_list[%pK] p[%pK]n[%pK]", 
+				lruvec, saved_folios, saved_folios->prev,  saved_folios->next,
+				folio, folio->lru.prev, folio->lru.next, 
+				&folio_list, folio_list.prev, folio_list.next);		
 		scanned += 1;
-		if (scanned >= 20) break; //for safety
+		if (scanned >= 8) break; //for safety
 	}
 	spin_unlock_irq(&lruvec->lru_lock);
 
-	if (list_empty(&folio_list))
+	if (list_empty(&folio_list)){
+		if (scanned > 0) 
+			pr_err("but is empty folio_list[%pK]{p[%pK]n[%pK]}", 
+					&folio_list, folio_list.prev, folio_list.next);
 		return 0;
+	}
 	pr_err("check_saved_folios_wb, do check [%d] folios", scanned);
 
 	while (!list_empty(&folio_list)) {
@@ -1839,7 +1847,7 @@ unsigned int check_saved_folios_wb(struct lruvec *lruvec,
 
 		cond_resched();
 		folio = lru_to_folio(&folio_list);
-		pr_err("check_saved_folios_wb, folio [%pK]", folio);
+		pr_err("check_saved_folios_wb, folio [%pK] {p[%pK]n[%pK]}", &folio->lru, folio->lru.prev, folio->lru.next);
 
 		list_del(&folio->lru);
 

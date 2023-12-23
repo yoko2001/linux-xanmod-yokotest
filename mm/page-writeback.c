@@ -3122,6 +3122,28 @@ bool __folio_end_writeback(struct folio *folio)
 	return ret;
 }
 
+bool __folio_end_writeback_saved(struct folio *folio)
+{
+	long nr = folio_nr_pages(folio);
+	struct address_space *mapping = folio_mapping(folio);
+	bool ret;
+
+	folio_memcg_lock(folio);
+	if (mapping && mapping_use_writeback_tags(mapping)) {
+		pr_err("should happen %s:%d", __FILE__, __LINE__);
+	} else {
+		ret = folio_test_clear_writeback(folio);
+	}
+	if (ret) {
+		lruvec_stat_mod_folio(folio, NR_WRITEBACK, -nr);
+		zone_stat_mod_folio(folio, NR_ZONE_WRITE_PENDING, -nr);
+		node_stat_mod_folio(folio, NR_WRITTEN, nr);
+	}
+	folio_memcg_unlock(folio);
+
+	return ret;
+}
+
 bool __folio_start_writeback(struct folio *folio, bool keep_write)
 {
 	long nr = folio_nr_pages(folio);

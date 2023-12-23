@@ -27,13 +27,35 @@
 #include <linux/delayacct.h>
 #include "swap.h"
 
+static void __end_swap_bio_write_save(struct bio* bio){
+	struct page *page = bio_first_page_all(bio);
+	if (bio->bi_status) {
+		pr_err("__end_swap_bio_write_save page[%lu=%pK]",
+			(unsigned long)page, page);
+		SetPageError(page);
+		/*
+		 * We failed to write the page out to swap-space.
+		 * Re-dirty the page in order to avoid it being reclaimed.
+		 * Also print a dire warning that things will go BAD (tm)
+		 * very quickly.
+		 *
+		 * Also clear PG_reclaim to avoid folio_rotate_reclaimable()
+		 */
+		set_page_dirty(page);
+		pr_alert_ratelimited("Write-error on swap-device (%u:%u:%llu)\n",
+				     MAJOR(bio_dev(bio)), MINOR(bio_dev(bio)),
+				     (unsigned long long)bio->bi_iter.bi_sector);
+		ClearPageReclaim(page);
+	}
+	end_page_writeback(page);
+	pr_err("after __end_swap_bio_write_save page[%lx] d[%d]wb[%d]rcl[%d] ref=%d lru{p[%lx]n[%lx]}",
+			(unsigned long)page, PageDirty(page), PageWriteback(page), PageReclaim(page), folio_ref_count(page_folio(page)),
+			(unsigned long)page->lru.prev, (unsigned long)page->lru.next);
+}
 static void __end_swap_bio_write(struct bio *bio)
 {
 	struct page *page = bio_first_page_all(bio);
-	if (folio_test_stalesaved(page_folio(page)))
-		pr_err("__end_swap_bio_write on stale folio[%lu][%pk]",(unsigned long)page,page_folio(page) );
 	if (bio->bi_status) {
-		pr_err("__end_swap_bio_write fail");
 		SetPageError(page);
 		/*
 		 * We failed to write the page out to swap-space.
@@ -55,6 +77,11 @@ static void __end_swap_bio_write(struct bio *bio)
 static void end_swap_bio_write(struct bio *bio)
 {
 	__end_swap_bio_write(bio);
+	bio_put(bio);
+}
+static void end_swap_bio_write_save(struct bio* bio)
+{
+	__end_swap_bio_write_save(bio);
 	bio_put(bio);
 }
 
@@ -365,7 +392,10 @@ static void swap_writepage_bdev_async(struct page *page,
 			REQ_OP_WRITE | REQ_SWAP | wbc_to_write_flags(wbc),
 			GFP_NOIO);
 	bio->bi_iter.bi_sector = swap_page_sector(page);
-	bio->bi_end_io = end_swap_bio_write;
+	if (folio_test_stalesaved(folio))
+		bio->bi_end_io = end_swap_bio_write_save;
+	else
+		bio->bi_end_io = end_swap_bio_write;
 	bio_add_page(bio, page, thp_size(page), 0);
 
 	bio_associate_blkg_from_page(bio, page);
@@ -376,8 +406,6 @@ static void swap_writepage_bdev_async(struct page *page,
 	if (folio_test_stalesaved(folio)){
 		pr_err("swap_writepage_bdev_async submited folio[%pK] wb[%d]lock[%d]", 
 				folio, folio_test_writeback(folio), folio_test_locked(folio));
-		pr_err("after submit_bio folio[%pK]{p[%pk]n[%pK]}", 
-				folio, folio->lru.prev, folio->lru.next);
 	}
 }
 

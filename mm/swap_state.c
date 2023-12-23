@@ -286,6 +286,34 @@ void __delete_from_swap_cache(struct folio *folio,
 	__lruvec_stat_mod_folio(folio, NR_SWAPCACHE, -nr);
 }
 
+static void __delete_from_swap_cache_mig(struct folio *folio,
+			swp_entry_t entry)
+{
+	struct address_space *address_space = swap_address_space(entry);
+	int i;
+	long nr = folio_nr_pages(folio);
+	void *shadow = NULL;
+	pgoff_t idx = swp_offset(entry);
+	XA_STATE(xas, &address_space->i_pages, idx);
+
+	xas_set_update(&xas, workingset_update_node);
+
+	VM_BUG_ON_FOLIO(!folio_test_stalesaved(folio), folio);
+	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
+	VM_BUG_ON_FOLIO(!folio_test_swapcache(folio), folio);
+	VM_BUG_ON_FOLIO(folio_test_writeback(folio), folio);
+
+	for (i = 0; i < nr; i++) {
+		void *entry = xas_store(&xas, shadow);
+		VM_BUG_ON_PAGE(entry != folio, entry);
+		set_page_private(folio_page(folio, i), 0);
+		xas_next(&xas);
+	}
+	address_space->nrpages -= nr;
+	__node_stat_mod_folio(folio, NR_FILE_PAGES, -nr);
+	__lruvec_stat_mod_folio(folio, NR_SWAPCACHE, -nr);
+}
+
 /**
  * add_to_swap - allocate swap space for a folio
  * @folio: folio we want to move to swap
@@ -363,6 +391,21 @@ void delete_from_swap_cache(struct folio *folio)
 	xa_unlock_irq(&address_space->i_pages);
 
 	put_swap_folio(folio, entry);
+	folio_ref_sub(folio, folio_nr_pages(folio));
+}
+
+/*needs put_swap_folio after it*/
+static void delete_from_swap_cache_mig(struct folio* folio, swp_entry_t entry)
+{
+	swp_entry_t pgentry = folio_swap_entry(folio);
+	struct address_space *address_space = swap_address_space(entry);
+
+	VM_BUG_ON_FOLIO(!(entry.val == pgentry.val), folio);
+
+	xa_lock_irq(&address_space->i_pages);
+	__delete_from_swap_cache_mig(folio, entry);
+	xa_unlock_irq(&address_space->i_pages);
+
 	folio_ref_sub(folio, folio_nr_pages(folio));
 }
 
@@ -1319,6 +1362,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				pr_err("swap entry got but special bit used !");
 				goto skip_this_save;
 			}
+			pr_err("savior first saw this new entry[%lx]", saved_entry.val);
 			//deal with current entry_saved
 			page = __read_swap_cache_async_save(saved_entry, gfp_mask, vma,
 					vmf->address, &page_allocated, false, 
@@ -1329,6 +1373,11 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 			if (page_allocated) {
 				swap_readpage(page, false, &splug_save);
 				count_vm_event(SWAP_STALE_SAVE);
+			}
+			else {
+				pr_err("page[%pK] stale[%d]already in swapcache, we don't bother it here", 
+						page, TestClearPageStaleSaved(page));
+				goto skip_this_save;
 			}
 			SetPageStaleSaved(page);
 			folio_set_swappriolow(folio);
@@ -1358,9 +1407,9 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 			//adding a remap from saved_entry -> mig_entry
 			err = add_swp_entry_remap(folio, saved_entry, mig_entry, gfp_mask & (__GFP_HIGH|__GFP_NOMEMALLOC|__GFP_NOWARN));
 			if (err){
-				put_swap_folio(folio, mig_entry);
+				pr_err("folio[%pK] add_swp_entry_remap fail", folio);
 				folio_unlock(folio);
-				goto skip_this_save;
+				goto fail_delete_mig_cache;
 			}
 			//now we add the real entry
 			VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
@@ -1399,7 +1448,8 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 						//check later in vmscan
 						list_for_each_entry_safe(folio_tmp, next_tmp, &folio_list_wb, lru){
 							pr_err("folio->lru[%pK] {p[%pK]n[%pK]} next[%pK]", 
-									&folio_tmp->lru, folio_tmp->lru.prev, folio_tmp->lru.next, next_tmp);
+									&folio_tmp->lru, folio_tmp->lru.prev, 
+									folio_tmp->lru.next, next_tmp);
 						}
 					}
 					else{ //A synchronous write - probably a ramdisk.
@@ -1409,9 +1459,15 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 					goto scceed_pageout;
 				case 3: //PAGE_CLEAN
 					pr_err("pageout returns PAGE_CLEAN");
-				}	
+				}
+
+fail_delete_mig_cache:
+				delete_from_swap_cache_mig(folio, mig_entry); //page private is also cleared
+				reset_private = true;
 fail_page_out:
 				put_swap_folio(folio, mig_entry);
+				folio_clear_dirty(folio);
+				folio_clear_stalesaved(folio);
 				folio_unlock(folio);
 				goto skip_this_save;
 scceed_pageout:
@@ -1431,7 +1487,9 @@ scceed_pageout:
 			entry_saved ++ ;
 
 skip_this_save:
-			if (reset_private){
+			if (reset_private){ 
+				//we can change it back , to maintain correctness befor bio complete, 
+				// because bio has been submitted, doesn't need it(private = migentry) anymore
 				pr_err("reset folio[%pK] private [%lu]", folio, ori_pri_entry.val);
 				set_page_private(folio_page(folio, 0), ori_pri_entry.val);
 			}
@@ -1450,10 +1508,6 @@ skip_this_save:
 		blk_finish_plug(&plug_save);
 		swap_read_unplug(splug_save);
 		pr_err("after swap_read_unplug");
-		// list_for_each_entry_safe(folio, next, &folio_list_wb, lru){
-		// 	pr_err("folio->lru[%pK] {p[%pK]n[%pK]} next[%pK]", 
-		// 			&folio->lru, folio->lru.prev, folio->lru.next, next);
-		// }
 		// lru_add_drain();
 		//add to lru_gen
 		if (lruvec && lrugen){
@@ -1467,19 +1521,13 @@ skip_this_save:
 				}
 				struct folio * folio = lru_to_folio(&folio_list_wb);
 				VM_BUG_ON_FOLIO(!folio_test_writeback(folio), folio);
-				pr_err("add_to_lruvec_saved_folios folio[%pK]", folio);
+				pr_err("add_to_lruvec[%pK] saved_folios folio[%pK]", lruvec, folio);
 				pr_err("folio[%pK]{p[%pK]n[%pK]} saved_folios{p[%pK]n[%pK]} folio_list_wb{p[%pK]n[%pK]}", 
 						&folio->lru, folio->lru.prev, folio->lru.next,
 						lrugen->saved_folios.prev, lrugen->saved_folios.next, 
 						folio_list_wb.prev, folio_list_wb.next);
-				//list_move(&folio->lru, &lrugen->saved_folios);
-				// list_del(&folio->lru);
-				// pr_err("del folio[%pK]{p[%pK]n[%pK]} saved_folios{p[%pK]n[%pK]} folio_list_wb{p[%pK]n[%pK]}", 
-				// 		&folio->lru, folio->lru.prev, folio->lru.next,
-				// 		lrugen->saved_folios.prev, lrugen->saved_folios.next, 
-				// 		folio_list_wb.prev, folio_list_wb.next);
-				list_move_tail(&folio->lru, &lrugen->saved_folios); 
-				pr_err("add folio[%pK]{p[%pK]n[%pK]} saved_folios{p[%pK]n[%pK]} folio_list_wb{p[%pK]n[%pK]}", 
+				list_move(&folio->lru, &lrugen->saved_folios); 
+				pr_err("moved folio[%pK]{p[%pK]n[%pK]} saved_folios{p[%pK]n[%pK]} folio_list_wb{p[%pK]n[%pK]}", 
 						&folio->lru, folio->lru.prev, folio->lru.next,
 						lrugen->saved_folios.prev, lrugen->saved_folios.next, 
 						folio_list_wb.prev, folio_list_wb.next);

@@ -1635,8 +1635,15 @@ void folio_end_writeback(struct folio *folio)
 	 * reused before the folio_wake().
 	 */
 	folio_get(folio);
-	if (!__folio_end_writeback(folio))
-		BUG();
+	if (folio_test_stalesaved(folio)){
+		if (!__folio_end_writeback_saved(folio))
+			BUG();		
+	}
+	else{
+		if (!__folio_end_writeback(folio))
+			BUG();	
+	}
+
 
 	smp_mb__after_atomic();
 	folio_wake(folio, PG_writeback);
