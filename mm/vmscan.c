@@ -1394,6 +1394,8 @@ int pageout_save(struct folio *folio, struct address_space *mapping, struct swap
 
 		folio_set_reclaim(folio);
 		res = mapping->a_ops->writepage(&folio->page, &wbc);
+		pr_err("pageout_save called wp folio[%pK], page[%pK] wb[%d] d[%d]", 
+					folio, &folio->page, folio_test_writeback(folio), folio_test_dirty(folio));
 		if (res < 0){
 			pr_err("call handle_write_error");
 			handle_write_error(mapping, folio, res);

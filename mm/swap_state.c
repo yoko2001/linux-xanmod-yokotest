@@ -1393,12 +1393,13 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 					if (folio_test_dirty(folio)){ //unexpected
 						pr_err("PAGE_SUCCESS dirty folio[%pK]", folio);
 					}					
-					if (folio_test_writeback(folio)){//sync, under wb						
+					if (folio_test_writeback(folio)){//sync, under wb	
+						struct folio* folio_tmp, *next_tmp;					
 						list_add(&folio->lru, &folio_list_wb); 	
 						//check later in vmscan
-						list_for_each_entry_safe(folio, next, &folio_list_wb, lru){
+						list_for_each_entry_safe(folio_tmp, next_tmp, &folio_list_wb, lru){
 							pr_err("folio->lru[%pK] {p[%pK]n[%pK]} next[%pK]", 
-									&folio->lru, folio->lru.prev, folio->lru.next, next);
+									&folio_tmp->lru, folio_tmp->lru.prev, folio_tmp->lru.next, next_tmp);
 						}
 					}
 					else{ //A synchronous write - probably a ramdisk.
@@ -1449,10 +1450,10 @@ skip_this_save:
 		blk_finish_plug(&plug_save);
 		swap_read_unplug(splug_save);
 		pr_err("after swap_read_unplug");
-		list_for_each_entry_safe(folio, next, &folio_list_wb, lru){
-			pr_err("folio->lru[%pK] {p[%pK]n[%pK]} next[%pK]", 
-					&folio->lru, folio->lru.prev, folio->lru.next, next);
-		}
+		// list_for_each_entry_safe(folio, next, &folio_list_wb, lru){
+		// 	pr_err("folio->lru[%pK] {p[%pK]n[%pK]} next[%pK]", 
+		// 			&folio->lru, folio->lru.prev, folio->lru.next, next);
+		// }
 		// lru_add_drain();
 		//add to lru_gen
 		if (lruvec && lrugen){
@@ -1484,14 +1485,14 @@ skip_this_save:
 						folio_list_wb.prev, folio_list_wb.next);
 				// folio_unlock(folio);
 				trace_add_to_lruvec_saved_folios(lruvec, folio, num_moved);	
-								list_for_each_entry_safe(folio, next, &lrugen->saved_folios, lru){
-					pr_err("saved_folios: folio->lru[%pK] {p[%pK]n[%pK]} next[%pK]", 
-						&folio->lru, folio->lru.prev, folio->lru.next, next);
-				}
-				list_for_each_entry_safe(folio, next, &folio_list_wb, lru){
-					pr_err("saved_folios: folio->lru[%pK] {p[%pK]n[%pK]} next[%pK]", 
-						&folio->lru, folio->lru.prev, folio->lru.next, next);
-				}
+				// 				list_for_each_entry_safe(folio, next, &lrugen->saved_folios, lru){
+				// 	pr_err("saved_folios: folio->lru[%pK] {p[%pK]n[%pK]} next[%pK]", 
+				// 		&folio->lru, folio->lru.prev, folio->lru.next, next);
+				// }
+				// list_for_each_entry_safe(folio, next, &folio_list_wb, lru){
+				// 	pr_err("saved_folios: folio->lru[%pK] {p[%pK]n[%pK]} next[%pK]", 
+				// 		&folio->lru, folio->lru.prev, folio->lru.next, next);
+				// }
 			}
 			spin_unlock_irq(&lruvec->lru_lock);
 			pr_err("finish adding to lruvec[%pK]", lruvec);
