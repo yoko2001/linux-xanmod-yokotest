@@ -616,7 +616,6 @@ static struct page*__read_swap_cache_async_save(swp_entry_t entry,
 	struct swap_info_struct *si;
 	struct folio *folio;
 	void *shadow = NULL;
-	int swap_level = -2;
 	*new_page_allocated = false;
 
 	for (;;) {
@@ -689,8 +688,6 @@ static struct page*__read_swap_cache_async_save(swp_entry_t entry,
 		goto fail_unlock;
 
 //	mem_cgroup_swapin_uncharge_swap(entry); //DJL doesn't count this
-
-	swap_level = -2;
 	//now shadow has been used
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 	VM_BUG_ON_FOLIO(folio, folio->shadow_ext);
@@ -708,7 +705,7 @@ static struct page*__read_swap_cache_async_save(swp_entry_t entry,
 
 	/* Caller will initiate read into locked folio */
 
-	folio_add_lru_save(folio);
+	//folio_add_lru_save(folio);
 
 	*new_page_allocated = true;
 	return &folio->page; 
@@ -1272,7 +1269,8 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 	long tmp;
 	bool page_allocated;
 	swp_entry_t ori_pri_entry;
-	LIST_HEAD(folio_list_wb);
+	struct folio* folio_list_wb[SWAP_SLOTS_SCAN_SAVE_ONCE];
+	int num_folio_list_wb = 0;
 
 	int try_free, prio_ori, prio_mig, entry_saved, err;
 	*try_free_entry = 1;
@@ -1387,13 +1385,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 			if (!mig_entry.val || (mig_entry.val > LONG_MAX)){ //have to xa_mk_value
 				goto skip_this_save;
 			}
-			// sis = get_swap_device(mig_entry);
-			// if (!sis || sis->flags & SWP_SYNCHRONOUS_IO){
-			// 	pr_err("swap alloc inner error, shouldn't give SWP_SYNC");
-			// 	goto skip_this_save;
-			// }
-			// if (sis)
-			// 	put_swap_device(sis);
+
 			//we don't update entry, only add to swap_cache
 			//first mark entry as faked for now (currently no back stored)
 			swp_entry_set_ext(&mig_entry, 0x1);
@@ -1443,14 +1435,9 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 						pr_err("PAGE_SUCCESS dirty folio[%pK]", folio);
 					}					
 					if (folio_test_writeback(folio)){//sync, under wb	
-						struct folio* folio_tmp, *next_tmp;					
-						list_add(&folio->lru, &folio_list_wb); 	
+						struct folio* folio_tmp, *next_tmp;		
+						folio_list_wb[num_folio_list_wb++] = folio; 	
 						//check later in vmscan
-						list_for_each_entry_safe(folio_tmp, next_tmp, &folio_list_wb, lru){
-							pr_err("folio->lru[%pK] {p[%pK]n[%pK]} next[%pK]", 
-									&folio_tmp->lru, folio_tmp->lru.prev, 
-									folio_tmp->lru.next, next_tmp);
-						}
 					}
 					else{ //A synchronous write - probably a ramdisk.
 						; //should remove mapping and clean & free it
@@ -1490,7 +1477,7 @@ skip_this_save:
 			if (reset_private){ 
 				//we can change it back , to maintain correctness befor bio complete, 
 				// because bio has been submitted, doesn't need it(private = migentry) anymore
-				pr_err("reset folio[%pK] private [%lu]", folio, ori_pri_entry.val);
+				pr_err("reset folio[%pK]lru[%d] private [%lu]", folio, folio_test_lru(folio), ori_pri_entry.val);
 				set_page_private(folio_page(folio, 0), ori_pri_entry.val);
 			}
 
@@ -1501,56 +1488,36 @@ skip_this_save:
 		}
 		if (plug_save_wb)
 			swap_write_unplug(plug_save_wb);
-		// if (non_swap_entry(saved_entry) && save_slot_finish){
-		// 	//restart load
-		// 	// reenable_scan_cpu();
-		// }
+		
+		if (non_swap_entry(saved_entry) && save_slot_finish){
+			//restart load
+			reenable_scan_cpu();
+		}
+
 		blk_finish_plug(&plug_save);
 		swap_read_unplug(splug_save);
-		pr_err("after swap_read_unplug");
-		// lru_add_drain();
 		//add to lru_gen
 		if (lruvec && lrugen){
-			pr_err("add to saved_folios lruvec[%pK]", lruvec);
 			spin_lock_irq(&lruvec->lru_lock);
-			while (!list_empty(&folio_list_wb)) {
+			for (int i = 0; i < num_folio_list_wb; i++){
 				num_moved++;
-				if (num_moved > entry_saved){
+				if (num_moved > num_folio_list_wb){
 					pr_err("num_moved >= entry_saved err");
 					break;	
 				}
-				struct folio * folio = lru_to_folio(&folio_list_wb);
+				struct folio * folio = folio_list_wb[i];//lru_to_folio_next(&folio_list_wb);
 				VM_BUG_ON_FOLIO(!folio_test_writeback(folio), folio);
-				pr_err("add_to_lruvec[%pK] saved_folios folio[%pK]", lruvec, folio);
-				pr_err("folio[%pK]{p[%pK]n[%pK]} saved_folios{p[%pK]n[%pK]} folio_list_wb{p[%pK]n[%pK]}", 
-						&folio->lru, folio->lru.prev, folio->lru.next,
-						lrugen->saved_folios.prev, lrugen->saved_folios.next, 
-						folio_list_wb.prev, folio_list_wb.next);
-				list_move(&folio->lru, &lrugen->saved_folios); 
-				pr_err("moved folio[%pK]{p[%pK]n[%pK]} saved_folios{p[%pK]n[%pK]} folio_list_wb{p[%pK]n[%pK]}", 
-						&folio->lru, folio->lru.prev, folio->lru.next,
-						lrugen->saved_folios.prev, lrugen->saved_folios.next, 
-						folio_list_wb.prev, folio_list_wb.next);
-				// folio_unlock(folio);
+				
+				list_add(&folio->lru, &lrugen->saved_folios);
 				trace_add_to_lruvec_saved_folios(lruvec, folio, num_moved);	
-				// 				list_for_each_entry_safe(folio, next, &lrugen->saved_folios, lru){
-				// 	pr_err("saved_folios: folio->lru[%pK] {p[%pK]n[%pK]} next[%pK]", 
-				// 		&folio->lru, folio->lru.prev, folio->lru.next, next);
-				// }
-				// list_for_each_entry_safe(folio, next, &folio_list_wb, lru){
-				// 	pr_err("saved_folios: folio->lru[%pK] {p[%pK]n[%pK]} next[%pK]", 
-				// 		&folio->lru, folio->lru.prev, folio->lru.next, next);
-				// }
 			}
 			spin_unlock_irq(&lruvec->lru_lock);
-			pr_err("finish adding to lruvec[%pK]", lruvec);
 		}
 		else{
 			struct folio* folio = NULL;
 			pr_err("there's no lruvec, unlock all folio in list");
-			while (!list_empty(&folio_list_wb)) {
-				folio = lru_to_folio(&folio_list_wb);
-				list_del(&folio->lru);
+			for (int i = 0; i < num_folio_list_wb; i++){
+				folio = folio_list_wb[i];
 				folio_unlock(folio);
 			}
 		}

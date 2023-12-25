@@ -1114,7 +1114,7 @@ static inline int is_page_cache_freeable(struct folio *folio)
 static inline int is_page_cache_freeable_save(struct folio *folio)
 {
 	return folio_ref_count(folio) ==
-		3 + folio_nr_pages(folio); //one for ori cache; one for new entry
+		2 + folio_nr_pages(folio); //one for ori cache; one for new entry
 }
 /*
  * We detected a synchronous write error writing a folio out.  Probably
@@ -1816,23 +1816,17 @@ unsigned int check_saved_folios_wb(struct lruvec *lruvec,
 	LIST_HEAD(saved_sb_complete_list);
 //load out pages
 	spin_lock_irq(&lruvec->lru_lock);
-	while (!list_empty(saved_folios)) {
+	while (!list_empty_careful(saved_folios)) {
 		struct folio *folio;
 		folio = lru_to_folio(saved_folios);
-		pr_err("check_s_f_wb lruvec[%pK] saved_folios[%pK]{p[%pK]n[%pK]} folio->lru[%pK] {p[%pK]n[%pK]}", 
-				lruvec, saved_folios, saved_folios->prev,  saved_folios->next,
-				folio, folio->lru.prev, folio->lru.next);
-		list_move(&folio->lru, &folio_list);
-		pr_err("check_s_f_wb lruvec[%pK] saved_folios[%pK]{p[%pK]n[%pK]} folio->lru[%pK] {p[%pK]n[%pK]} folio_list[%pK] p[%pK]n[%pK]", 
-				lruvec, saved_folios, saved_folios->prev,  saved_folios->next,
-				folio, folio->lru.prev, folio->lru.next, 
-				&folio_list, folio_list.prev, folio_list.next);		
-		scanned += 1;
-		if (scanned >= 8) break; //for safety
+		// list_move(&folio->lru, &folio_list);
+		list_del(&folio->lru);
+		list_add(&folio->lru, &folio_list);	
+		scanned++;
 	}
 	spin_unlock_irq(&lruvec->lru_lock);
 
-	if (list_empty(&folio_list)){
+	if (list_empty_careful(&folio_list)){
 		if (scanned > 0) 
 			pr_err("but is empty folio_list[%pK]{p[%pK]n[%pK]}", 
 					&folio_list, folio_list.prev, folio_list.next);
@@ -1859,10 +1853,10 @@ unsigned int check_saved_folios_wb(struct lruvec *lruvec,
 		VM_BUG_ON_FOLIO(folio_evictable(folio), folio);
 		VM_BUG_ON_FOLIO(!folio_test_anon(folio), folio);
 		VM_BUG_ON_FOLIO(!folio_test_swapbacked(folio), folio);
-		// VM_BUG_ON_FOLIO(!folio_test_swapcache(folio), folio);
-		if (folio_test_swapcache(folio))
-			pr_err("folio_swapcached [%pK][%s:%d]", folio, 
-					__FILE__, __LINE__);
+		VM_BUG_ON_FOLIO(!folio_test_swapcache(folio), folio);
+		// if (folio_test_swapcache(folio))
+		// 	pr_err("folio_swapcached [%pK][%s:%d]", folio, 
+		// 			__FILE__, __LINE__);
 		VM_BUG_ON_FOLIO(folio_test_large(folio), folio);
 		VM_BUG_ON_FOLIO(folio_mapped(folio), folio);
 		VM_BUG_ON_FOLIO(folio_is_file_lru(folio), folio);
@@ -1911,8 +1905,12 @@ keep_next_time:
 		VM_BUG_ON_FOLIO(folio_test_lru(folio) || folio_test_unevictable(folio), folio);
 	}
 	if (!list_empty(&saved_sb_complete_list)){
-		pr_err("call free_unref_page_list");
-		free_unref_page_list(&saved_sb_complete_list); //free these pages
+		struct folio* folio, *next;
+		// pr_err("call free_unref_page_list");
+		//free_unref_page_list(&saved_sb_complete_list); //free these pages
+		list_for_each_entry_safe(folio, next, &saved_sb_complete_list, lru){
+			folio_add_lru_save(folio);
+		}
 	}
 	
 //load out pages
@@ -5185,9 +5183,48 @@ static bool sort_folio(struct lruvec *lruvec, struct folio *folio, int tier_idx)
 	return false;
 }
 
+static bool isolate_folio_save(struct lruvec *lruvec, struct folio *folio, struct scan_control *sc)
+{
+	bool success;
+	pr_err("isolate_folio_save lruvec[%pK] folio[%pK] d[%d]anon[%d]sw$[%d]lru[%d]ref[%d]", 
+			lruvec, folio, folio_test_dirty(folio), folio_test_anon(folio),
+			folio_test_swapcache(folio), folio_test_lru(folio), folio_ref_count(folio));
+	/* swapping inhibited */
+	if (!(sc->gfp_mask & __GFP_IO) &&
+	    (folio_test_dirty(folio) ||
+	     (folio_test_anon(folio) && !folio_test_swapcache(folio))))
+		return false;
+
+	/* raced with release_pages() */
+	if (!folio_try_get(folio))
+		return false;
+	pr_err("isolate_folio_save lruvec[%pK] folio[%pK] get success", 
+			lruvec, folio);
+	/* raced with another isolation */
+	if (!folio_test_clear_lru(folio)) {
+		folio_put(folio);
+		return false;
+	}
+
+	/* see the comment on MAX_NR_TIERS */
+	if (!folio_test_referenced(folio))
+		set_mask_bits(&folio->flags, LRU_REFS_MASK | LRU_REFS_FLAGS, 0);
+
+	/* for shrink_folio_list() */
+	folio_clear_reclaim(folio);
+	folio_clear_referenced(folio);
+
+	success = lru_gen_del_folio(lruvec, folio, true);
+	VM_WARN_ON_ONCE_FOLIO(!success, folio);
+
+	return true;
+}
+
 static bool isolate_folio(struct lruvec *lruvec, struct folio *folio, struct scan_control *sc)
 {
 	bool success;
+	if (folio_test_stalesaved(folio))
+		return isolate_folio_save(lruvec, folio, sc)
 
 	/* swapping inhibited */
 	if (!(sc->gfp_mask & __GFP_IO) &&

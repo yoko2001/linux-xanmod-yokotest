@@ -29,6 +29,7 @@
 
 static void __end_swap_bio_write_save(struct bio* bio){
 	struct page *page = bio_first_page_all(bio);
+	struct folio* folio = page_folio(page);
 	if (bio->bi_status) {
 		pr_err("__end_swap_bio_write_save page[%lu=%pK]",
 			(unsigned long)page, page);
@@ -47,10 +48,11 @@ static void __end_swap_bio_write_save(struct bio* bio){
 				     (unsigned long long)bio->bi_iter.bi_sector);
 		ClearPageReclaim(page);
 	}
-	end_page_writeback(page);
-	pr_err("after __end_swap_bio_write_save page[%lx] d[%d]wb[%d]rcl[%d] ref=%d lru{p[%lx]n[%lx]}",
-			(unsigned long)page, PageDirty(page), PageWriteback(page), PageReclaim(page), folio_ref_count(page_folio(page)),
+	pr_err("call end_page_writeback lruvec[%lx] page[%lx]d[%d]wb[%d]rcl[%d]sv[%d] ref=%d lru{p[%lx]n[%lx]}",
+			folio_lruvec(folio), (unsigned long)page, PageDirty(page), PageWriteback(page), 
+			PageReclaim(page), PageStaleSaved(page), folio_ref_count(page_folio(page)),
 			(unsigned long)page->lru.prev, (unsigned long)page->lru.next);
+	end_page_writeback(page);
 }
 static void __end_swap_bio_write(struct bio *bio)
 {

@@ -252,6 +252,9 @@ static inline bool lru_gen_add_folio(struct lruvec *lruvec, struct folio *folio,
 		//force evict fast
 		seq = lrugen->min_seq[type];
 		reclaiming = true;
+		pr_err("lru_gen_add_folio lruvec[%pK] folio[%pK] lru[%d] wb[%d] sw$[%d] lock[%d] ref[%d]", 
+				lruvec, folio, folio_test_lru(folio), folio_test_writeback(folio), 
+				folio_test_swapcache(folio), folio_test_locked(folio), folio_ref_count(folio));
 	}
 	gen = lru_gen_from_seq(seq);
 	flags = (gen + 1UL) << LRU_GEN_PGOFF;

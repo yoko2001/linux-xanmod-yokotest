@@ -1290,7 +1290,11 @@ static inline bool free_page_is_bad(struct page *page)
 {
 	if (likely(page_expected_state(page, PAGE_FLAGS_CHECK_AT_FREE)))
 		return false;
-
+	pr_err("free_page_is_bad[%pK], lru[%d]lock[%d]pr[%d]pr2[%d]wb[%d]res[%d]slab[%d]ev[%d]mlock[%d]", page, 
+			PageLRU(page), PageLocked(page), PagePrivate(page), PagePrivate2(page),
+			PageWriteback(page), PageReserved(page), PageSlab(page), PageUnevictable(page),
+			PageMlocked(page)
+			);
 	/* Something has gone sideways, find it */
 	free_page_is_bad_report(page);
 	return true;
@@ -3562,7 +3566,10 @@ void free_unref_page_list(struct list_head *list)
 
 	list_for_each_entry_safe(page, next, list, lru) {
 		struct zone *zone = page_zone(page);
-
+		if (PageStaleSaved(page)){
+			pr_err("free_unref_page_list page[%pK]{p[%pK]n[%pK]}", 
+					page, page->lru.prev, page->lru.next);
+		}
 		list_del(&page->lru);
 		migratetype = get_pcppage_migratetype(page);
 

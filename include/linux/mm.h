@@ -241,7 +241,10 @@ static inline struct folio *lru_to_folio(struct list_head *head)
 {
 	return list_entry((head)->prev, struct folio, lru);
 }
-
+static inline struct folio *lru_to_folio_next(struct list_head *head)
+{
+	return list_entry((head)->next, struct folio, lru);
+}
 void setup_initial_init_mm(void *start_code, void *end_code,
 			   void *end_data, void *brk);
 

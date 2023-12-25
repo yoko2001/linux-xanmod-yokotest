@@ -3126,6 +3126,9 @@ bool __folio_end_writeback_saved(struct folio *folio)
 {
 	long nr = folio_nr_pages(folio);
 	struct address_space *mapping = folio_mapping(folio);
+	struct lruvec* lruvec = folio_lruvec(folio);
+	struct lru_gen_folio *lrugen = &lruvec->lrugen;
+	unsigned long	flags;
 	bool ret;
 
 	folio_memcg_lock(folio);
