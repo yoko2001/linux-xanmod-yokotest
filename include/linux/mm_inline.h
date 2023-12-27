@@ -248,14 +248,11 @@ static inline bool lru_gen_add_folio(struct lruvec *lruvec, struct folio *folio,
 	else
 		seq = lrugen->min_seq[type];
 
-	if (folio_test_clear_stalesaved(folio)){ 
+	if (folio_test_stalesaved(folio)){ 
 		//force evict fast
 		seq = lrugen->min_seq[type];
-		reclaiming = true;
-		pr_err("lru_gen_add_folio lruvec[%pK] folio[%pK] lru[%d] wb[%d] sw$[%d] lock[%d] ref[%d]", 
-				lruvec, folio, folio_test_lru(folio), folio_test_writeback(folio), 
-				folio_test_swapcache(folio), folio_test_locked(folio), folio_ref_count(folio));
 	}
+
 	gen = lru_gen_from_seq(seq);
 	flags = (gen + 1UL) << LRU_GEN_PGOFF;
 	/* see the comment on MIN_NR_GENS about PG_active */
@@ -271,10 +268,37 @@ static inline bool lru_gen_add_folio(struct lruvec *lruvec, struct folio *folio,
 	return true;
 }
 
+static inline bool lru_gen_del_folio_save(struct lruvec *lruvec, struct folio *folio, bool reclaiming)
+{
+	unsigned long flags;
+	int gen = folio_lru_gen(folio);
+
+	VM_BUG_ON_FOLIO(!folio_test_stalesaved(folio), folio);
+
+	if (gen < 0)
+		return false;
+
+	VM_WARN_ON_ONCE_FOLIO(folio_test_active(folio), folio);
+	VM_WARN_ON_ONCE_FOLIO(folio_test_unevictable(folio), folio);
+
+	/* for folio_migrate_flags() */
+	flags = !reclaiming && lru_gen_is_active(lruvec, gen) ? BIT(PG_active) : 0;
+	flags = set_mask_bits(&folio->flags, LRU_GEN_MASK, flags);
+	gen = ((flags & LRU_GEN_MASK) >> LRU_GEN_PGOFF) - 1;
+
+	lru_gen_update_size(lruvec, folio, gen, -1);
+	list_del(&folio->lru);
+
+	return true;
+}
+
 static inline bool lru_gen_del_folio(struct lruvec *lruvec, struct folio *folio, bool reclaiming)
 {
 	unsigned long flags;
 	int gen = folio_lru_gen(folio);
+
+	if (folio_test_stalesaved(folio))
+		return lru_gen_del_folio_save(lruvec, folio, reclaiming);
 
 	if (gen < 0)
 		return false;

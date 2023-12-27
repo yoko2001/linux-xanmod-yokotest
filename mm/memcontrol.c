@@ -7145,8 +7145,10 @@ static void uncharge_folio(struct folio *folio, struct uncharge_gather *ug)
 		memcg = __folio_memcg(folio);
 	}
 
-	if (!memcg)
+	if (!memcg){
+		VM_BUG_ON_FOLIO(folio_test_stalesaved(folio), folio);
 		return;
+	}
 
 	if (ug->memcg != memcg) {
 		if (ug->memcg) {
@@ -7178,6 +7180,9 @@ static void uncharge_folio(struct folio *folio, struct uncharge_gather *ug)
 	}
 
 	css_put(&memcg->css);
+	if (folio_test_stalesaved(folio)){
+		pr_err("staled folio [%pK] uncharged to memcg[%pK]" ,folio, memcg);
+	}
 }
 
 void __mem_cgroup_uncharge(struct folio *folio)

@@ -245,6 +245,38 @@ unlock:
 
 extern spinlock_t shadow_ext_lock;
 
+swp_entry_t folio_get_migentry(struct folio* folio, swp_entry_t ori_swap)
+{
+	swp_entry_t mig_swap;
+	int i;
+	struct address_space *address_space_remap;
+	VM_BUG_ON_FOLIO((page_private(folio_page(folio, 0)) == 0), folio);
+
+	mig_swap.val = 0;
+	address_space_remap = swap_address_space_remap(ori_swap);
+	if (!address_space_remap) 
+		return mig_swap;
+	long nr = folio_nr_pages(folio);
+	pgoff_t idx = swp_offset(ori_swap);
+	XA_STATE(xas, &address_space_remap->i_pages, idx);
+
+	xas_set_update(&xas, workingset_update_node);
+	VM_BUG_ON_FOLIO((nr > 1), folio);
+	VM_BUG_ON_FOLIO(!folio_test_swapcache(folio), folio);
+	VM_BUG_ON_FOLIO(folio_test_writeback(folio), folio);
+	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
+	
+	xa_lock_irq(&address_space_remap->i_pages);
+	for (i = 0; i < nr; i++) {
+		void *entry = xas_load(&xas);
+		VM_BUG_ON_FOLIO(!entry, folio);
+		mig_swap.val = xa_to_value(entry);
+		xas_next(&xas);
+	}
+	xa_unlock_irq(&address_space_remap->i_pages);
+
+	return mig_swap;
+}
 /*
  * This must be called only on folios that have
  * been verified to be in the swap cache.
@@ -263,7 +295,9 @@ void __delete_from_swap_cache(struct folio *folio,
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 	VM_BUG_ON_FOLIO(!folio_test_swapcache(folio), folio);
 	VM_BUG_ON_FOLIO(folio_test_writeback(folio), folio);
-
+	if (folio_test_stalesaved(folio)){
+		pr_err("folio[%pK] origin swapcache clearing", folio);
+	}
 	for (i = 0; i < nr; i++) {
 		void *entry = xas_store(&xas, shadow);
 		VM_BUG_ON_PAGE(entry != folio, entry);
@@ -286,7 +320,7 @@ void __delete_from_swap_cache(struct folio *folio,
 	__lruvec_stat_mod_folio(folio, NR_SWAPCACHE, -nr);
 }
 
-static void __delete_from_swap_cache_mig(struct folio *folio,
+void __delete_from_swap_cache_mig(struct folio *folio,
 			swp_entry_t entry)
 {
 	struct address_space *address_space = swap_address_space(entry);
@@ -297,6 +331,8 @@ static void __delete_from_swap_cache_mig(struct folio *folio,
 	XA_STATE(xas, &address_space->i_pages, idx);
 
 	xas_set_update(&xas, workingset_update_node);
+	
+	pr_err("folio[%pK] migrate swapcache clearing", folio);
 
 	VM_BUG_ON_FOLIO(!folio_test_stalesaved(folio), folio);
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
@@ -1373,8 +1409,9 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				count_vm_event(SWAP_STALE_SAVE);
 			}
 			else {
-				pr_err("page[%pK] stale[%d]already in swapcache, we don't bother it here", 
-						page, TestClearPageStaleSaved(page));
+				put_page(page);
+				pr_err("page[%pK] stale[%d] ref[%d] already in swapcache, we don't bother it here", 
+						page, TestClearPageStaleSaved(page), folio_ref_count(folio));
 				goto skip_this_save;
 			}
 			SetPageStaleSaved(page);
@@ -1403,6 +1440,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				folio_unlock(folio);
 				goto fail_delete_mig_cache;
 			}
+			pr_err("add_swp_entry_remap [%lx]=>[%lx]", saved_entry.val, mig_entry.val);
 			//now we add the real entry
 			VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 
@@ -1435,7 +1473,6 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 						pr_err("PAGE_SUCCESS dirty folio[%pK]", folio);
 					}					
 					if (folio_test_writeback(folio)){//sync, under wb	
-						struct folio* folio_tmp, *next_tmp;		
 						folio_list_wb[num_folio_list_wb++] = folio; 	
 						//check later in vmscan
 					}
