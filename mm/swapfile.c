@@ -1863,6 +1863,7 @@ static int unuse_pte(struct vm_area_struct *vma, pmd_t *pmd,
 	pte = pte_offset_map_lock(vma->vm_mm, pmd, addr, &ptl);
 	if (unlikely(!pte_same_as_swp(*pte, swp_entry_to_pte(entry)))) {
 		ret = 0;
+		pr_err("unuse_pte missmatch pte [%lu] type[%d]", entry.val, swp_type(entry));
 		goto out;
 	}
 
@@ -1977,6 +1978,7 @@ static int unuse_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 		if (ret < 0) {
 			folio_unlock(folio);
 			folio_put(folio);
+			pr_err("unuse_pte fail entry[%lu] ", entry.val);
 			goto out;
 		}
 
@@ -2069,8 +2071,10 @@ static int unuse_vma(struct vm_area_struct *vma, unsigned int type)
 		if (pgd_none_or_clear_bad(pgd))
 			continue;
 		ret = unuse_p4d_range(vma, pgd, addr, next, type);
-		if (ret)
+		if (ret){
+			pr_err("unuse_vma vma[%pK] type[%d]fail", vma, type);
 			return ret;
+		}
 	} while (pgd++, addr = next, addr != end);
 	return 0;
 }
@@ -2178,8 +2182,10 @@ static int try_to_unuse(unsigned int type)
 
 retry:
 	retval = shmem_unuse(type);
-	if (retval)
+	if (retval){
+		pr_err("try_to_unuse[%d] shmem_unuse fail ret[%d]", type, retval);
 		return retval;
+	}
 
 	prev_mm = &init_mm;
 	mmget(prev_mm);

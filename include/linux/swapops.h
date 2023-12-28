@@ -82,6 +82,7 @@
 #define SWP_MIG_YOUNG			BIT(SWP_MIG_YOUNG_BIT)
 #define SWP_MIG_DIRTY			BIT(SWP_MIG_DIRTY_BIT)
 
+#define SWP_MIG_MAX_MAP          ((1 << SWP_SPECIAL_MARK) - 1)
 static inline bool is_pfn_swap_entry(swp_entry_t entry);
 
 /* Clear all flags but only keep swp_entry_t related information */
@@ -159,6 +160,15 @@ static inline pgoff_t swp_offset(swp_entry_t entry)
 static inline pgoff_t swp_ext_offset(swp_entry_t entry)
 {
 	return entry.val & (SWP_OFFSET_MASK | SWP_EXT_MASK);
+}
+
+/*
+ * Extract the ext + `offset' field from a swp_entry_t.  The swp_entry_t is in
+ * arch-independent format
+ */
+static inline pgoff_t swp_ext_spec_offset(swp_entry_t entry)
+{
+	return entry.val & (SWP_OFFSET_MASK | SWP_EXT_MASK | SWP_SPECIAL_MASK);
 }
 
 /*

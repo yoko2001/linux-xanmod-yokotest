@@ -561,7 +561,6 @@ void folio_add_lru_save(struct folio * folio){
 
 	folio_clear_active(folio);
 	//set readahead here
-	folio_set_stalesaved(folio);
 	folio_get(folio);
 	local_lock(&cpu_fbatches.lock);
 	fbatch = this_cpu_ptr(&cpu_fbatches.lru_add);

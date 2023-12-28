@@ -3726,7 +3726,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	struct swap_info_struct *si = NULL;
 	rmap_t rmap_flags = RMAP_NONE;
 	bool exclusive = false;
-	swp_entry_t entry;
+	swp_entry_t entry, migentry;
 	pte_t pte;
 	int locked;
 	vm_fault_t ret = 0;
@@ -3920,6 +3920,31 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	}
 
 	if (swapcache) {
+		if (folio_test_stalesaved(folio) && folio == swapcache){ //folio locked already
+			VM_BUG_ON_FOLIO(!(folio_nr_pages(folio) == 1), folio);
+			if (!folio_test_writeback(folio) && !folio_test_dirty(folio) 
+					&& folio_test_swapbacked(folio) && folio_test_swapcache(folio)) {  
+				// we don't need to keep the remap any more, because a real 
+				// pagefault is happing , it will then decide weather or not
+				// realloc the entry, so we do the clear here
+				
+				VM_BUG_ON_FOLIO(non_swap_entry(entry), folio);
+				migentry = folio_get_migentry(folio, entry);
+				VM_BUG_ON_FOLIO(non_swap_entry(migentry), folio);
+				if (migentry.val){
+					delete_from_swap_cache_mig(folio, migentry);
+					delete_from_swap_remap(folio, entry, migentry);
+				}
+				folio_clear_stalesaved(folio);
+				pr_err("PF folio[%pK] mig cleared wb[%d]sw$[%d] stale[%d] refcount[%d]", folio, 
+						folio_test_writeback(folio), folio_test_swapcache(folio), 
+						folio_test_stalesaved(folio), folio_ref_count(folio));
+			}
+			else{
+				pr_err("folio[%pK] cannot clear mig now", folio);
+			}
+		}
+
 		/*DJL ADD BEGIN*/
 		trace_do_swap_page(4, folio);
 		/*DJL ADD END*/

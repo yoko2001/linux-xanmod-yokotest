@@ -7172,17 +7172,20 @@ static void uncharge_folio(struct folio *folio, struct uncharge_gather *ug)
 		obj_cgroup_put(objcg);
 	} else {
 		/* LRU pages aren't accounted at the root level */
-		if (!mem_cgroup_is_root(memcg))
+		if (!mem_cgroup_is_root(memcg)){
 			ug->nr_memory += nr_pages;
+			if (folio_test_stalesaved(folio)){
+				pr_err("staled folio [%pK] nr[%ld] uncharged to memcg[%pK]" ,
+							folio, nr_pages, memcg);
+			}
+		}
 		ug->pgpgout++;
 
 		folio->memcg_data = 0;
 	}
 
 	css_put(&memcg->css);
-	if (folio_test_stalesaved(folio)){
-		pr_err("staled folio [%pK] uncharged to memcg[%pK]" ,folio, memcg);
-	}
+
 }
 
 void __mem_cgroup_uncharge(struct folio *folio)

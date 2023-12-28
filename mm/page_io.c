@@ -48,8 +48,8 @@ static void __end_swap_bio_write_save(struct bio* bio){
 				     (unsigned long long)bio->bi_iter.bi_sector);
 		ClearPageReclaim(page);
 	}
-	pr_err("call end_page_writeback lruvec[%lx] page[%lx]d[%d]wb[%d]rcl[%d]sv[%d] ref=%d lru{p[%lx]n[%lx]}",
-			folio_lruvec(folio), (unsigned long)page, PageDirty(page), PageWriteback(page), 
+	pr_err("call end_page_writeback page[%lx]d[%d]wb[%d]rcl[%d]sv[%d] ref=%d lru{p[%lx]n[%lx]}",
+			(unsigned long)page, PageDirty(page), PageWriteback(page), 
 			PageReclaim(page), PageStaleSaved(page), folio_ref_count(page_folio(page)),
 			(unsigned long)page->lru.prev, (unsigned long)page->lru.next);
 	end_page_writeback(page);
@@ -214,9 +214,10 @@ int swap_writepage(struct page *page, struct writeback_control *wbc)
 {
 	struct folio *folio = page_folio(page);
 	int ret;
-	if (folio_test_stalesaved(folio)){
-		pr_err("swap_writepage on staled folio[%pK]", folio);
-	} //skip folio_free_swap for staled folio
+	if (folio_test_stalesaved(folio)){//skip folio_free_swap for staled folio
+		// pr_err("swap_writepage on staled folio[%pK]", folio);
+		;
+	} 
 	else if (folio_free_swap(folio)) {
 		folio_unlock(folio);
 		return 0;

@@ -1448,8 +1448,10 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 
 	if (folio_test_stalesaved(folio)){
 		ori_swap = folio_swap_entry(folio);
-		pr_err("__remove_mapping folio[%pK] ref[%d]", folio, folio_ref_count(folio));
 		mig_entry = folio_get_migentry(folio, ori_swap);
+		if (!folio_test_active(folio)){
+			pr_err("__remove_mapping folio[%pK] ref[%d]", folio, folio_ref_count(folio));
+		}
 	}
 
 	if (!folio_test_swapcache(folio))
@@ -1524,17 +1526,20 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		else
 			__delete_from_swap_cache(folio, swap, shadow);
 		
+		mem_cgroup_swapout(folio, swap);
+		xa_unlock_irq(&mapping->i_pages);		
 		if (folio_test_stalesaved(folio)){
 			if (mig_entry.val != 0){
 				pr_err("folio[%pK] found mig_entry[%lx]", folio, mig_entry.val);
+				struct address_space *address_space = swap_address_space(mig_entry);
+				xa_lock_irq(&address_space->i_pages);
 				__delete_from_swap_cache_mig(folio, mig_entry);
+				xa_unlock_irq(&address_space->i_pages);
 			}
 			else{
 				pr_err("folio[%pK] lost its mig_entry", folio);
 			}
-		}		
-		mem_cgroup_swapout(folio, swap);
-		xa_unlock_irq(&mapping->i_pages);
+		}
 		put_swap_folio(folio, swap);
 	} else {
 		swp_entry_t swap;
@@ -1584,7 +1589,8 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	}
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 	if (folio->shadow_ext){
-		pr_err("shouldn't happen here");
+		pr_err("unexpected folio[%pK] got shadow_ext stale[%d] ref[%d]", 
+					folio, folio_test_stalesaved(folio), folio_ref_count(folio));
 	}
 #endif
 	return 1;
@@ -2403,7 +2409,8 @@ activate_locked_split:
 		}
 activate_locked:
 		if (folio_test_stalesaved(folio)){
-			pr_err("activate folio[%pK]", folio);
+			if (!folio_test_swapcache(folio) || !folio_test_dirty(folio) || !folio_test_active(folio))
+				pr_err("unknown reason activate folio[%pK]", folio);
 		}
 		/* Not a candidate for swapping, so reclaim swap space. */
 		if (folio_test_swapcache(folio) &&
@@ -5498,10 +5505,10 @@ static int evict_folios(struct lruvec *lruvec, struct scan_control *sc, int swap
 		return scanned;
 
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
-	if (!current_is_kswapd()){
-		reclaimed_saved = check_saved_folios_wb(lruvec, pgdat, sc);
-		sc->nr_reclaimed += reclaimed_saved;		
-	}
+	// if (!current_is_kswapd()){
+	reclaimed_saved = check_saved_folios_wb(lruvec, pgdat, sc);
+	// sc->nr_reclaimed += reclaimed_saved;		
+	// }
 #endif
 retry:
 	reclaimed = shrink_folio_list(&list, pgdat, sc, &stat, false);
