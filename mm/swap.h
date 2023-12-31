@@ -43,12 +43,15 @@ int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 		      gfp_t gfp, void **shadowp);
 int add_swp_entry_remap(struct folio* folio, swp_entry_t from_entry, swp_entry_t to_entry, 
 			gfp_t gfp);
+int enable_swp_entry_remap(struct folio* folio, swp_entry_t from_entry);
 void __delete_from_swap_cache(struct folio *folio,
 			      swp_entry_t entry, void *shadow);
 void delete_from_swap_remap(struct folio *folio, swp_entry_t entry_from, swp_entry_t entry_to);
 void __delete_from_swap_cache_mig(struct folio *folio,
 			swp_entry_t entry);
+bool folio_swapped(struct folio *folio);
 swp_entry_t folio_get_migentry(struct folio* folio, swp_entry_t ori);
+swp_entry_t entry_get_migentry(swp_entry_t ori_swap);
 void delete_from_swap_cache(struct folio *folio);
 void delete_from_swap_cache_mig(struct folio* folio, swp_entry_t entry);
 void clear_shadow_from_swap_cache(int type, unsigned long begin,

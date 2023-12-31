@@ -1637,7 +1637,7 @@ unlock_out:
 	return ret;
 }
 
-static bool folio_swapped(struct folio *folio)
+bool folio_swapped(struct folio *folio)
 {
 	swp_entry_t entry = folio_swap_entry(folio);
 	struct swap_info_struct *si = _swap_info_get(entry);
@@ -3446,6 +3446,7 @@ static int __swap_duplicate(swp_entry_t entry, unsigned char usage)
 	 */
 	if (unlikely(swap_count(count) == SWAP_MAP_BAD)) {
 		err = -ENOENT;
+		pr_err("__swap_duplicate SWAP_MAP_BAD entry[%lx]", entry.val);
 		goto unlock_out;
 	}
 

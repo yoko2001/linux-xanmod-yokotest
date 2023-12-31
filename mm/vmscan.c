@@ -1394,8 +1394,6 @@ int pageout_save(struct folio *folio, struct address_space *mapping, struct swap
 
 		folio_set_reclaim(folio);
 		res = mapping->a_ops->writepage(&folio->page, &wbc);
-		pr_err("pageout_save called wp folio[%pK], page[%pK] wb[%d] d[%d]", 
-					folio, &folio->page, folio_test_writeback(folio), folio_test_dirty(folio));
 		if (res < 0){
 			pr_err("call handle_write_error");
 			handle_write_error(mapping, folio, res);
@@ -1450,7 +1448,9 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		ori_swap = folio_swap_entry(folio);
 		mig_entry = folio_get_migentry(folio, ori_swap);
 		if (!folio_test_active(folio)){
-			pr_err("__remove_mapping folio[%pK] ref[%d]", folio, folio_ref_count(folio));
+			pr_err("__remove_mapping folio[%pK] ref[%d] wb[%d] d[%d]", 
+						folio, folio_ref_count(folio), folio_test_writeback(folio),
+						folio_test_dirty(folio));
 		}
 	}
 
@@ -1530,15 +1530,30 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		xa_unlock_irq(&mapping->i_pages);		
 		if (folio_test_stalesaved(folio)){
 			if (mig_entry.val != 0){
-				pr_err("folio[%pK] found mig_entry[%lx]", folio, mig_entry.val);
+				swp_entry_t mig_entry_phy;
+				int err;
+		
+				//swap duplicate once only , this is for read from swap cache
+				mig_entry_phy.val = mig_entry.val;
+				swp_entry_clear_ext(&mig_entry_phy);
+
+				err = swap_duplicate(mig_entry_phy);
+				if (err < 0) {
+					pr_err("swap_duplicate failing entry[%lx]", mig_entry_phy.val);
+				}
+
 				struct address_space *address_space = swap_address_space(mig_entry);
 				xa_lock_irq(&address_space->i_pages);
 				__delete_from_swap_cache_mig(folio, mig_entry);
 				xa_unlock_irq(&address_space->i_pages);
+				pr_err("after clear folio[%pK] found mig_entry[%lx] count %d", 
+							folio, mig_entry.val, __swp_swapcount(mig_entry));
+				put_swap_folio(folio, mig_entry);
 			}
 			else{
 				pr_err("folio[%pK] lost its mig_entry", folio);
 			}
+
 		}
 		put_swap_folio(folio, swap);
 	} else {
@@ -1936,6 +1951,17 @@ keep_next_time:
 	if (!list_empty(&saved_sb_complete_list)){
 		struct folio* folio, *next;
 		list_for_each_entry_safe(folio, next, &saved_sb_complete_list, lru){
+			//update mig entry state in remap
+			int ret;
+			swp_entry_t entry = {.val = page_private(folio_page(folio, 0))};
+			VM_BUG_ON_FOLIO(folio_nr_pages(folio) > 1, folio);
+			VM_BUG_ON_FOLIO(non_swap_entry(entry), folio);	
+			if (!folio_test_stalesaved(folio))
+				continue;
+			ret = enable_swp_entry_remap(folio, entry);
+			if (ret){
+				pr_err("folio[%pK] enable_swp_entry_remap fail[%d]", folio, ret);
+			}
 			folio_unlock(folio);
 			folio_add_lru_save(folio);
 		}
