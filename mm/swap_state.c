@@ -1073,7 +1073,6 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 	// spin_unlock_irq(&shadow_ext_lock);
 #endif
 	/*DJL ADD END*/
-
 	/* Caller will initiate read into locked folio */
 	// folio_add_lru(folio);
 	if (no_ra)
@@ -1119,7 +1118,7 @@ struct page *read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 	/*DJL ADD END*/
 	struct page *retpage = __read_swap_cache_async(entry, gfp_mask,
 			vma, addr, &page_was_allocated, true, try_free_entry, addr);
-
+	
 	if (page_was_allocated)
 		swap_readpage(retpage, do_poll, plug);
 	else if (!retpage)
@@ -1671,6 +1670,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				}
 
 fail_delete_mig_cache:
+				pr_err("fail_delete_mig_cache");
 				delete_from_swap_cache_mig(folio, mig_entry); //page private is also cleared
 				reset_private = true;
 fail_page_out:
@@ -1713,10 +1713,10 @@ skip_this_save:
 		if (plug_save_wb)
 			swap_write_unplug(plug_save_wb);
 		
-		if (non_swap_entry(saved_entry) && save_slot_finish){
-			//restart load
-			reenable_scan_cpu();
-		}
+		// if (non_swap_entry(saved_entry) && save_slot_finish){
+		// 	//restart load
+		// 	reenable_scan_cpu();
+		// }
 
 		blk_finish_plug(&plug_save);
 		swap_read_unplug(splug_save);

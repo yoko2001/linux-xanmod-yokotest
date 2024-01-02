@@ -1556,6 +1556,8 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 
 		}
 		put_swap_folio(folio, swap);
+		if (folio_test_stalesaved(folio)){
+		}
 	} else {
 		swp_entry_t swap;
 		swap.val = -1;
@@ -1897,8 +1899,7 @@ collect_fail_lock_keep:
 
 		list_del(&folio->lru);
 
-		// if (!folio_trylock(folio))
-		// 	goto keep_next_time;
+		//already locked
 		VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 		VM_BUG_ON_FOLIO(folio_test_active(folio), folio);
 		VM_BUG_ON_FOLIO(folio_evictable(folio), folio);
@@ -1915,6 +1916,12 @@ collect_fail_lock_keep:
 		folio_check_dirty_writeback(folio, &dirty, &writeback);
 		
 		if (folio_test_writeback(folio)) {
+			if (!folio_test_stalesaved(folio)){ //cancelled by do_swap
+				pr_err("folio[%pK] taken by do_swap, don't touch it", folio);
+				folio_unlock(folio);
+				continue;
+			}
+			goto keep_next_time_locked;
 			if (current_is_kswapd() &&
 			    folio_test_reclaim(folio) &&
 			    test_bit(PGDAT_WRITEBACK, &pgdat->flags)) {
@@ -1925,6 +1932,7 @@ collect_fail_lock_keep:
 				folio_set_reclaim(folio);
 				goto keep_next_time_locked;
 			} else {
+				folio_set_reclaim(folio);
 				pr_err("try wait folio wb[%pK]", folio);
 				folio_wait_writeback(folio);
 				/* then go back and try same folio again */
@@ -1956,14 +1964,22 @@ keep_next_time:
 			swp_entry_t entry = {.val = page_private(folio_page(folio, 0))};
 			VM_BUG_ON_FOLIO(folio_nr_pages(folio) > 1, folio);
 			VM_BUG_ON_FOLIO(non_swap_entry(entry), folio);	
-			if (!folio_test_stalesaved(folio))
+			if (!folio_test_stalesaved(folio)){
+				//we're fucked up by do swap turn this page into safe state
+				folio_add_lru_save(folio);
+				folio_unlock(folio);
 				continue;
+			} 
 			ret = enable_swp_entry_remap(folio, entry);
 			if (ret){
 				pr_err("folio[%pK] enable_swp_entry_remap fail[%d]", folio, ret);
 			}
-			folio_unlock(folio);
+			//realloc entry
+			swap_free(entry);
+			pr_err("after swap_free original entry[%lx] count %d", entry.val, __swp_swapcount(entry));
+
 			folio_add_lru_save(folio);
+			folio_unlock(folio);
 		}
 	}
 	lru_add_drain();

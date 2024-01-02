@@ -403,11 +403,11 @@ static void swap_writepage_bdev_async(struct page *page,
 	count_swpout_vm_event(page);
 	set_page_writeback(page);
 	unlock_page(page);
-	submit_bio(bio);
 	if (folio_test_stalesaved(folio)){
-		pr_err("swap_writepage_bdev_async submited folio[%pK] wb[%d]lock[%d]", 
+		pr_err("swap_writepage_bdev_async submit folio[%pK] wb[%d]lock[%d]", 
 				folio, folio_test_writeback(folio), folio_test_locked(folio));
 	}
+	submit_bio(bio);
 }
 
 void __swap_writepage(struct page *page, struct writeback_control *wbc)
