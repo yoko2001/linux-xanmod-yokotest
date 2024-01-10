@@ -25,16 +25,16 @@ void __swap_writepage(struct page *page, struct writeback_control *wbc);
 #define SWAP_ADDRESS_SPACE_PAGES	(1 << SWAP_ADDRESS_SPACE_SHIFT)
 extern struct address_space *swapper_spaces[];
 #define swap_address_space(entry)			    \
-	(&swapper_spaces[swp_type(entry)][swp_offset(entry) \
-		>> SWAP_ADDRESS_SPACE_SHIFT])
+	(&swapper_spaces[swp_type(entry)][(((swp_raw_offset(entry) \
+		>> SWAP_ADDRESS_SPACE_SHIFT) << SWP_SPECIAL_MARK) | (swp_entry_test_special(entry)))])
 
 /* One swap address space rmap for each 512M swap space */
-#define SWAP_ADDRESS_SPACE_REMAP_SHIFT	(14 + 3)
+#define SWAP_ADDRESS_SPACE_REMAP_SHIFT	(SWAP_ADDRESS_SPACE_SHIFT + 3)
 #define SWAP_ADDRESS_SPACE_REMAP_PAGES	(1 << SWAP_ADDRESS_SPACE_REMAP_SHIFT)
 extern struct address_space *swapper_spaces_remap[];
 #define swap_address_space_remap(entry)			    \
-	(&swapper_spaces_remap[swp_type(entry)][swp_offset(entry) \
-		>> SWAP_ADDRESS_SPACE_REMAP_SHIFT])
+	(&swapper_spaces_remap[swp_type(entry)][(((swp_raw_offset(entry) \
+		>> SWAP_ADDRESS_SPACE_REMAP_SHIFT) << SWP_SPECIAL_MARK) | (swp_entry_test_special(entry)))])
 
 void show_swap_cache_info(void);
 bool add_to_swap(struct folio *folio,  long* left_space);
@@ -51,12 +51,13 @@ void __delete_from_swap_cache_mig(struct folio *folio,
 			swp_entry_t entry);
 bool folio_swapped(struct folio *folio);
 swp_entry_t folio_get_migentry(struct folio* folio, swp_entry_t ori);
+int entry_remap_usable_version(swp_entry_t entry);
 swp_entry_t entry_get_migentry(swp_entry_t ori_swap);
 void delete_from_swap_cache(struct folio *folio);
 void delete_from_swap_cache_mig(struct folio* folio, swp_entry_t entry);
 void clear_shadow_from_swap_cache(int type, unsigned long begin,
 				  unsigned long end, int free);
-struct folio *swap_cache_get_folio(swp_entry_t entry,
+struct folio *swap_cache_get_folio(struct swap_info_struct * si, swp_entry_t entry,
 		struct vm_area_struct *vma, unsigned long addr);
 struct folio *filemap_get_incore_folio(struct address_space *mapping,
 		pgoff_t index);
@@ -74,8 +75,13 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 				     unsigned long addr,
 				     bool *new_page_allocated, 
 					 bool no_ra, 
-					 int* try_free_swap, 
-					 unsigned long realaddr);
+					 int* try_free_swap);
+struct page*__read_swap_cache_async_save(swp_entry_t entry, gfp_t gfp_mask, 
+					struct vm_area_struct *vma, 
+					unsigned long addr,	
+					bool *new_page_allocated, 	
+					bool no_ra, 
+					int* try_free_entry);
 struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t flag,
 				    struct vm_fault *vmf, int* try_free_entry);
 struct page *swapin_readahead(swp_entry_t entry, gfp_t flag,
@@ -121,7 +127,7 @@ static inline int swap_writepage(struct page *p, struct writeback_control *wbc)
 	return 0;
 }
 
-static inline struct folio *swap_cache_get_folio(swp_entry_t entry,
+static inline struct folio *swap_cache_get_folio(struct swap_info_struct * si, swp_entry_t entry,
 		struct vm_area_struct *vma, unsigned long addr)
 {
 	return NULL;

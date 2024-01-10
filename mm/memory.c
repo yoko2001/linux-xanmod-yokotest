@@ -3782,11 +3782,15 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	if (unlikely(!si))
 		goto out;
 
-	folio = swap_cache_get_folio(entry, vma, vmf->address);
+	folio = swap_cache_get_folio(si, entry, vma, vmf->address);
 	/*DJL ADD BEGIN*/
 	if (folio){
  		page = folio_file_page(folio, swp_offset(entry));
 		count_memcg_event_mm(vma->vm_mm, SWAPIN_FROM_SWAPCACHE);
+		if (page_private(page) != entry.val)
+			pr_err("folio[%pK]stlae[%d]private[%lx] entry[%lx]swapcache hit $[%d] private bug", 
+					folio, folio_test_stalesaved(folio),  
+					page_private(page), entry.val, folio_test_swapcache(folio));
 	}
 	/*DJL ADD END*/
 	swapcache = folio;
@@ -3794,6 +3798,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	orientry.val = entry.val; //save origin
 	migentry = entry_get_migentry(entry);
 	if (swapcache){ //we do nothing in this case
+		if (migentry.val)
+			pr_err("swapcache caught, migentry.val cleared, orientry[%lx]", orientry.val);
 		migentry.val = 0;
 	}
 	else{ //migentry has to hold the actual page copy
@@ -3882,6 +3888,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 
 				/* To provide entry to swap_readpage() */
 				folio_set_swap_entry(folio, entry);
+				// pr_err("folio[%pK]$[%d] set private[%lx]", 
+				// 			folio, folio_test_swapcache(folio), folio_get_private(folio));
 				/*DJL ADD BEGIN*/
 				if (get_fastest_swap_prio() == si->prio){
 					count_memcg_event_mm(vma->vm_mm, SWAPIN_FAST);
@@ -3891,6 +3899,11 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 					count_memcg_event_mm(vma->vm_mm, SWAPIN_MID);
 				}
 				/*DJL ADD END*/
+				if (migentry.val){
+					pr_err("pf try swap_readpage entry[%lx]->folio[%pK]wb[%d]$[%d]swped[%d] migentry[%lx]", 
+							entry.val, page, folio_test_writeback(folio), folio_test_swapcache(folio), 
+							folio_swapped(folio), migentry.val);
+				}
 				swap_readpage(page, true, NULL);
 				if (migentry.val){
 					pr_err("pf swap_readpage entry[%lx]->folio[%pK]wb[%d]$[%d]swped[%d] migentry[%lx]", 
@@ -3904,17 +3917,26 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 			}
 		} else {
 			if (migentry.val) {
+				bool page_allocated;
+				struct swap_iocb **plug;
 				if (migentry.val != entry.val){
 					pr_err("pf inner err entry[%lx]<>migentry[%lx]", entry.val, migentry.val);
 				}
-				page = read_swap_cache_async(entry, GFP_HIGHUSER_MOVABLE, vma, 
-							vmf->address, true, NULL, false, &try_free_entry);
-				if (page)
-					pr_err("read_swap_cache_async folio[%pK] remapped entry[%lx]", 
+				pr_err("__read_swap_cache_async_save try read_$_async entry[%lx]", 
+								entry.val);
+				page = __read_swap_cache_async_save(entry, GFP_HIGHUSER_MOVABLE, vma, 
+							vmf->address, &page_allocated, false, &try_free_entry);
+				ClearPageStaleSaved(page);
+				if (page_allocated){
+					pr_err("__read_swap_cache_async_save folio[%pK] remapped entry[%lx]", 
 								page_folio(page), entry.val);
-				else
-					pr_err("read_swap_cache_async fail entry[%lx]", entry.val);
-				//this will turn page_private(folio) to mig_entry(==entry)
+					swap_readpage(page, true, plug);
+				}
+				else if (!page){
+					pr_err("__read_swap_cache_async_save fail entry[%lx]", entry.val);
+				}
+				pr_err("__read_swap_cache_async_save complete read_$_async entry[%lx]", 
+								entry.val);
 			}
 			else {
 				page = swapin_readahead(entry, GFP_HIGHUSER_MOVABLE,
@@ -3932,7 +3954,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				migentry.val = 0;
 			}
 			else{
-				pr_err("PF entry[%lx]->folio swapin_readahead fail", entry.val);
+				pr_err("PF entry[%lx]->folio[%pK] swapin_readahead fail", entry.val, folio);
 			}
 			swapcache = folio;
 		}
@@ -3993,15 +4015,18 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				VM_BUG_ON_FOLIO(non_swap_entry(migentry_), folio);
 				folio_clear_stalesaved(folio);
 				if (migentry_.val){
-					if (!swp_entry_test_ext(migentry_)){
+					if (!swp_entry_test_ext(migentry_)){ //cached in by origin swap$, not enabled yet
 						delete_from_swap_remap(folio, orientry, migentry_);
 						delete_from_swap_cache_mig(folio, migentry_);
-						pr_err("PF entry[%lx]->folio[%pK] mig cleared wb[%d]sw$[%d] stale[%d] refcount[%d]", 
+						pr_err("PF2 entry[%lx]->folio[%pK] mig cleared wb[%d]sw$[%d] stale[%d] refcount[%d]", 
 							orientry.val, folio, folio_test_writeback(folio), folio_test_swapcache(folio), 
 							folio_test_stalesaved(folio), folio_ref_count(folio));						
 					} else{
-						pr_err("cornor case remap not set (write_back imcomplete yet) folio[%pK]mig[%lx]", 
-						folio, migentry_.val);
+						//remap enabled (while read from origin)
+						pr_err("cornor case 1 folio[%pK]entry[%lx]->mig[%lx]", 
+							folio, entry.val, migentry_.val);
+						delete_from_swap_remap(folio, orientry, migentry_);
+						delete_from_swap_cache_mig(folio, migentry_);
 					}
 				}
 			}
@@ -4011,7 +4036,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				VM_BUG_ON_FOLIO(non_swap_entry(orientry), folio);
 				migentry_ = folio_get_migentry(folio, orientry);
 				VM_BUG_ON_FOLIO(non_swap_entry(migentry_), folio);
-				pr_err("folio[%pK] cannot clear mig now, d[%d]$[%d]wb[%d]valid[%d]", 
+				pr_err("folio[%pK] IOing clear mig now, d[%d]$[%d]wb[%d]valid[%d]", 
 							folio, folio_test_dirty(folio), folio_test_swapcache(folio),
 							folio_test_stalesaved(folio), folio_ref_count(folio));
 				//wb state, bio submitted but not ended yet
@@ -4020,14 +4045,20 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				folio_clear_stalesaved(folio); //we do the clean here now
 				delete_from_swap_remap(folio, orientry, migentry_);
 				delete_from_swap_cache_mig(folio, migentry_);
-				pr_err("PF entry[%lx]->folio[%pK] mig cleared wb[%d]sw$[%d] stale[%d] refcount[%d]", 
+				pr_err("PF2 entry[%lx]->folio[%pK] mig cleared wb[%d]sw$[%d] stale[%d] refcount[%d]", 
 					orientry.val, folio, folio_test_writeback(folio), folio_test_swapcache(folio), 
 					folio_test_stalesaved(folio), folio_ref_count(folio));	
 			}
-			else{ 
+			else{ //read from sync IO
+				swp_entry_t migentry_;
+				VM_BUG_ON_FOLIO(non_swap_entry(orientry), folio);
+				migentry_ = folio_get_migentry(folio, orientry);
 				pr_err("corner case entry[%lx]->folio[%pK] mig uncleared wb[%d]sw$[%d]d[%d] stale[%d] refcount[%d]", 
 					orientry.val, folio, folio_test_writeback(folio), folio_test_swapcache(folio), 
 					folio_test_dirty(folio), folio_test_stalesaved(folio), folio_ref_count(folio));	
+				folio_clear_stalesaved(folio);  // we do the clean here now, just got found , unprocessed yet
+				if (migentry_.val)
+					delete_from_swap_remap(folio, orientry, migentry_);
 			}
 		}
 #endif
@@ -4154,6 +4185,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	 * yet.
 	 */
 	swap_free(entry);
+	// pr_err("do_swap swap_free entry[%lx], count %d", entry.val, __swp_swapcount(entry));		
+
 #ifndef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
 	try_free_entry = 1;//force free, no excuse
 #endif

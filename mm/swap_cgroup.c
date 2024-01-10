@@ -76,7 +76,7 @@ static struct swap_cgroup *__lookup_swap_cgroup(struct swap_cgroup_ctrl *ctrl,
 static struct swap_cgroup *lookup_swap_cgroup(swp_entry_t ent,
 					struct swap_cgroup_ctrl **ctrlp)
 {
-	pgoff_t offset = swp_offset(ent);
+	pgoff_t offset = swp_raw_offset(ent);
 	struct swap_cgroup_ctrl *ctrl;
 
 	ctrl = &swap_cgroup_ctrl[swp_type(ent)];
@@ -130,7 +130,7 @@ unsigned short swap_cgroup_record(swp_entry_t ent, unsigned short id,
 	struct swap_cgroup *sc;
 	unsigned short old;
 	unsigned long flags;
-	pgoff_t offset = swp_offset(ent);
+	pgoff_t offset = swp_raw_offset(ent);
 	pgoff_t end = offset + nr_ents;
 
 	sc = lookup_swap_cgroup(ent, &ctrl);

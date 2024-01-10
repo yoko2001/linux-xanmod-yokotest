@@ -2013,6 +2013,7 @@ static inline void *folio_address(const struct folio *folio)
 
 extern void *page_rmapping(struct page *page);
 extern pgoff_t __page_file_index(struct page *page);
+extern pgoff_t __page_file_index_v(struct page* page);
 
 /*
  * Return the pagecache index of the passed page.  Regular pagecache pages
@@ -2021,7 +2022,7 @@ extern pgoff_t __page_file_index(struct page *page);
 static inline pgoff_t page_index(struct page *page)
 {
 	if (unlikely(PageSwapCache(page)))
-		return __page_file_index(page);
+		return __page_file_index_v(page);
 	return page->index;
 }
 

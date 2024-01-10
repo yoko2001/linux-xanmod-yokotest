@@ -920,7 +920,7 @@ static int zswap_get_swap_cache_page(swp_entry_t entry,
 	int temp;
 	/*DJL ADD BEGIN*/
 	*retpage = __read_swap_cache_async(entry, GFP_KERNEL,
-			NULL, 0, &page_was_allocated, true, &temp, 0);
+			NULL, 0, &page_was_allocated, true, &temp);
 	/*DJL ADD END*/
 	if (page_was_allocated)
 		return ZSWAP_SWAPCACHE_NEW;
@@ -969,7 +969,7 @@ static int zswap_writeback_entry(struct zpool *pool, unsigned long handle)
 	zhdr = zpool_map_handle(pool, handle, ZPOOL_MM_RO);
 	swpentry = zhdr->swpentry; /* here */
 	tree = zswap_trees[swp_type(swpentry)];
-	offset = swp_offset(swpentry);
+	offset = swp_raw_offset(swpentry); //use raw
 	zpool_unmap_handle(pool, handle);
 
 	/* find and ref zswap entry */

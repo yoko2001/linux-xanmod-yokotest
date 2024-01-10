@@ -166,7 +166,7 @@ int __frontswap_store(struct page *page)
 	swp_entry_t entry = { .val = page_private(page), };
 	int type = swp_type(entry);
 	struct swap_info_struct *sis = swap_info[type];
-	pgoff_t offset = swp_offset(entry);
+	pgoff_t offset = swp_raw_offset(entry);
 
 	VM_BUG_ON(!frontswap_ops);
 	VM_BUG_ON(!PageLocked(page));
@@ -205,7 +205,7 @@ int __frontswap_load(struct page *page)
 	swp_entry_t entry = { .val = page_private(page), };
 	int type = swp_type(entry);
 	struct swap_info_struct *sis = swap_info[type];
-	pgoff_t offset = swp_offset(entry);
+	pgoff_t offset = swp_raw_offset(entry);
 
 	VM_BUG_ON(!frontswap_ops);
 	VM_BUG_ON(!PageLocked(page));

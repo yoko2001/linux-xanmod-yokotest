@@ -25,23 +25,27 @@
  * swp_entry_t's are *never* stored anywhere in their arch-dependent format.
  */
 #define SWP_TYPE_SHIFT	(BITS_PER_XA_VALUE - MAX_SWAPFILES_SHIFT)
+#define SWP_RESERVE_MARK 10 //for safety
+#define SWP_RESERVE_SHIFT (SWP_TYPE_SHIFT - SWP_RESERVE_MARK)
 #define SWP_EXT_MARK 2    //used to mark if swp_entry is mapping a real out-mem page
-#define SWP_EXT_SHIFT (SWP_TYPE_SHIFT - SWP_EXT_MARK)
-#define SWP_SPECIAL_MARK 4 //used to mark version 0-15
+#define SWP_EXT_SHIFT (SWP_RESERVE_SHIFT - SWP_EXT_MARK)
+#define SWP_SPECIAL_MARK 5 //used to mark version 0-32
 #define SWP_SPECIAL_SHIFT (SWP_EXT_SHIFT - SWP_SPECIAL_MARK)
-
-#define SWP_EXT_MASK ((1UL << SWP_TYPE_SHIFT) - (1UL << SWP_EXT_SHIFT))
+#define SWP_EXT_MASK ((1UL << SWP_RESERVE_SHIFT) - (1UL << SWP_EXT_SHIFT))
 #define SWP_SPECIAL_MASK ((1UL << SWP_EXT_SHIFT) - (1UL << SWP_SPECIAL_SHIFT))
 #define SWP_OFFSET_MASK	((1UL << SWP_SPECIAL_SHIFT) - 1)
 
+#define MARK_SAFETY_CHECK() BUILD_BUG_ON(SWP_RESERVE_SHIFT >= 50)
+#define SWP_ENTRY_MAX_SPEC ((1 << SWP_SPECIAL_MARK) - 1)
+
 /*
  * we change it to
- *	[63:57][56][55][54:51][offset]
- *  [63:57] TYPE
- *  [56] 	RESERVE
- *  [55] 	FAKE-MAPPING   if 1 , means there's no such a real page in back storage, 
- *  [54:51] VERSION_MAP
- *  [50:0] 	OFFSET
+ *	[63:59][58:50][49:48][47:42][offset]
+ *  [63:59] TYPE
+ *  [59:50] RESERVE
+ *  [48] 	FAKE-MAPPING   if 1 , means there's no such a real page in back storage, 
+ *  [47:42] VERSION_MAP
+ *  [41:0] 	OFFSET
  */
 /*
  * Definitions only for PFN swap entries (see is_pfn_swap_entry()).  To
@@ -100,11 +104,20 @@ static inline pte_t pte_swp_clear_flags(pte_t pte)
 /*
  * Store a type+offset into a swp_entry_t in an arch-independent format
  */
+// static inline swp_entry_t swp_entry(unsigned long type, pgoff_t offset)
+// {
+// 	swp_entry_t ret;
+// 	if (offset >= (SWP_OFFSET_MASK)) {
+// 		pr_err("swp_entry exceeding BUG");
+// 	}
+// 	ret.val = (type << SWP_TYPE_SHIFT) | (offset & SWP_OFFSET_MASK);
+// 	return ret;
+// }
+
 static inline swp_entry_t swp_entry(unsigned long type, pgoff_t offset)
 {
 	swp_entry_t ret;
-
-	ret.val = (type << SWP_TYPE_SHIFT) | (offset & SWP_OFFSET_MASK);
+	ret.val = (type << SWP_TYPE_SHIFT) | (offset & (SWP_OFFSET_MASK | SWP_EXT_MASK | SWP_SPECIAL_MASK));
 	return ret;
 }
 
@@ -120,6 +133,17 @@ static inline void swp_entry_set_special(swp_entry_t* entry, unsigned long num){
 
 static inline void swp_entry_clear_special(swp_entry_t* entry){
 	entry->val = entry->val & (~SWP_SPECIAL_MASK);
+}
+
+static inline swp_entry_t swp_entry_version(unsigned long type, pgoff_t offset, int version)
+{
+	swp_entry_t ret;
+	if (offset >= (SWP_OFFSET_MASK)) {
+		pr_err("swp_entry_version exceeding BUG offset[%lx], ver[%d]", offset, version);
+	}
+	ret.val = (type << SWP_TYPE_SHIFT) | (offset & (SWP_OFFSET_MASK | SWP_EXT_MASK | SWP_SPECIAL_MASK));
+	swp_entry_set_special(&ret, (unsigned long)version);
+	return ret;
 }
 
 static inline int swp_entry_test_ext(swp_entry_t entry){
@@ -148,28 +172,26 @@ static inline unsigned swp_type(swp_entry_t entry)
  * Extract the `offset' field from a swp_entry_t.  The swp_entry_t is in
  * arch-independent format
  */
+// static inline pgoff_t swp_offset(swp_entry_t entry)
+// {
+// 	return entry.val & SWP_OFFSET_MASK;
+// }
 static inline pgoff_t swp_offset(swp_entry_t entry)
-{
-	return entry.val & SWP_OFFSET_MASK;
-}
-
-/*
- * Extract the ext + `offset' field from a swp_entry_t.  The swp_entry_t is in
- * arch-independent format
- */
-static inline pgoff_t swp_ext_offset(swp_entry_t entry)
-{
-	return entry.val & (SWP_OFFSET_MASK | SWP_EXT_MASK);
-}
-
-/*
- * Extract the ext + `offset' field from a swp_entry_t.  The swp_entry_t is in
- * arch-independent format
- */
-static inline pgoff_t swp_ext_spec_offset(swp_entry_t entry)
 {
 	return entry.val & (SWP_OFFSET_MASK | SWP_EXT_MASK | SWP_SPECIAL_MASK);
 }
+static inline pgoff_t swp_raw_offset(swp_entry_t entry)
+{
+	return entry.val & SWP_OFFSET_MASK;
+}
+// /*
+//  * Extract the ext + `offset' field from a swp_entry_t.  The swp_entry_t is in
+//  * arch-independent format
+//  */
+// static inline pgoff_t swp_ext_spec_offset(swp_entry_t entry)
+// {
+// 	return entry.val & (SWP_OFFSET_MASK | SWP_EXT_MASK | SWP_SPECIAL_MASK);
+// }
 
 /*
  * This should only be called upon a pfn swap entry to get the PFN stored

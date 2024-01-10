@@ -1544,7 +1544,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 
 				struct address_space *address_space = swap_address_space(mig_entry);
 				xa_lock_irq(&address_space->i_pages);
-				__delete_from_swap_cache_mig(folio, mig_entry);
+				__delete_from_swap_cache_mig(folio, mig_entry_phy);
 				xa_unlock_irq(&address_space->i_pages);
 				pr_err("after clear folio[%pK] found mig_entry[%lx] count %d", 
 							folio, mig_entry.val, __swp_swapcount(mig_entry));
@@ -1554,6 +1554,10 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 				pr_err("folio[%pK] lost its mig_entry", folio);
 			}
 
+		}
+		if (swp_entry_test_special(swap)){
+			pr_err("put_swap_folio entry[%lx] ver[%d]", 
+					swap.val, swp_entry_test_special(swap));
 		}
 		put_swap_folio(folio, swap);
 		if (folio_test_stalesaved(folio)){
