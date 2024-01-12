@@ -1413,8 +1413,11 @@ again:
 			rss[mm_counter(page)]--;
 			if (!delay_rmap) {
 				page_remove_rmap(page, vma, false);
-				if (unlikely(page_mapcount(page) < 0))
+				if (unlikely(page_mapcount(page) < 0)){
+					pr_err("print_bad_pte 1 addr[%lx] page[%pK] cnt[%d]", 
+								addr, page, page_mapcount(page));
 					print_bad_pte(vma, addr, ptent, page);
+				}
 			}
 			if (unlikely(__tlb_remove_page(tlb, page, delay_rmap))) {
 				force_flush = 1;
@@ -1446,8 +1449,10 @@ again:
 			if (!should_zap_cows(details))
 				continue;
 			rss[MM_SWAPENTS]--;
-			if (unlikely(!free_swap_and_cache(entry)))
+			if (unlikely(!free_swap_and_cache(entry))){
+				pr_err("print_bad_pte 2 entry[%lx]", entry);
 				print_bad_pte(vma, addr, ptent, NULL);
+			}
 		} else if (is_migration_entry(entry)) {
 			page = pfn_swap_entry_to_page(entry);
 			if (!should_zap_page(details, page))
@@ -3771,6 +3776,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		} else if (is_pte_marker_entry(entry)) {
 			ret = handle_pte_marker(vmf);
 		} else {
+			pr_err("do_swap_page bad entry[%lx] ", entry.val);
 			print_bad_pte(vma, vmf->address, vmf->orig_pte, NULL);
 			ret = VM_FAULT_SIGBUS;
 		}

@@ -1303,6 +1303,7 @@ static inline bool PageHWPoisonTakenOff(struct page *page)
 void SetPageHWPoisonTakenOff(struct page *page)
 {
 	set_page_private(page, MAGIC_HWPOISON);
+	pr_err("SetPageHWPoisonTakenOff page[%pK] [%x]", page, MAGIC_HWPOISON);
 }
 
 void ClearPageHWPoisonTakenOff(struct page *page)

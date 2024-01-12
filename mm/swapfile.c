@@ -879,7 +879,8 @@ static bool swap_offset_all_version_available_and_locked(struct swap_info_struct
 					     unsigned long offset)
 {
 	if (!swap_offset_any_version_occupied(si, offset)){ //available
-		pr_err("si[%d] offset[0x%lx] available", si->prio, offset);
+		if (__si_can_version(si))
+			pr_err("si[%d] offset[0x%lx] available", si->prio, offset);
 		spin_lock(&si->lock);
 		return true;
 	}
@@ -1061,7 +1062,7 @@ checks:
 					pr_err("entry[%lx] ver[%d] offset_v[%lx] allocated SWAP_HAS_CACHE", 
 							test_entry.val, version, offset_v);
 				else
-					pr_err("entry[%lx] ver[%d] offset_v[%lx] allocated [%d]", 
+					pr_err("entry[%lx] ver[%d] offset_v[%lx] allocated [%x]", 
 							test_entry.val, version, offset_v, usage);
 			}
 		}
@@ -1087,12 +1088,16 @@ checks:
 			// 	version, slots[n_ret-1].val, offset_v);
 			;
 		else
-			pr_err("version[%d]entry[%lx] offset_v[%lx] added to slots[%d]", 
+			pr_err("version[%d]entry[%lx] offset_v[%lx] added to slots[%x]", 
 				version, slots[n_ret-1].val, offset_v, usage);
 	} else {
 		slots[n_ret++] = swp_entry(si->type, offset);
-		if 	(__si_can_version(si))
-			pr_err("entry[%lx] added to slots [%d]", slots[n_ret-1].val, usage);
+		if 	(__si_can_version(si)) {
+			if (usage == SWAP_HAS_CACHE)
+				;
+			else
+				pr_err("entry[%lx] added to slots [%x]", slots[n_ret-1].val, usage);
+		}
 	}
 
 skip_this_slot:
@@ -1527,7 +1532,7 @@ static unsigned char __swap_entry_free(struct swap_info_struct *p,
 	unsigned long version = (unsigned long) swp_entry_test_special(entry);
 	unsigned char usage;
 	if (version)
-		pr_err("__swap_entry_free entry[%lx]v[%d]", entry.val, version);
+		pr_err("__swap_entry_free entry[%lx]v[%lu]", entry.val, version);
 	ci = lock_cluster_or_swap_info(p, offset);
 	usage = __swap_entry_free_locked(p, offset, version, 1);
 	unlock_cluster_or_swap_info(p, ci);
@@ -3753,6 +3758,9 @@ EXPORT_SYMBOL_GPL(swapcache_mapping);
 pgoff_t __page_file_index(struct page *page)
 {
 	swp_entry_t swap = { .val = page_private(page) };
+	if (swp_entry_test_special(swap))
+		pr_err("__page_file_index page[%pK] ver[%d], entry[%lx]", 
+				page, swp_entry_test_special(swap), swap.val);
 	return swp_raw_offset(swap);
 }
 EXPORT_SYMBOL_GPL(__page_file_index);

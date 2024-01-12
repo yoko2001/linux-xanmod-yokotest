@@ -310,6 +310,7 @@ int add_to_swap_cache_save(struct folio *folio, swp_entry_t entry,
 	pgoff_t idx = swp_offset(entry);
 	if (swp_entry_test_ext(entry)){
 		pr_err("add_to_swap_cache_save can't deal ext entry[%lx]", entry.val);
+		BUG();
 		return -1;
 	}
 	XA_STATE_ORDER(xas, &address_space->i_pages, idx, folio_order(folio));
@@ -429,6 +430,7 @@ swp_entry_t folio_get_migentry(struct folio* folio, swp_entry_t ori_swap)
 {
 	swp_entry_t mig_swap;
 	int i;
+	long nr;
 	struct address_space *address_space_remap;
 	VM_BUG_ON_FOLIO((page_private(folio_page(folio, 0)) == 0), folio);
 
@@ -436,7 +438,7 @@ swp_entry_t folio_get_migentry(struct folio* folio, swp_entry_t ori_swap)
 	address_space_remap = swap_address_space_remap(ori_swap);
 	if (!address_space_remap) 
 		return mig_swap;
-	long nr = folio_nr_pages(folio);
+	nr = folio_nr_pages(folio);
 	pgoff_t idx = swp_offset(ori_swap);
 	XA_STATE(xas, &address_space_remap->i_pages, idx);
 
@@ -493,6 +495,7 @@ void __delete_from_swap_cache(struct folio *folio,
 		// spin_unlock_irq(&shadow_ext_lock);
 #endif
 		set_page_private(folio_page(folio, i), 0);
+		// pr_err("__delete_from_swap_cache clear page private[%pK]", folio_page(folio, i));
 		xas_next(&xas);
 	}
 	folio_clear_swapcache(folio);
@@ -584,7 +587,9 @@ bool add_to_swap(struct folio *folio, long* left_space)
 	entry = folio_alloc_swap(folio, left_space);
 	if (!entry.val)
 		return false;
-
+	if (swp_entry_test_special(entry))
+		pr_err("folio_alloc_swap normal entry[%lx] v[%d] for folio[%pK] cnt:%d",
+				 entry.val, swp_entry_test_special(entry), folio, __swap_count(entry));
 	/*
 	 * XArray node allocations from PF_MEMALLOC contexts could
 	 * completely exhaust the page allocator. __GFP_NOMEMALLOC
@@ -1696,6 +1701,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 
 			err = add_to_swap_cache_save(folio, mig_entry, gfp_mask & (__GFP_HIGH|__GFP_NOMEMALLOC|__GFP_NOWARN));
 			if (err){
+				pr_err("folio[%pK] add_to_swap_cache_save fail", folio);
 				put_swap_folio(folio, mig_entry);
 				folio_unlock(folio);
 				goto skip_this_save;
@@ -1723,7 +1729,9 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 			 */
 
 			//set private of folio & trigger 
-			set_page_private(folio_page(folio, 0), saved_entry.val);
+			if (!(page_private(folio_page(folio, 0)) == saved_entry.val)){
+				BUG();
+			}
 			ori_pri_entry.val = page_private(folio_page(folio, 0));
 			set_page_private(folio_page(folio, 0), mig_entry.val);
 			reset_private = true;
@@ -1763,6 +1771,7 @@ fail_delete_mig_cache:
 				reset_private = true;
 fail_page_out:
 				// put_swap_folio(folio, mig_entry);
+				pr_err("fail page_out folio[%pK], mig_entry[%lx]", folio, mig_entry.val);
 				folio_clear_dirty(folio);
 				folio_clear_stalesaved(folio);
 				folio_unlock(folio);

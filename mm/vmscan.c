@@ -1391,7 +1391,8 @@ int pageout_save(struct folio *folio, struct address_space *mapping, struct swap
 			.for_reclaim = 1,
 			.swap_plug = plug,
 		};
-
+		pr_err("folio[%pK] calling writepage private[%lx]", 
+					folio, page_private(&folio->page));
 		folio_set_reclaim(folio);
 		res = mapping->a_ops->writepage(&folio->page, &wbc);
 		if (res < 0){
