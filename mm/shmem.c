@@ -1430,7 +1430,7 @@ static int shmem_writepage(struct page *page, struct writeback_control *wbc)
 	mutex_lock(&shmem_swaplist_mutex);
 	if (list_empty(&info->swaplist))
 		list_add(&info->swaplist, &shmem_swaplist);
-
+	pr_err("add_to_swap_cache shmem folio[%pK], swap[%lx]", folio, swap.val);
 	if (add_to_swap_cache(folio, swap,
 			__GFP_HIGH | __GFP_NOMEMALLOC | __GFP_NOWARN,
 			NULL) == 0) {
@@ -1722,6 +1722,7 @@ static void shmem_set_folio_swapin_error(struct inode *inode, pgoff_t index,
 
 	folio_wait_writeback(folio);
 	delete_from_swap_cache(folio);
+	BUG();
 	spin_lock_irq(&info->lock);
 	/*
 	 * Don't treat swapin error folio as alloced. Otherwise inode->i_blocks won't

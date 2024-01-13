@@ -310,6 +310,7 @@ static struct page *kimage_alloc_pages(gfp_t gfp_mask, unsigned int order)
 
 		pages->mapping = NULL;
 		set_page_private(pages, order);
+		pr_err("kimage_alloc_pages %d", order);
 		count = 1 << order;
 		for (i = 0; i < count; i++)
 			SetPageReserved(pages + i);

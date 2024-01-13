@@ -1345,8 +1345,10 @@ nextsi:
 		 * still in the swap_avail_head list then try it, otherwise
 		 * start over if we have not gotten any slots.
 		 */
-		if (!n_ret)
-			pr_err("no usable in this si prio[%d]", retprio);
+		// if (!n_ret && (si->prio == get_fastest_swap_prio())){
+		// 	pr_err("no usable in this si prio[%d] hp[%d]", si->prio, highprio);
+		// }
+
 		if (plist_node_empty(&next->avail_lists[node]))
 			goto start_over;
 	}
@@ -1448,8 +1450,12 @@ static unsigned char __swap_entry_free_locked(struct swap_info_struct *p,
 
 	usage = count | has_cache;
 	if (version)
-		pr_err("__SEFL offset_v[%lx]=>usage[%d] ver[%d] cnt%d;has_cache%d", 
-					offset_v, usage ? usage : SWAP_HAS_CACHE, version, count, has_cache);
+		pr_err("__SEFL offset_v[%lx] ver[%d] cnt%d;has_cache%d", 
+					offset_v, version, count, has_cache);
+	// else if (!count && has_cache)
+	// 	pr_err("__SEFL offset_v[%lx] ver[%d] cnt%d;has_cache%d", 
+	// 				offset_v, version, count, has_cache);
+	
 	if (usage == (SWAP_MAP_BAD | COUNT_CONTINUED))
 		BUG();
 	if (usage)
@@ -1531,8 +1537,8 @@ static unsigned char __swap_entry_free(struct swap_info_struct *p,
 	unsigned long offset = swp_raw_offset(entry);
 	unsigned long version = (unsigned long) swp_entry_test_special(entry);
 	unsigned char usage;
-	if (version)
-		pr_err("__swap_entry_free entry[%lx]v[%lu]", entry.val, version);
+	// if (__si_can_version(p))
+		// pr_err("__swap_entry_free entry[%lx]v[%lu]", entry.val, version);
 	ci = lock_cluster_or_swap_info(p, offset);
 	usage = __swap_entry_free_locked(p, offset, version, 1);
 	unlock_cluster_or_swap_info(p, ci);
@@ -1593,9 +1599,9 @@ void put_swap_folio(struct folio *folio, swp_entry_t entry)
 	if (!si)
 		return;
 	offset_v = offset + si->max * version* __si_can_version(si);
-	if (version)
-		pr_err("put_swap_folio si[%d]max[%lx]entry[%lx]v[%lu] offset_v[%lx]", 
-					si->prio, si->max, entry.val, version, offset_v);
+	// if (version)
+	// 	pr_err("put_swap_folio si[%d]max[%lx]entry[%lx]v[%lu] offset_v[%lx]", 
+	// 				si->prio, si->max, entry.val, version, offset_v);
 	ci = lock_cluster_or_swap_info(si, offset);
 	if (size == SWAPFILE_CLUSTER) {
 		VM_BUG_ON(!cluster_is_huge(ci));
@@ -2332,7 +2338,7 @@ void swap_shadow_scan_next(struct swap_info_struct * si, struct lruvec * lruvec,
 	mapping = swap_address_space(entry);
 
 	*scanned = swap_scan_entries_savior(mapping, lruvec, start, end, type, threshold);
-
+	pr_err("swap_scan_entries_savior called scanned[%d]", *scanned);
 	trace_swap_shadow_scan_next(start, end, *scanned, mem_cgroup_id(lruvec_memcg(lruvec)));
 
 	if (unlikely(si->max == end)){
@@ -3852,7 +3858,7 @@ int add_swap_count_continuation(swp_entry_t entry, gfp_t gfp_mask)
 	if (!page_private(head)) {
 		BUG_ON(count & COUNT_CONTINUED);
 		INIT_LIST_HEAD(&head->lru);
-		set_page_private(head, SWP_CONTINUED);
+		set_page_private_debug(head, SWP_CONTINUED, -1);
 		pr_err("page[%pK] was set SWP_CONTINUED", page);
 		si->flags |= SWP_CONTINUED;
 	}

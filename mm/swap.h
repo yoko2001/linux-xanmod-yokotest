@@ -91,6 +91,17 @@ static inline unsigned int folio_swap_flags(struct folio *folio)
 {
 	return page_swap_info(&folio->page)->flags;
 }
+
+static inline void set_page_private_debug(struct page *page, unsigned long private, int place)
+{
+	if (!page)
+		BUG();
+	set_page_private(page, private);
+	if (PageSwapBacked(page))
+		pr_err("[%d]page[%pK]->pri[%lx] $[%d]wb[%d]d[%d]", place, page, private, 
+				PageSwapCache(page), PageWriteback(page), PageDirty(page));
+}
+
 #else /* CONFIG_SWAP */
 struct swap_iocb;
 static inline void swap_readpage(struct page *page, bool do_poll,
@@ -173,6 +184,10 @@ static inline void clear_shadow_from_swap_cache(int type, unsigned long begin,
 static inline unsigned int folio_swap_flags(struct folio *folio)
 {
 	return 0;
+}
+static inline void set_page_private_debug(struct page *page, unsigned long private, int place)
+{
+	return set_page_private(page, private);
 }
 #endif /* CONFIG_SWAP */
 #endif /* _MM_SWAP_H */

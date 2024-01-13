@@ -1450,7 +1450,7 @@ again:
 				continue;
 			rss[MM_SWAPENTS]--;
 			if (unlikely(!free_swap_and_cache(entry))){
-				pr_err("print_bad_pte 2 entry[%lx]", entry);
+				pr_err("print_bad_pte 2 entry[%lx]", entry.val);
 				print_bad_pte(vma, addr, ptent, NULL);
 			}
 		} else if (is_migration_entry(entry)) {
@@ -3787,14 +3787,16 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	si = get_swap_device(entry);
 	if (unlikely(!si))
 		goto out;
-
+	if (swp_entry_test_special(entry)){
+		pr_err("before swap_cache_get_folio entry[%lx] ver[%d]", entry.val, swp_entry_test_special(entry));
+	}
 	folio = swap_cache_get_folio(si, entry, vma, vmf->address);
 	/*DJL ADD BEGIN*/
 	if (folio){
  		page = folio_file_page(folio, swp_offset(entry));
 		count_memcg_event_mm(vma->vm_mm, SWAPIN_FROM_SWAPCACHE);
 		if (page_private(page) != entry.val)
-			pr_err("folio[%pK]stlae[%d]private[%lx] entry[%lx]swapcache hit $[%d] private bug", 
+			pr_err("folio[%pK]stale[%d] private[%lx] entry[%lx]swapcache hit $[%d] private mismatch", 
 					folio, folio_test_stalesaved(folio),  
 					page_private(page), entry.val, folio_test_swapcache(folio));
 	}
@@ -3807,6 +3809,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		if (migentry.val)
 			pr_err("swapcache caught, migentry.val cleared, orientry[%lx]", orientry.val);
 		migentry.val = 0;
+		if (page_private(page) != entry.val)
+			set_page_private_debug(page, entry.val, -10);
 	}
 	else{ //migentry has to hold the actual page copy
 		if (migentry.val){ //!0
@@ -4024,7 +4028,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 					if (!swp_entry_test_ext(migentry_)){ //cached in by origin swap$, not enabled yet
 						delete_from_swap_remap(folio, orientry, migentry_);
 						delete_from_swap_cache_mig(folio, migentry_);
-						pr_err("PF2 entry[%lx]->folio[%pK] mig cleared wb[%d]sw$[%d] stale[%d] refcount[%d]", 
+						pr_err("PF1 entry[%lx]->folio[%pK] mig cleared wb[%d]sw$[%d] stale[%d] refcount[%d]", 
 							orientry.val, folio, folio_test_writeback(folio), folio_test_swapcache(folio), 
 							folio_test_stalesaved(folio), folio_ref_count(folio));						
 					} else{
@@ -4035,6 +4039,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 						delete_from_swap_cache_mig(folio, migentry_);
 					}
 				}
+				valid_remap = true;
 			}
 			else if (folio_test_writeback(folio) && !folio_test_dirty(folio) 
 					&& folio_test_swapbacked(folio) && folio_test_swapcache(folio)){
@@ -4054,6 +4059,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				pr_err("PF2 entry[%lx]->folio[%pK] mig cleared wb[%d]sw$[%d] stale[%d] refcount[%d]", 
 					orientry.val, folio, folio_test_writeback(folio), folio_test_swapcache(folio), 
 					folio_test_stalesaved(folio), folio_ref_count(folio));	
+				valid_remap = true;
 			}
 			else{ //read from sync IO
 				swp_entry_t migentry_;
@@ -4190,7 +4196,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	 * We're already holding a reference on the page but haven't mapped it
 	 * yet.
 	 */
-	swap_free(entry);
+	if (!valid_remap)
+		swap_free(entry);
 	// pr_err("do_swap swap_free entry[%lx], count %d", entry.val, __swp_swapcount(entry));		
 
 #ifndef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT

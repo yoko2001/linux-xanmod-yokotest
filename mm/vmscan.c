@@ -1547,14 +1547,14 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 				xa_lock_irq(&address_space->i_pages);
 				__delete_from_swap_cache_mig(folio, mig_entry_phy);
 				xa_unlock_irq(&address_space->i_pages);
-				pr_err("after clear folio[%pK] found mig_entry[%lx] count %d", 
-							folio, mig_entry.val, __swp_swapcount(mig_entry));
-				put_swap_folio(folio, mig_entry);
+				pr_err("after clear folio[%pK] private[%lx]found mig_entry[%lx] count %d", 
+							folio, page_private(folio_page(folio, 0)), mig_entry_phy.val, __swp_swapcount(mig_entry_phy));
+				put_swap_folio(folio, mig_entry_phy);
 			}
 			else{
 				pr_err("folio[%pK] lost its mig_entry", folio);
+				BUG();
 			}
-
 		}
 		if (swp_entry_test_special(swap)){
 			pr_err("put_swap_folio entry[%lx] ver[%d]", 
@@ -1927,28 +1927,6 @@ collect_fail_lock_keep:
 				continue;
 			}
 			goto keep_next_time_locked;
-			if (current_is_kswapd() &&
-			    folio_test_reclaim(folio) &&
-			    test_bit(PGDAT_WRITEBACK, &pgdat->flags)) {
-				goto keep_next_time_locked;
-			} else if (writeback_throttling_sane(sc) ||
-			    !folio_test_reclaim(folio) ||
-			    !may_enter_fs(folio, sc->gfp_mask)) {
-				folio_set_reclaim(folio);
-				goto keep_next_time_locked;
-			} else {
-				folio_set_reclaim(folio);
-				pr_err("try wait folio wb[%pK]", folio);
-				folio_wait_writeback(folio);
-				/* then go back and try same folio again */
-				if (folio_test_writeback(folio)){
-					pr_err("folio[%pK] should not bit pg_wb", folio);
-					folio_test_clear_writeback(folio);
-				}
-				list_add_tail(&folio->lru, &folio_list);
-				pr_err("success wait folio wb[%pK]", folio);
-				continue;
-			}
 		}
 		else{
 			nr_reclaimed += nr_pages;
@@ -1971,6 +1949,7 @@ keep_next_time:
 			VM_BUG_ON_FOLIO(non_swap_entry(entry), folio);	
 			if (!folio_test_stalesaved(folio)){
 				//we're fucked up by do swap turn this page into safe state
+				pr_err("intercepted before enable remap folio[%pK]", folio);
 				folio_add_lru_save(folio);
 				folio_unlock(folio);
 				continue;
@@ -2019,6 +1998,7 @@ static unsigned int shrink_folio_list(struct list_head *folio_list,
 	do_demote_pass = can_demote(pgdat->node_id, sc);
 
 retry:
+	// pr_err("shrink_folio_list start");
 	while (!list_empty(folio_list)) {
 		struct address_space *mapping;
 		struct folio *folio;
@@ -2478,6 +2458,7 @@ keep:
 				folio_test_unevictable(folio), folio);
 	}
 	/* 'folio_list' is always empty here */
+	// pr_err("shrink_folio_list end");
 
 	/* Migrate folios selected for demotion */
 	nr_reclaimed += demote_folio_list(&demote_folios, pgdat);

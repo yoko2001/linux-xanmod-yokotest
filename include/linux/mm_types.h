@@ -416,8 +416,7 @@ FOLIO_MATCH(compound_head, _head_2);
 
 static inline void set_page_private(struct page *page, unsigned long private)
 {
-	//page->private = private;
-	WRITE_ONCE(page->private, private);
+	page->private = private;
 }
 
 static inline void *folio_get_private(struct folio *folio)

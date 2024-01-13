@@ -1108,7 +1108,7 @@ static int me_swapcache_clean(struct page_state *ps, struct page *p)
 	int ret;
 
 	delete_from_swap_cache(folio);
-
+	BUG();
 	ret = delete_from_lru_cache(p) ? MF_FAILED : MF_RECOVERED;
 	folio_unlock(folio);
 

@@ -24,7 +24,7 @@
 #include <linux/page_owner.h>
 #include <linux/psi.h>
 #include "internal.h"
-
+#include "swap.h"
 #ifdef CONFIG_COMPACTION
 /*
  * Fragmentation score check interval for proactive compaction purposes.
@@ -608,7 +608,7 @@ static unsigned long isolate_freepages_block(struct compact_control *cc,
 		isolated = __isolate_free_page(page, order);
 		if (!isolated)
 			break;
-		set_page_private(page, order);
+		set_page_private_debug(page, order, 8);
 
 		nr_scanned += isolated - 1;
 		total_isolated += isolated;
@@ -1491,7 +1491,7 @@ fast_isolate_freepages(struct compact_control *cc)
 		/* Isolate the page if available */
 		if (page) {
 			if (__isolate_free_page(page, order)) {
-				set_page_private(page, order);
+				set_page_private_debug(page, order, 9);
 				nr_isolated = 1 << order;
 				nr_scanned += nr_isolated - 1;
 				cc->nr_freepages += nr_isolated;
