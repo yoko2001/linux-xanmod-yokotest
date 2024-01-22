@@ -156,8 +156,10 @@ static inline void swp_entry_set_ext(swp_entry_t* entry, unsigned long num){
 	entry->val = (entry->val & (~SWP_EXT_MASK)) | num;
 }
 
-static inline void swp_entry_clear_ext(swp_entry_t* entry){
-	entry->val = entry->val & (~SWP_EXT_MASK);
+static inline void swp_entry_clear_ext(swp_entry_t* entry, unsigned long num){
+	num = num % ((1 << SWP_EXT_MARK));
+	num = (num << SWP_EXT_SHIFT) & SWP_EXT_MASK;
+	entry->val = entry->val & (~num);
 }
 /*
  * Extract the `type' field from a swp_entry_t.  The swp_entry_t is in

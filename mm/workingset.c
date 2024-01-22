@@ -198,9 +198,28 @@ const unsigned short shadow_entry_invalidmagic = 0xDCBA;
 bool entry_is_entry_ext(const void *entry){
 	if (xa_is_value(entry)) return false;
 	if (entry){
-		if (((struct shadow_entry*)entry)->magic != shadow_entry_magic){
+		if (((struct shadow_entry*)entry)->magic != ((shadow_entry_magic) ^ ((unsigned long)entry & 0xFFFF))){
 			// if (((struct shadow_entry*)entry)->magic == shadow_entry_invalidmagic)
 			// 	pr_err("entry was invalied ext[%lx]",entry);
+			return false;
+		}
+		if (!xa_is_value(((struct shadow_entry*)entry)->shadow)){
+			pr_err("entry_is_entry_ext !xa_is_value ext[%lx]",(unsigned long)entry);
+			return false;
+		}
+		return true;
+	}
+	return false;
+}
+bool entry_is_entry_ext_debug(const void *entry){
+	if (xa_is_value(entry)) {
+		pr_err("entry_is_entry_ext_debug entry[%pK] xa_is_value", entry);
+		return false;
+	}
+	if (entry){
+		if (((struct shadow_entry*)entry)->magic != ((shadow_entry_magic) ^ ((unsigned long)entry & 0xFFFF))){
+			// if (((struct shadow_entry*)entry)->magic == shadow_entry_invalidmagic)
+				pr_err("entry was magic invalid ext[%lx]",entry);
 			return false;
 		}
 		if (!xa_is_value(((struct shadow_entry*)entry)->shadow)){
@@ -228,7 +247,7 @@ static void *pack_shadow_ext(int memcgid, pg_data_t *pgdat, unsigned long evicti
 	eviction = (eviction << WORKINGSET_SHIFT) | workingset;
 	if (entry_ext){
 		entry_ext->shadow = xa_mk_value(eviction);
-		entry_ext->magic = shadow_entry_magic;
+		entry_ext->magic = shadow_entry_magic ^ ((unsigned long)entry_ext & 0xFFFF);
 		entry_ext->memcg_id = memcgid;
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 		if (old_entry_ext){
@@ -262,6 +281,7 @@ static void *pack_shadow_ext(int memcgid, pg_data_t *pgdat, unsigned long evicti
 	}
 	if (((unsigned long)entry_ext & 3) != 0) {
 		pr_err("xarray err entry_ext[%lx]->shadow[%lx]", (unsigned long)entry_ext, eviction);
+		BUG();
 	}
 	return entry_ext;////xa_mk_value((unsigned long)entry_ext);
 }
@@ -403,11 +423,8 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, long swap_spa
 		// if (!xa_is_value(ret)){
 		// 	pr_err("bug in pack_shadow");
 		// }
-		if (!entry_is_entry_ext(ret)){
-			pr_err("bug in pack_shadow_ext");
-		}
-		else{
-			// pr_err("shadow_ext[%lx] lru_gen_evivt", ret);
+		if (ret && !entry_is_entry_ext_debug(ret)){
+			pr_err("bug in pack_shadow_ext ret[%pK] se[%pK]", ret, se);
 		}
 	}
 	

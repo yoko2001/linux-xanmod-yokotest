@@ -1446,12 +1446,18 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	BUG_ON(mapping != folio_mapping(folio));
 
 	if (folio_test_stalesaved(folio)){
-		ori_swap = folio_swap_entry(folio);
-		mig_entry = folio_get_migentry(folio, ori_swap);
+		//ori_swap = folio_swap_entry(folio);
+		// if (!ori_swap.val){
+		// 	//cleared by do_swap_page
+		// 	BUG();
+		// }
+
+		mig_entry = folio_swap_entry(folio);//folio_get_migentry(folio, ori_swap);
 		if (!folio_test_active(folio)){
-			pr_err("__remove_mapping folio[%pK] ref[%d] wb[%d] d[%d]", 
-						folio, folio_ref_count(folio), folio_test_writeback(folio),
-						folio_test_dirty(folio));
+			pr_err("__remove_mapping folio[%pK]ori[%lx]->mig[%lx]ref[%d]wb[%dd[%d]$[%d]", 
+						folio, ori_swap.val, mig_entry.val,
+						folio_ref_count(folio), folio_test_writeback(folio),
+						folio_test_dirty(folio), folio_test_swapcache(folio));
 		}
 	}
 
@@ -1484,8 +1490,9 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	 * and thus under the i_pages lock, then this ordering is not required.
 	 */
 	refcount = 1 + folio_nr_pages(folio);
-	if (folio_test_stalesaved(folio))
-		refcount += 2; //one for remap, one for swapcache to slow
+	if (folio_test_stalesaved(folio)){
+		refcount += 1; //one for remap, one for swapcache to slow
+	}
 
 	if (!folio_ref_freeze(folio, refcount))
 		goto cannot_free;
@@ -1522,13 +1529,25 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		}
 		if (si)
 			put_swap_device(si);
-		if (shadow_ext && shadow == shadow_ext)
-			__delete_from_swap_cache(folio, swap, shadow_ext);
-		else
-			__delete_from_swap_cache(folio, swap, shadow);
+
+		if (!folio_test_stalesaved(folio)){
+			if (shadow_ext && shadow == shadow_ext)
+				__delete_from_swap_cache(folio, swap, shadow_ext);
+			else
+				__delete_from_swap_cache(folio, swap, shadow);			
+			mem_cgroup_swapout(folio, swap);
+		}
 		
-		mem_cgroup_swapout(folio, swap);
-		xa_unlock_irq(&mapping->i_pages);		
+		xa_unlock_irq(&mapping->i_pages);
+		if (!folio_test_stalesaved(folio)){
+			if((page_private(folio_page(folio, 0)) != 0) || folio_test_swapcache(folio))
+			{
+				pr_err("ckpt folio[%pK] $[%d], priavte[%lx]", 
+							folio, folio_test_swapcache(folio), page_private(folio_page(folio, 0)));
+				BUG();	
+			}
+		} 
+
 		if (folio_test_stalesaved(folio)){
 			if (mig_entry.val != 0){
 				swp_entry_t mig_entry_phy;
@@ -1536,7 +1555,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		
 				//swap duplicate once only , this is for read from swap cache
 				mig_entry_phy.val = mig_entry.val;
-				swp_entry_clear_ext(&mig_entry_phy);
+				swp_entry_clear_ext(&mig_entry_phy, 0x3);
 
 				err = swap_duplicate(mig_entry_phy);
 				if (err < 0) {
@@ -1924,6 +1943,7 @@ collect_fail_lock_keep:
 			if (!folio_test_stalesaved(folio)){ //cancelled by do_swap
 				pr_err("folio[%pK] taken by do_swap, don't touch it", folio);
 				folio_unlock(folio);
+				BUG();
 				continue;
 			}
 			goto keep_next_time_locked;
@@ -1944,21 +1964,42 @@ keep_next_time:
 		list_for_each_entry_safe(folio, next, &saved_sb_complete_list, lru){
 			//update mig entry state in remap
 			int ret;
-			swp_entry_t entry = {.val = page_private(folio_page(folio, 0))};
+			swp_entry_t migentry, entry = {.val = page_private(folio_page(folio, 0))};
 			VM_BUG_ON_FOLIO(folio_nr_pages(folio) > 1, folio);
 			VM_BUG_ON_FOLIO(non_swap_entry(entry), folio);	
 			if (!folio_test_stalesaved(folio)){
 				//we're fucked up by do swap turn this page into safe state
-				pr_err("intercepted before enable remap folio[%pK]", folio);
-				folio_add_lru_save(folio);
+				pr_err("intercepted before enable remap folio[%pK]cnt[%d]", 
+						folio,	folio_ref_count(folio));
+				folio_put(folio);
+				folio_put(folio);
+				pr_err("intercepted before enable remap put folio[%pK]cnt[%d]", 
+						folio,	folio_ref_count(folio));
+				folio_add_lru_save(folio); 
+				//do_swap will not map to it, it should get freed normally
 				folio_unlock(folio);
+				BUG();
 				continue;
 			} 
-			ret = enable_swp_entry_remap(folio, entry);
+
+			delete_from_swap_cache_mig(folio, entry, false);
+			pr_err("folio[%pK] delete_from_swap_cache_mig ref[%d]", folio, folio_ref_count(folio));
+
+			ret = enable_swp_entry_remap(folio, entry, &migentry);
 			if (ret){
 				pr_err("folio[%pK] enable_swp_entry_remap fail[%d]", folio, ret);
+				if (ret == 1){
+					folio_clear_stalesaved(folio); 
+					//we wait for it to get useless, when we get it, it'll be freed
+					continue;
+				} //locked by do_swap_page, it will unlock it
 			}
-			//realloc entry
+			//realloc entry 
+			if (!migentry.val)
+				BUG();
+			
+			set_page_private(folio_page(folio, 0), migentry.val);
+			
 			swap_free(entry);
 			pr_err("after swap_free original entry[%lx] count %d", entry.val, __swp_swapcount(entry));
 

@@ -1628,6 +1628,7 @@ static void free_one_page(struct zone *zone,
 		is_migrate_isolate(migratetype))) {
 		migratetype = get_pfnblock_migratetype(page, pfn);
 	}
+	check_page_private_debug(page);
 	__free_one_page(page, pfn, zone, order, migratetype, fpi_flags);
 	spin_unlock_irqrestore(&zone->lock, flags);
 }
@@ -3540,6 +3541,7 @@ void free_unref_page_list(struct list_head *list)
 		}
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 		folio = page_folio(page);
+		check_private_debug(folio);
 		// spin_lock_irq(&shadow_ext_lock);
 		if (folio->shadow_ext){
 			if (entry_is_entry_ext(folio->shadow_ext)){

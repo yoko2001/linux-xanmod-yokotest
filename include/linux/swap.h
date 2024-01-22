@@ -353,6 +353,22 @@ static inline swp_entry_t folio_swap_entry(struct folio *folio)
 	return entry;
 }
 
+static inline void check_private_debug(struct folio *folio)
+{
+	swp_entry_t entry = { .val = page_private(&folio->page) };
+	if (entry.val == 0xffffffff89d3b985){
+		dump_stack();
+		BUG();
+	}
+}
+static inline void check_page_private_debug(struct page *page)
+{
+	swp_entry_t entry = { .val = page_private(page) };
+	if (entry.val == 0xffffffff89d3b985){
+		dump_stack();
+		BUG();
+	}
+}
 static inline void folio_set_swap_entry(struct folio *folio, swp_entry_t entry)
 {
 	folio->private = (void *)entry.val;

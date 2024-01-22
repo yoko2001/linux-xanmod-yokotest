@@ -509,6 +509,8 @@ pgoff_t page_cache_prev_miss(struct address_space *mapping,
 
 struct folio *__filemap_get_folio(struct address_space *mapping, pgoff_t index,
 		int fgp_flags, gfp_t gfp);
+struct folio *__syncio_swapcache_get_folio(struct address_space *mapping, pgoff_t index,
+		int fgp_flags, gfp_t gfp, bool *is_folio);
 struct page *pagecache_get_page(struct address_space *mapping, pgoff_t index,
 		int fgp_flags, gfp_t gfp);
 
@@ -526,6 +528,12 @@ static inline struct folio *filemap_get_folio(struct address_space *mapping,
 					pgoff_t index)
 {
 	return __filemap_get_folio(mapping, index, 0, 0);
+}
+
+static inline struct folio * syncio_swapcache_get_folio(struct address_space *mapping, 
+					pgoff_t index, bool* is_folio)
+{
+	return __syncio_swapcache_get_folio(mapping, index, 0, 0, is_folio);
 }
 
 /**

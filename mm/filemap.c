@@ -2040,6 +2040,71 @@ no_page:
 }
 EXPORT_SYMBOL(__filemap_get_folio);
 
+struct folio *__syncio_swapcache_get_folio(struct address_space *mapping, pgoff_t index,
+		int fgp_flags, gfp_t gfp, bool *is_stale_saved_folio)
+{
+	struct folio *folio;
+	swp_entry_t entry;
+	bool valid_folio = false;
+repeat:
+	if (!mapping)
+		BUG();
+	folio = mapping_get_entry(mapping, index);
+	if (!folio)
+		goto no_page;	
+	if (xa_is_value(folio)) {
+		entry.val = xa_to_value(folio);
+		if (is_hwpoison_entry(entry)){
+			pr_err("__syncio_swapcache_get_folio got hwpoinson entry[%lx], two pf happens synmo", entry.val);
+			BUG();
+		}
+		if (fgp_flags & FGP_ENTRY)
+			return folio;
+		folio = NULL;
+	}
+	else if (entry_is_entry_ext(folio)){
+		if (fgp_flags & FGP_ENTRY){
+			BUG();
+			return folio;
+		}
+		folio = NULL; //this is corect
+	}
+	else{
+		valid_folio = true;
+		if (folio_test_stalesaved(folio) && is_stale_saved_folio)
+			*is_stale_saved_folio = true;
+	}
+
+
+	if (fgp_flags & FGP_LOCK) {
+		BUG();
+		// if (fgp_flags & FGP_NOWAIT) {
+		// 	if (!folio_trylock(folio)) {
+		// 		folio_put(folio);
+		// 		return NULL;
+		// 	}
+		// } else {
+		// 	folio_lock(folio);
+		// }
+
+		// /* Has the page been truncated? */
+		// if (unlikely(folio->mapping != mapping)) {
+		// 	folio_unlock(folio);
+		// 	folio_put(folio);
+		// 	goto repeat;
+		// }
+		// VM_BUG_ON_FOLIO(!folio_contains(folio, index), folio);
+	}
+	if (is_stale_saved_folio)
+		*is_stale_saved_folio = (valid_folio && (folio_test_stalesaved(folio)));
+no_page:
+	if (!folio && (fgp_flags & FGP_CREAT)) {
+		BUG();
+	}
+
+	return folio;
+}
+
 static inline struct folio *find_get_entry(struct xa_state *xas, pgoff_t max,
 		xa_mark_t mark)
 {

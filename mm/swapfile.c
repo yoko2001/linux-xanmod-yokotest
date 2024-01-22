@@ -879,8 +879,8 @@ static bool swap_offset_all_version_available_and_locked(struct swap_info_struct
 					     unsigned long offset)
 {
 	if (!swap_offset_any_version_occupied(si, offset)){ //available
-		if (__si_can_version(si))
-			pr_err("si[%d] offset[0x%lx] available", si->prio, offset);
+		// if (__si_can_version(si))
+		// 	pr_err("si[%d] offset[0x%lx] available", si->prio, offset);
 		spin_lock(&si->lock);
 		return true;
 	}
@@ -1386,7 +1386,7 @@ static struct swap_info_struct *_swap_info_get(swp_entry_t entry)
 	return p;
 
 bad_free:
-	pr_err("%s: %s%08lx\n", __func__, Unused_offset, entry.val);
+	// pr_err("%s: %s%08lx\n", __func__, Unused_offset, entry.val);
 	goto out;
 bad_offset:
 	pr_err("%s: %s%08lx\n", __func__, Bad_offset, entry.val);
@@ -1398,6 +1398,15 @@ bad_nofile:
 	pr_err("%s: %s%08lx\n", __func__, Bad_file, entry.val);
 out:
 	return NULL;
+}
+
+struct swap_info_struct *swap_info_get_test(swp_entry_t entry)
+{
+	struct swap_info_struct *p;
+	if (non_swap_entry(entry))
+		return NULL;
+	p = _swap_info_get(entry);
+	return p;
 }
 
 static struct swap_info_struct *swap_info_get_cont(swp_entry_t entry,
@@ -1449,10 +1458,7 @@ static unsigned char __swap_entry_free_locked(struct swap_info_struct *p,
 	}
 
 	usage = count | has_cache;
-	if (version)
-		pr_err("__SEFL offset_v[%lx] ver[%d] cnt%d;has_cache%d", 
-					offset_v, version, count, has_cache);
-	// else if (!count && has_cache)
+	// if (version)
 	// 	pr_err("__SEFL offset_v[%lx] ver[%d] cnt%d;has_cache%d", 
 	// 				offset_v, version, count, has_cache);
 	
@@ -1598,6 +1604,8 @@ void put_swap_folio(struct folio *folio, swp_entry_t entry)
 	si = _swap_info_get(entry);
 	if (!si)
 		return;
+	if (!__si_can_version(si) && version)
+		BUG();
 	offset_v = offset + si->max * version* __si_can_version(si);
 	// if (version)
 	// 	pr_err("put_swap_folio si[%d]max[%lx]entry[%lx]v[%lu] offset_v[%lx]", 
@@ -2338,7 +2346,7 @@ void swap_shadow_scan_next(struct swap_info_struct * si, struct lruvec * lruvec,
 	mapping = swap_address_space(entry);
 
 	*scanned = swap_scan_entries_savior(mapping, lruvec, start, end, type, threshold);
-	pr_err("swap_scan_entries_savior called scanned[%d]", *scanned);
+	pr_err("swap_scan_entries_savior called scanned[%lu]", *scanned);
 	trace_swap_shadow_scan_next(start, end, *scanned, mem_cgroup_id(lruvec_memcg(lruvec)));
 
 	if (unlikely(si->max == end)){

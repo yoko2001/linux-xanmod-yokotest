@@ -43,7 +43,7 @@ int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 		      gfp_t gfp, void **shadowp);
 int add_swp_entry_remap(struct folio* folio, swp_entry_t from_entry, swp_entry_t to_entry, 
 			gfp_t gfp);
-int enable_swp_entry_remap(struct folio* folio, swp_entry_t from_entry);
+int enable_swp_entry_remap(struct folio* folio, swp_entry_t from_entry, swp_entry_t* p_to_entry);
 void __delete_from_swap_cache(struct folio *folio,
 			      swp_entry_t entry, void *shadow);
 void delete_from_swap_remap(struct folio *folio, swp_entry_t entry_from, swp_entry_t entry_to);
@@ -53,8 +53,9 @@ bool folio_swapped(struct folio *folio);
 swp_entry_t folio_get_migentry(struct folio* folio, swp_entry_t ori);
 int entry_remap_usable_version(swp_entry_t entry);
 swp_entry_t entry_get_migentry(swp_entry_t ori_swap);
+swp_entry_t entry_get_migentry_lock(swp_entry_t ori_swap);
 void delete_from_swap_cache(struct folio *folio);
-void delete_from_swap_cache_mig(struct folio* folio, swp_entry_t entry);
+void delete_from_swap_cache_mig(struct folio* folio, swp_entry_t entry, bool sub_ref);
 void clear_shadow_from_swap_cache(int type, unsigned long begin,
 				  unsigned long end, int free);
 struct folio *swap_cache_get_folio(struct swap_info_struct * si, swp_entry_t entry,
@@ -100,8 +101,14 @@ static inline void set_page_private_debug(struct page *page, unsigned long priva
 	if (PageSwapBacked(page))
 		pr_err("[%d]page[%pK]->pri[%lx] $[%d]wb[%d]d[%d]", place, page, private, 
 				PageSwapCache(page), PageWriteback(page), PageDirty(page));
+	else{
+		if (place == -10){
+			pr_err("set_page_private_debug a unswappable page[%pK], swb[%d]", 
+				page, PageSwapBacked(page));
+		}
+	}
 }
-
+struct swap_info_struct *swap_info_get_test(swp_entry_t entry);
 #else /* CONFIG_SWAP */
 struct swap_iocb;
 static inline void swap_readpage(struct page *page, bool do_poll,
