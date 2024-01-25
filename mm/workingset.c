@@ -204,7 +204,7 @@ bool entry_is_entry_ext(const void *entry){
 			return false;
 		}
 		if (!xa_is_value(((struct shadow_entry*)entry)->shadow)){
-			pr_err("entry_is_entry_ext !xa_is_value ext[%lx]",(unsigned long)entry);
+			// pr_err("entry_is_entry_ext !xa_is_value ext[%lx]",(unsigned long)entry);
 			return false;
 		}
 		return true;

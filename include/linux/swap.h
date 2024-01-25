@@ -356,7 +356,7 @@ static inline swp_entry_t folio_swap_entry(struct folio *folio)
 static inline void check_private_debug(struct folio *folio)
 {
 	swp_entry_t entry = { .val = page_private(&folio->page) };
-	if (entry.val == 0xffffffff89d3b985){
+	if ((entry.val & 0xffffffff00000000) == 0xffffffff00000000){
 		dump_stack();
 		BUG();
 	}
@@ -364,7 +364,7 @@ static inline void check_private_debug(struct folio *folio)
 static inline void check_page_private_debug(struct page *page)
 {
 	swp_entry_t entry = { .val = page_private(page) };
-	if (entry.val == 0xffffffff89d3b985){
+	if ((entry.val & 0xffffffff00000000) == 0xffffffff00000000){
 		dump_stack();
 		BUG();
 	}
@@ -372,6 +372,7 @@ static inline void check_page_private_debug(struct page *page)
 static inline void folio_set_swap_entry(struct folio *folio, swp_entry_t entry)
 {
 	folio->private = (void *)entry.val;
+	check_private_debug(folio);
 }
 
 /* linux/mm/workingset.c */
@@ -390,7 +391,7 @@ static inline struct shadow_entry* shadow_entry_alloc(void){
 	}
 	entry_ext = kmem_cache_alloc(get_shadow_entry_cache(), GFP_NOWAIT);// GFP_ATOMIC);
 	if (entry_ext){
-		entry_ext->magic = 0;
+		entry_ext->magic = (unsigned long)entry_ext & 0xFFFF;
 		entry_ext->memcg_id = -8;
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 		for (int i = 0; i < SE_HIST_SIZE; i++){
@@ -402,7 +403,7 @@ static inline struct shadow_entry* shadow_entry_alloc(void){
 }
 static inline void shadow_entry_free(struct shadow_entry* entry_ext){
 	if (get_shadow_entry_cache() && entry_ext){
-		entry_ext->magic = shadow_entry_invalidmagic;
+		entry_ext->magic = (unsigned long)entry_ext & 0xFFFF;
 		kmem_cache_free(get_shadow_entry_cache(), entry_ext);		
 	}
 }

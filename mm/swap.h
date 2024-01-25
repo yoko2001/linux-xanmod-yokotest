@@ -47,6 +47,7 @@ int enable_swp_entry_remap(struct folio* folio, swp_entry_t from_entry, swp_entr
 void __delete_from_swap_cache(struct folio *folio,
 			      swp_entry_t entry, void *shadow);
 void delete_from_swap_remap(struct folio *folio, swp_entry_t entry_from, swp_entry_t entry_to);
+void delete_from_swap_remap_get_mig(struct folio* folio, swp_entry_t entry_from, swp_entry_t* entry_to);
 void __delete_from_swap_cache_mig(struct folio *folio,
 			swp_entry_t entry);
 bool folio_swapped(struct folio *folio);
@@ -98,6 +99,7 @@ static inline void set_page_private_debug(struct page *page, unsigned long priva
 	if (!page)
 		BUG();
 	set_page_private(page, private);
+	check_page_private_debug(page);
 	if (PageSwapBacked(page))
 		pr_err("[%d]page[%pK]->pri[%lx] $[%d]wb[%d]d[%d]", place, page, private, 
 				PageSwapCache(page), PageWriteback(page), PageDirty(page));

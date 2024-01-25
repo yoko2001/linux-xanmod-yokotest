@@ -1608,7 +1608,13 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		if (reclaimed && folio_is_file_lru(folio) &&
 		    !mapping_exiting(mapping) && !dax_mapping(mapping))
 			shadow = workingset_eviction(folio, target_memcg, swap_level, -7, NULL, swap);
-		__filemap_remove_folio(folio, shadow);
+		if (shadow && (!xa_is_value(shadow)) && (!entry_is_entry_ext(shadow))){
+			pr_err("shadow[%pK] BUG", shadow);
+			__filemap_remove_folio(folio, NULL);
+		}
+		else{
+			__filemap_remove_folio(folio, shadow);
+		}
 		xa_unlock_irq(&mapping->i_pages);
 		if (mapping_shrinkable(mapping))
 			inode_add_lru(mapping->host);
@@ -1971,14 +1977,15 @@ keep_next_time:
 				//we're fucked up by do swap turn this page into safe state
 				pr_err("intercepted before enable remap folio[%pK]cnt[%d]", 
 						folio,	folio_ref_count(folio));
-				folio_put(folio);
-				folio_put(folio);
-				pr_err("intercepted before enable remap put folio[%pK]cnt[%d]", 
+				//we need to handle the remap & mig cache clean up part
+
+				delete_from_swap_remap_get_mig(folio, entry, &migentry);
+				delete_from_swap_cache_mig(folio, migentry, true);
+				pr_err("folio[%pK]cnt[%d] remap deleted add to lru", 
 						folio,	folio_ref_count(folio));
-				folio_add_lru_save(folio); 
+				folio_add_lru(folio); //this should be ok, because lru is protected by folio_lock
 				//do_swap will not map to it, it should get freed normally
 				folio_unlock(folio);
-				BUG();
 				continue;
 			} 
 
@@ -1999,7 +2006,7 @@ keep_next_time:
 				BUG();
 			
 			set_page_private(folio_page(folio, 0), migentry.val);
-			
+			check_private_debug(folio);
 			swap_free(entry);
 			pr_err("after swap_free original entry[%lx] count %d", entry.val, __swp_swapcount(entry));
 
