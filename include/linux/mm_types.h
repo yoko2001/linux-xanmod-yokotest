@@ -1027,7 +1027,7 @@ typedef struct {
 
 #define SE_HIST_SIZE	3
 typedef struct shadow_entry{
-	unsigned short magic;
+	unsigned int magic;
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 	unsigned short hist_ts[SE_HIST_SIZE]; 
 	int memcg_id; 

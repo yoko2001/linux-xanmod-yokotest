@@ -160,23 +160,28 @@ swp_entry_t get_next_saved_entry(bool* finished){
 	spin_lock_irq(&cache->scan_lock);
 
 	if (!cache->scan_stop || !use_swap_scan_slot || !cache->slots){
-		*finished = true;	
+		if (finished)
+			*finished = true;	
 		spin_unlock_irq(&cache->scan_lock);
 		return entry;
 	}
 	//we start read
 	entry = cache->slots[cache->cur];
 	cache->cur++;
-	*finished = false;
+	if (finished)
+		*finished = false;
 	if (cache->cur == cache->nr){
 		cache->cur = 0;
 		cache->nr = 0;
 		cache->scan_stop = false;
-		*finished = true;
+		if (finished)
+			*finished = true;
 	}
 	spin_unlock_irq(&cache->scan_lock);
-	if (non_swap_entry(entry))
+	if (non_swap_entry(entry)){
 		pr_err("returning bad entry [%d/%d]", cache->cur, cache->nr);
+		BUG();
+	}
 	return entry;
 } 
 

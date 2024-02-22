@@ -3814,11 +3814,16 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 			pr_err("folio[%pK]stale[%d] private[%lx] entry[%lx]swapcache hit $[%d] private mismatch", 
 					folio, folio_test_stalesaved(folio),  
 					page_private(page), entry.val, folio_test_swapcache(folio));
-			debugging = true;	
+			if (entry_is_entry_ext_debug(folio) < 1){
+				folio = NULL;
+				debugging = true;				
+			}
 		}
 	}
 	/*DJL ADD END*/
 	swapcache = folio;
+	if (debugging && swapcache)
+		BUG();
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
 	orientry.val = entry.val; //save origin
 	migentry = entry_get_migentry_lock(entry); //this will only lock on existed migentry
@@ -4101,8 +4106,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 							folio_test_stalesaved(folio), folio_ref_count(folio));	
 					} else{
 						//not enabled yet
-						pr_err("enabler do the clean 1,  folio[%pK]entry[%lx]->mig[%lx]", 
-							folio, entry.val, migentry.val);
+						pr_err("enabler do the clean 1, folio[%pK] $[%d] entry[%lx]->mig[%lx]", 
+							folio, folio_test_swapcache(folio), entry.val, migentry.val);
 						if (!invalid_remap) 
 							BUG();
 
@@ -4137,15 +4142,15 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 			else{ //read from sync IO
 				pr_err("read from sync IO");
 				BUG();
-				swp_entry_t migentry_;
-				VM_BUG_ON_FOLIO(non_swap_entry(orientry), folio);
-				migentry_ = folio_get_migentry(folio, orientry);
-				pr_err("corner case entry[%lx]->folio[%pK] mig uncleared wb[%d]sw$[%d]d[%d] stale[%d] refcount[%d]", 
-					orientry.val, folio, folio_test_writeback(folio), folio_test_swapcache(folio), 
-					folio_test_dirty(folio), folio_test_stalesaved(folio), folio_ref_count(folio));	
-				folio_clear_stalesaved(folio);  // we do the clean here now, just got found , unprocessed yet
-				if (migentry_.val)
-					delete_from_swap_remap(folio, orientry, migentry_);
+				// swp_entry_t migentry_;
+				// VM_BUG_ON_FOLIO(non_swap_entry(orientry), folio);
+				// migentry_ = folio_get_migentry(folio, orientry);
+				// pr_err("corner case entry[%lx]->folio[%pK] mig uncleared wb[%d]sw$[%d]d[%d] stale[%d] refcount[%d]", 
+				// 	orientry.val, folio, folio_test_writeback(folio), folio_test_swapcache(folio), 
+				// 	folio_test_dirty(folio), folio_test_stalesaved(folio), folio_ref_count(folio));	
+				// folio_clear_stalesaved(folio);  // we do the clean here now, just got found , unprocessed yet
+				// if (migentry_.val)
+				// 	delete_from_swap_remap(folio, orientry, migentry_);
 			}
 		}
 #endif
@@ -4259,7 +4264,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	address_space = swap_address_space(entry);
 	if (address_space){
 		xa_lock_irq(&address_space->i_pages);
-		if (shadow && (!folio->shadow_ext) && entry_is_entry_ext(shadow)){
+		if (shadow && (!folio->shadow_ext) && (entry_is_entry_ext(shadow) > 0)){
 			folio->shadow_ext = shadow;
 		}
 		xa_unlock_irq(&address_space->i_pages);		
@@ -4281,12 +4286,18 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 #endif
 	if (should_try_to_free_swap(folio, vma, vmf->flags, try_free_entry)){	
 		folio_free_swap(folio);
-		if (valid_remap)
-			pr_err("do_swap after folio_free_swap[%pK]entry[%lx] $[%d]", folio, entry.val,  folio_test_swapcache(folio));
+		if (valid_remap){
+			pr_err("do_swap after folio_free_swap[%pK]entry[%lx] $[%d]", folio, entry.val,  folio_test_swapcache(folio));			
+		}
+		else if (invalid_remap) {
+			pr_err("do_swap might bug folio [%pK]entry[%lx] $[%d]", folio, entry.val,  folio_test_swapcache(folio));
+		}
 	} else 	{
-		if (!folio_test_swapcache(folio) && valid_remap)
+		if (!folio_test_swapcache(folio) && valid_remap){
 			pr_err("do_swap folio_free_swap[%pK]entry[%lx]migentry[%lx] $[%d]wb[%d]", 
 					folio, entry.val,  migentry.val, folio_test_swapcache(folio), folio_test_writeback(folio));	
+			BUG();		
+		}
 	}
 
 	if (migentry.val && migentry.val != entry.val){ 
@@ -4307,6 +4318,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	}
 	if (folio && folio_test_stalesaved(folio)){
 		pr_err("this shouldn't happen folio[%pK] stale", folio);
+		BUG();
 	}
 
 	inc_mm_counter(vma->vm_mm, MM_ANONPAGES);

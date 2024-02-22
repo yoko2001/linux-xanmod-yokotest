@@ -380,10 +380,11 @@ void workingset_age_nonresident(struct lruvec *lruvec, unsigned long nr_pages);
 void *workingset_eviction(struct folio *folio, struct mem_cgroup *target_memcg, int swap_level, long swap_space_left, struct shadow_entry* se, swp_entry_t entry);
 void workingset_refault(struct folio *folio, void *shadow, int* try_free_entry, unsigned long va, int swap_level, swp_entry_t entry);
 void workingset_activation(struct folio *folio);
-bool entry_is_entry_ext(const void *entry);
+int entry_is_entry_ext(const void *entry);
+int entry_is_entry_ext_debug(const void *entry);
 extern struct kmem_cache * get_shadow_entry_cache(void);
-extern const unsigned short shadow_entry_magic; 
-extern const unsigned short shadow_entry_invalidmagic; 
+extern const unsigned int shadow_entry_magic; 
+extern const unsigned int shadow_entry_invalidmagic; 
 static inline struct shadow_entry* shadow_entry_alloc(void){
 	struct shadow_entry* entry_ext = NULL;
 	if (!get_shadow_entry_cache()){
@@ -391,8 +392,9 @@ static inline struct shadow_entry* shadow_entry_alloc(void){
 	}
 	entry_ext = kmem_cache_alloc(get_shadow_entry_cache(), GFP_NOWAIT);// GFP_ATOMIC);
 	if (entry_ext){
-		entry_ext->magic = (unsigned long)entry_ext & 0xFFFF;
+		entry_ext->magic = (unsigned long)entry_ext & 0xFFFFFFFF;
 		entry_ext->memcg_id = -8;
+		entry_ext->shadow = NULL;
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 		for (int i = 0; i < SE_HIST_SIZE; i++){
 			entry_ext->hist_ts[i] = 0;
@@ -403,7 +405,16 @@ static inline struct shadow_entry* shadow_entry_alloc(void){
 }
 static inline void shadow_entry_free(struct shadow_entry* entry_ext){
 	if (get_shadow_entry_cache() && entry_ext){
-		entry_ext->magic = (unsigned long)entry_ext & 0xFFFF;
+		entry_ext->magic = 0xFFFFFFFF;
+		if (((unsigned long)entry_ext & 0xFFFFFFFF) == 0xFFFFFFFF){
+			pr_err("bad shadow entry addr");
+			BUG();
+		}
+		entry_ext->memcg_id = -9;
+		entry_ext->shadow = NULL;
+		for (int i = 0; i < SE_HIST_SIZE; i++){
+			entry_ext->hist_ts[i] = 0;
+		}
 		kmem_cache_free(get_shadow_entry_cache(), entry_ext);		
 	}
 }

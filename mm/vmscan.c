@@ -1609,7 +1609,8 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		    !mapping_exiting(mapping) && !dax_mapping(mapping))
 			shadow = workingset_eviction(folio, target_memcg, swap_level, -7, NULL, swap);
 		if (shadow && (!xa_is_value(shadow)) && (!entry_is_entry_ext(shadow))){
-			pr_err("shadow[%pK] BUG", shadow);
+			pr_err("1 shadow[%pK] BUG", shadow);
+			BUG();
 			__filemap_remove_folio(folio, NULL);
 		}
 		else{
@@ -1975,14 +1976,16 @@ keep_next_time:
 			VM_BUG_ON_FOLIO(non_swap_entry(entry), folio);	
 			if (!folio_test_stalesaved(folio)){
 				//we're fucked up by do swap turn this page into safe state
-				pr_err("intercepted before enable remap folio[%pK]cnt[%d]", 
-						folio,	folio_ref_count(folio));
+				pr_err("intercepted before enable remap folio[%pK]cnt[%d]$[%d]", 
+						folio,	folio_ref_count(folio), folio_test_swapcache(folio));
 				//we need to handle the remap & mig cache clean up part
 
 				delete_from_swap_remap_get_mig(folio, entry, &migentry);
 				delete_from_swap_cache_mig(folio, migentry, true);
-				pr_err("folio[%pK]cnt[%d] remap deleted add to lru", 
-						folio,	folio_ref_count(folio));
+				swap_free(migentry);
+				pr_err("folio[%pK]$[%d]private[%lx]cnt[%d] remap deleted add to lru, swap freed", 
+						folio,	folio_test_swapcache(folio), 
+						page_private(folio_page(folio, 0)), folio_ref_count(folio));
 				folio_add_lru(folio); //this should be ok, because lru is protected by folio_lock
 				//do_swap will not map to it, it should get freed normally
 				folio_unlock(folio);
@@ -2448,9 +2451,10 @@ stale_pass_release:
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 		//after remove_mapping, eviction complete already
 		// spin_lock_irq(&shadow_ext_lock);
-		if (folio->shadow_ext && entry_is_entry_ext(folio->shadow_ext)) {
+		if (folio->shadow_ext && entry_is_entry_ext(folio->shadow_ext) > 0) {
 			pr_err("shouldn't happen %s:%d",__FILE__, __LINE__);
 			shadow_entry_free(folio->shadow_ext);
+			BUG();
 		}
 		folio->shadow_ext = NULL;
 		// spin_unlock_irq(&shadow_ext_lock);

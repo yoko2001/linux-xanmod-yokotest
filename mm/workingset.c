@@ -192,41 +192,49 @@ static unsigned int bucket_order __read_mostly;
 static struct kmem_cache *shadow_entry_cache;
 struct kmem_cache * get_shadow_entry_cache(void){return shadow_entry_cache;}
 
-const unsigned short shadow_entry_magic = 0xABCD; 
-const unsigned short shadow_entry_invalidmagic = 0xDCBA; 
+const unsigned int shadow_entry_magic = 0xABCD4321; 
+const unsigned int shadow_entry_invalidmagic = 0xDCBA8765; 
 
-bool entry_is_entry_ext(const void *entry){
-	if (xa_is_value(entry)) return false;
+int entry_is_entry_ext(const void *entry){
+	if (xa_is_value(entry)) return 0;
 	if (entry){
-		if (((struct shadow_entry*)entry)->magic != ((shadow_entry_magic) ^ ((unsigned long)entry & 0xFFFF))){
+		if (((struct shadow_entry*)entry)->magic != ((shadow_entry_magic) ^ ((unsigned long)entry & 0xFFFFFFFF))){
 			// if (((struct shadow_entry*)entry)->magic == shadow_entry_invalidmagic)
 			// 	pr_err("entry was invalied ext[%lx]",entry);
-			return false;
+			if (((struct shadow_entry*)entry)->magic == 0xFFFFFFFF){
+				pr_err("entry_is_entry_ext ext[%lx] has been freed", entry);
+				return -1;
+			}
+			return 0;
 		}
 		if (!xa_is_value(((struct shadow_entry*)entry)->shadow)){
 			// pr_err("entry_is_entry_ext !xa_is_value ext[%lx]",(unsigned long)entry);
-			return false;
+			return 0;
 		}
-		return true;
+		return 1;
 	}
 	return false;
 }
-bool entry_is_entry_ext_debug(const void *entry){
+int entry_is_entry_ext_debug(const void *entry){
 	if (xa_is_value(entry)) {
 		pr_err("entry_is_entry_ext_debug entry[%pK] xa_is_value", entry);
-		return false;
+		return 0;
 	}
 	if (entry){
-		if (((struct shadow_entry*)entry)->magic != ((shadow_entry_magic) ^ ((unsigned long)entry & 0xFFFF))){
-			// if (((struct shadow_entry*)entry)->magic == shadow_entry_invalidmagic)
-				pr_err("entry was magic invalid ext[%lx]",entry);
-			return false;
+		if (((struct shadow_entry*)entry)->magic != ((shadow_entry_magic) ^ ((unsigned long)entry & 0xFFFFFFFF))){
+			if (((struct shadow_entry*)entry)->magic != (unsigned long)entry & 0xFFFFFFFF)
+				pr_err("entry was magic invalid ext[%lx] magic[%lx]",entry, ((struct shadow_entry*)entry)->magic);
+			if (((struct shadow_entry*)entry)->magic == 0xFFFFFFFF){
+				pr_err("entry_is_entry_ext_debug ext[%lx] has been freed", entry);
+				return -1;
+			}
+			return 0;
 		}
 		if (!xa_is_value(((struct shadow_entry*)entry)->shadow)){
 			pr_err("entry_is_entry_ext !xa_is_value ext[%lx]",(unsigned long)entry);
-			return false;
+			return 0;
 		}
-		return true;
+		return 1;
 	}
 	return false;
 }
@@ -247,7 +255,7 @@ static void *pack_shadow_ext(int memcgid, pg_data_t *pgdat, unsigned long evicti
 	eviction = (eviction << WORKINGSET_SHIFT) | workingset;
 	if (entry_ext){
 		entry_ext->shadow = xa_mk_value(eviction);
-		entry_ext->magic = shadow_entry_magic ^ ((unsigned long)entry_ext & 0xFFFF);
+		entry_ext->magic = shadow_entry_magic ^ ((unsigned long)entry_ext & 0xFFFFFFFF); //valid
 		entry_ext->memcg_id = memcgid;
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 		if (old_entry_ext){
@@ -296,18 +304,20 @@ static void unpack_shadow_ext(void *shadow, int *memcgidp, pg_data_t **pgdat,
 
 	if (!shadow){
 		pr_err("unpack_shadow_ext nullptr");
+		BUG();
 	}
 	if (xa_is_value(shadow)){
 		entry = xa_to_value(shadow);
 		*last_hist = ULONG_MAX;
 	}
-	else if (entry_is_entry_ext(shadow)){
+	else if (entry_is_entry_ext_debug(shadow) > 0){
 		entry_ext = (struct shadow_entry*)shadow;
 		entry = xa_to_value(entry_ext->shadow);
 		*last_hist = entry_ext->hist_ts[0];
 	}
 	else{
 		pr_err("unpack_shadow_ext xa err %p", shadow);
+		BUG();
 	}
 
 	workingset = entry & ((1UL << WORKINGSET_SHIFT) - 1);
@@ -403,7 +413,7 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, long swap_spa
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 		// spin_lock_irq(&shadow_ext_lock);
 		if (folio->shadow_ext){
-			if	(entry_is_entry_ext(folio->shadow_ext)){
+			if	(entry_is_entry_ext(folio->shadow_ext) > 0){
 				ret = pack_shadow_ext(mem_cgroup_id(memcg), pgdat, token, refs, se, min_seq, folio->shadow_ext, folio, entry);
 			}
 			else{
@@ -423,7 +433,7 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, long swap_spa
 		// if (!xa_is_value(ret)){
 		// 	pr_err("bug in pack_shadow");
 		// }
-		if (ret && !entry_is_entry_ext_debug(ret)){
+		if (ret && (entry_is_entry_ext_debug(ret) < 1)){
 			pr_err("bug in pack_shadow_ext ret[%pK] se[%pK]", ret, se);
 		}
 	}
@@ -514,7 +524,7 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 	/*DJL ADD END*/
 	/*DJL ADD BEGIN*/
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
-	if (shadow && entry_is_entry_ext(shadow))
+	if (shadow && (entry_is_entry_ext(shadow) > 0))
 		trace_folio_ws_chg_se(folio, va, (unsigned short)memcg_id, token, refs, 1, swap_level, -2, shadow, entry);
 	else
 		trace_folio_ws_chg(folio, va,  pgdat, (unsigned short)memcg_id, token, refs, 1, swap_level, -2, entry);

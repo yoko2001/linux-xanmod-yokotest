@@ -1462,8 +1462,11 @@ static unsigned char __swap_entry_free_locked(struct swap_info_struct *p,
 	// 	pr_err("__SEFL offset_v[%lx] ver[%d] cnt%d;has_cache%d", 
 	// 				offset_v, version, count, has_cache);
 	
-	if (usage == (SWAP_MAP_BAD | COUNT_CONTINUED))
+	if (usage == SWAP_MAP_BAD || usage ==  COUNT_CONTINUED){
+		pr_err("offset[%lx]v[%d]prio[%d] usage = [%s]", 
+				offset, version, p->prio, usage == SWAP_MAP_BAD ? "SWAP_MAP_BAD" : "COUNT_CONTINUED");
 		BUG();
+	}
 	if (usage)
 		WRITE_ONCE(p->swap_map[offset_v], usage);
 	else
