@@ -1379,8 +1379,10 @@ int pageout_save(struct folio *folio, struct address_space *mapping, struct swap
 	}
 	if (mapping->a_ops->writepage == NULL)
 		return PAGE_ACTIVATE;
-	if (!folio_test_dirty(folio))
+	if (!folio_test_dirty(folio)){
 		pr_err("pageout_save should receive dirty folio");
+		BUG();
+	}
 	if (folio_clear_dirty_for_io_save(folio)) {
 		int res;
 		struct writeback_control wbc = {
@@ -1391,8 +1393,7 @@ int pageout_save(struct folio *folio, struct address_space *mapping, struct swap
 			.for_reclaim = 1,
 			.swap_plug = plug,
 		};
-		pr_err("folio[%pK] calling writepage private[%lx]", 
-					folio, page_private(&folio->page));
+
 		folio_set_reclaim(folio);
 		res = mapping->a_ops->writepage(&folio->page, &wbc);
 		if (res < 0){
@@ -1566,8 +1567,8 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 				xa_lock_irq(&address_space->i_pages);
 				__delete_from_swap_cache_mig(folio, mig_entry_phy);
 				xa_unlock_irq(&address_space->i_pages);
-				pr_err("after clear folio[%pK] private[%lx]found mig_entry[%lx] count %d", 
-							folio, page_private(folio_page(folio, 0)), mig_entry_phy.val, __swp_swapcount(mig_entry_phy));
+				pr_err("after clear folio[%pK]ref[%d] private[%lx]found mig_entry[%lx] count %d", 
+							folio, folio_ref_count(folio), page_private(folio_page(folio, 0)), mig_entry_phy.val, __swp_swapcount(mig_entry_phy));
 				put_swap_folio(folio, mig_entry_phy);
 			}
 			else{
@@ -1575,13 +1576,13 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 				BUG();
 			}
 		}
-		if (swp_entry_test_special(swap)){
-			pr_err("put_swap_folio entry[%lx] ver[%d]", 
-					swap.val, swp_entry_test_special(swap));
-		}
+		// if (swp_entry_test_special(swap)){
+		// 	pr_err("put_swap_folio entry[%lx] ver[%d] count %d", 
+		// 			swap.val, swp_entry_test_special(swap),  __swp_swapcount(swap));
+		// }
 		put_swap_folio(folio, swap);
-		if (folio_test_stalesaved(folio)){
-		}
+		// if (folio_test_stalesaved(folio)){
+		// }
 	} else {
 		swp_entry_t swap;
 		swap.val = -1;
@@ -1904,7 +1905,9 @@ unsigned int check_saved_folios_wb(struct lruvec *lruvec,
 		scanned++;
 		continue;
 collect_fail_lock_keep:
-		list_move(&folio->lru, &folio_list_fail_lock);
+		if (folio_test_stalesaved(folio)){ //cancelled by do_swap
+			list_move(&folio->lru, &folio_list_fail_lock);
+		}
 		fail_locked += 1;
 	}
 	list_splice(&folio_list_fail_lock, saved_folios); //return back, check next time
@@ -1986,6 +1989,14 @@ keep_next_time:
 				pr_err("folio[%pK]$[%d]private[%lx]cnt[%d] remap deleted add to lru, swap freed", 
 						folio,	folio_test_swapcache(folio), 
 						page_private(folio_page(folio, 0)), folio_ref_count(folio));
+				//try clear original entry before unlock
+				if (!folio_test_ksm(folio)){
+					folio_free_swap(folio);
+				}
+				else{
+					BUG();
+				}
+				
 				folio_add_lru(folio); //this should be ok, because lru is protected by folio_lock
 				//do_swap will not map to it, it should get freed normally
 				folio_unlock(folio);
@@ -2010,9 +2021,13 @@ keep_next_time:
 			
 			set_page_private(folio_page(folio, 0), migentry.val);
 			check_private_debug(folio);
+			if (__swp_swapcount(entry) != 1)
+				pr_err("before swap_free ori_entry[%lx]cnt[%d], mig_entry[%lx]cnt[%d]", 
+						entry.val, __swp_swapcount(entry), migentry.val, __swp_swapcount(migentry));
 			swap_free(entry);
-			pr_err("after swap_free original entry[%lx] count %d", entry.val, __swp_swapcount(entry));
-
+			if (__swp_swapcount(entry) != 0)
+				pr_err("after swap_free ori_entry[%lx]cnt[%d], mig_entry[%lx]cnt[%d]", 
+						entry.val, __swp_swapcount(entry), migentry.val, __swp_swapcount(migentry));
 			folio_add_lru_save(folio);
 			folio_unlock(folio);
 		}
@@ -5626,7 +5641,7 @@ retry:
 		/* retry folios that may have missed folio_rotate_reclaimable() */
 		list_move(&folio->lru, &clean);
 		if (folio_test_stalesaved(folio))
-				pr_err("folio[%pK] add to clean", folio);
+			pr_err("folio[%pK] add to clean", folio);
 		sc->nr_scanned -= folio_nr_pages(folio);
 	}
 	spin_lock_irq(&lruvec->lru_lock);

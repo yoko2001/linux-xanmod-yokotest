@@ -687,6 +687,9 @@ static const unsigned int memcg_vm_event_stat[] = {
 	PGDEACTIVATE,
 	PGLAZYFREE,
 	PGLAZYFREED,
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
+	PGSWAPPED_MIG_SAVED,
+#endif
 #if defined(CONFIG_MEMCG_KMEM) && defined(CONFIG_ZSWAP)
 	ZSWPIN,
 	ZSWPOUT,
@@ -1522,6 +1525,9 @@ static const struct memory_stat memory_stats[] = {
 	{ "sock",			MEMCG_SOCK			},
 	{ "vmalloc",			MEMCG_VMALLOC			},
 	{ "shmem",			NR_SHMEM			},
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
+	{ "swap migrate ->entry free",	PGSWAPPED_MIG_SAVED			},
+#endif
 #if defined(CONFIG_MEMCG_KMEM) && defined(CONFIG_ZSWAP)
 	{ "zswap",			MEMCG_ZSWAP_B			},
 	{ "zswapped",			MEMCG_ZSWAPPED			},

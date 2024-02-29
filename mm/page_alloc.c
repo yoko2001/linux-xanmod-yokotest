@@ -3547,7 +3547,7 @@ void free_unref_page_list(struct list_head *list)
 			if (entry_is_entry_ext(folio->shadow_ext) > 0){
 				shadow_entry_free(folio->shadow_ext);
 			}
-			else{
+			else if (entry_is_entry_ext(folio->shadow_ext) == 0){
 				pr_err("free_unref_page_list folio[%lx] has broken shadow_ext", (unsigned long)folio->shadow_ext);
 			}		
 		}

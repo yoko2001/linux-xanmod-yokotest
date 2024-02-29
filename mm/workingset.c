@@ -202,7 +202,7 @@ int entry_is_entry_ext(const void *entry){
 			// if (((struct shadow_entry*)entry)->magic == shadow_entry_invalidmagic)
 			// 	pr_err("entry was invalied ext[%lx]",entry);
 			if (((struct shadow_entry*)entry)->magic == 0xFFFFFFFF){
-				pr_err("entry_is_entry_ext ext[%lx] has been freed", entry);
+				// pr_err("entry_is_entry_ext ext[%lx] has been freed", entry);
 				return -1;
 			}
 			return 0;
@@ -213,7 +213,7 @@ int entry_is_entry_ext(const void *entry){
 		}
 		return 1;
 	}
-	return false;
+	return 0;
 }
 int entry_is_entry_ext_debug(const void *entry){
 	if (xa_is_value(entry)) {
@@ -222,13 +222,17 @@ int entry_is_entry_ext_debug(const void *entry){
 	}
 	if (entry){
 		if (((struct shadow_entry*)entry)->magic != ((shadow_entry_magic) ^ ((unsigned long)entry & 0xFFFFFFFF))){
-			if (((struct shadow_entry*)entry)->magic != (unsigned long)entry & 0xFFFFFFFF)
-				pr_err("entry was magic invalid ext[%lx] magic[%lx]",entry, ((struct shadow_entry*)entry)->magic);
+			
 			if (((struct shadow_entry*)entry)->magic == 0xFFFFFFFF){
 				pr_err("entry_is_entry_ext_debug ext[%lx] has been freed", entry);
 				return -1;
+			}else if (((struct shadow_entry*)entry)->magic != (unsigned long)entry & 0xFFFFFFFF) {
+				pr_err("entry was magic invalid ext[%lx] magic[%lx]",entry, ((struct shadow_entry*)entry)->magic);
+				return 0;
+			}else {
+				pr_err("entry was poisoned ext[%lx] magic[%lx]",entry, ((struct shadow_entry*)entry)->magic);
+				BUG();
 			}
-			return 0;
 		}
 		if (!xa_is_value(((struct shadow_entry*)entry)->shadow)){
 			pr_err("entry_is_entry_ext !xa_is_value ext[%lx]",(unsigned long)entry);
@@ -236,7 +240,9 @@ int entry_is_entry_ext_debug(const void *entry){
 		}
 		return 1;
 	}
-	return false;
+	if (entry)
+		BUG();
+	return 0;
 }
 extern spinlock_t shadow_ext_lock;
 extern atomic_t ext_count;
@@ -416,8 +422,13 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, long swap_spa
 			if	(entry_is_entry_ext(folio->shadow_ext) > 0){
 				ret = pack_shadow_ext(mem_cgroup_id(memcg), pgdat, token, refs, se, min_seq, folio->shadow_ext, folio, entry);
 			}
-			else{
+			else if (entry_is_entry_ext(folio->shadow_ext) < 0){ //already freed
+				folio->shadow_ext = NULL;
+				ret = pack_shadow_ext(mem_cgroup_id(memcg), pgdat, token, refs, se, min_seq, NULL, folio, entry);
+			}
+			else{ // == 0 broken
 				pr_err("folio->has broken shadow_ext %s:%d", __FILE__, __LINE__);
+				folio->shadow_ext = NULL;
 				ret = pack_shadow_ext(mem_cgroup_id(memcg), pgdat, token, refs, se, min_seq, NULL, folio, entry);
 			} 
 		}
@@ -435,6 +446,7 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, long swap_spa
 		// }
 		if (ret && (entry_is_entry_ext_debug(ret) < 1)){
 			pr_err("bug in pack_shadow_ext ret[%pK] se[%pK]", ret, se);
+			BUG();
 		}
 	}
 	

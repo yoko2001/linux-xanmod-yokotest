@@ -46,7 +46,7 @@ int add_swp_entry_remap(struct folio* folio, swp_entry_t from_entry, swp_entry_t
 int enable_swp_entry_remap(struct folio* folio, swp_entry_t from_entry, swp_entry_t* p_to_entry);
 void __delete_from_swap_cache(struct folio *folio,
 			      swp_entry_t entry, void *shadow);
-void delete_from_swap_remap(struct folio *folio, swp_entry_t entry_from, swp_entry_t entry_to);
+void delete_from_swap_remap(struct folio *folio, swp_entry_t entry_from, swp_entry_t entry_to, bool delete_unpepared);
 void delete_from_swap_remap_get_mig(struct folio* folio, swp_entry_t entry_from, swp_entry_t* entry_to);
 void __delete_from_swap_cache_mig(struct folio *folio,
 			swp_entry_t entry);

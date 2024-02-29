@@ -915,7 +915,6 @@ static int scan_swap_map_slots(struct swap_info_struct *si,
 	int version = 0;
 	bool scanned_many = false;
 	swp_entry_t test_entry;
-	unsigned char ori_usage;
 
 	/*
 	 * We try to cluster swap pages by allocating them sequentially
@@ -964,8 +963,9 @@ static int scan_swap_map_slots(struct swap_info_struct *si,
 		/* Locate the first empty (unaligned) cluster */
 		for (; last_in_cluster <= si->highest_bit; offset++) {
 			//if (si->swap_map[offset])
-			if (swap_offset_any_version_occupied(si, offset))
+			if (swap_offset_any_version_occupied(si, offset)){
 				last_in_cluster = offset + SWAPFILE_CLUSTER;
+			} 
 			else if (offset == last_in_cluster) {
 				spin_lock(&si->lock);
 				offset -= SWAPFILE_CLUSTER - 1;
@@ -1040,10 +1040,7 @@ checks:
 	 * check here if swap_map has remap, abandon
 	 * we find a usable version for this entry
 	 * temp block
-	 */
-	// ori_usage = READ_ONCE(si->swap_map[offset]);
-	// WRITE_ONCE(si->swap_map[offset], 10);  // save, mark ver.0 as used, another process
-	// 										  // cannot obtain from this physical slot						
+	 */					
 	unlock_cluster(ci); //to avoid deadlock
 	test_entry = swp_entry(si->type, offset);
 	if (__si_can_version(si))
@@ -1051,20 +1048,18 @@ checks:
 	else
 		version = 0;
 	ci = lock_cluster(si, offset); //relock
-	// WRITE_ONCE(si->swap_map[offset], ori_usage); //restore
 
 	if 	(__si_can_version(si)){
-		if (version <= 1) {//<= SWP_ENTRY_MAX_SPEC){ // 测试版我们只允许version=0,1 通过，测试正确性
+		if (version <= 3) {//<= SWP_ENTRY_MAX_SPEC){ // 测试版我们只允许version=0,1 通过，测试正确性
 			offset_v = offset + si->max * version;
-			if (version > 0 ){
-				VM_BUG_ON(!__si_can_version(si));
-				if (usage == SWAP_HAS_CACHE)
-					pr_err("entry[%lx] ver[%d] offset_v[%lx] allocated SWAP_HAS_CACHE", 
-							test_entry.val, version, offset_v);
-				else
-					pr_err("entry[%lx] ver[%d] offset_v[%lx] allocated [%x]", 
-							test_entry.val, version, offset_v, usage);
-			}
+			// if (version > 0){
+			// 	// if (usage == SWAP_HAS_CACHE)
+			// 	// 	pr_err("entry[%lx] ver[%d] offset_v[%lx] allocated SWAP_HAS_CACHE", 
+			// 	// 			test_entry.val, version, offset_v);
+			// 	// else
+			// 	// 	pr_err("entry[%lx] ver[%d] offset_v[%lx] allocated [%x]", 
+			// 	// 			test_entry.val, version, offset_v, usage);
+			// }
 		}
 		else{ //unable to alloc
 			pr_err("entry[%lx] fully used, skip", test_entry.val);
@@ -1077,6 +1072,15 @@ checks:
 		offset_v = offset; //async pass check
 	}
 	WRITE_ONCE(si->swap_map[offset_v], usage); //mark at exact place
+	if (version > 0){
+		pr_err("version[%d]entry[%lx] offset_v[%lx] swap_map set usage[%d]", 
+				version, swp_entry_version(si->type, offset, version).val, offset_v, usage);		
+		
+	}
+	if (!swap_offset_any_version_occupied(si, offset)){
+		pr_err("manually occupied offset[%lx] v[%d] but fail", offset, version);
+		BUG();
+	}
 	inc_cluster_info_page(si, si->cluster_info, offset);
 	unlock_cluster(ci);
 
@@ -1084,9 +1088,8 @@ checks:
 	if (version > 0){
 		slots[n_ret++] = swp_entry_version(si->type, offset, version);
 		if (usage == SWAP_HAS_CACHE)
-			// pr_err("version[%d]entry[%lx] offset_v[%lx] added to slots SWAP_HAS_CACHE", 
-			// 	version, slots[n_ret-1].val, offset_v);
-			;
+			pr_err("version[%d]entry[%lx] offset_v[%lx] added to slots SWAP_HAS_CACHE", 
+				version, slots[n_ret-1].val, offset_v);
 		else
 			pr_err("version[%d]entry[%lx] offset_v[%lx] added to slots[%x]", 
 				version, slots[n_ret-1].val, offset_v, usage);
@@ -1096,7 +1099,7 @@ checks:
 			if (usage == SWAP_HAS_CACHE)
 				;
 			else
-				pr_err("entry[%lx] added to slots [%x]", slots[n_ret-1].val, usage);
+				pr_err("normal entry[%lx] added to slots [%x]", slots[n_ret-1].val, usage);
 		}
 	}
 
@@ -1315,8 +1318,9 @@ start_over:
 		if (size == SWAPFILE_CLUSTER) {
 			if (si->flags & SWP_BLKDEV)
 				n_ret = swap_alloc_cluster(si, swp_entries);
-			pr_err("doesn't support swap_alloc_cluster ver control yet");
-			BUG();
+			// pr_err("doesn't support si[%d] ver control yet", si->prio);
+			// BUG();
+			//it's ok, because usually we don't use a blk dev
 		} else
 			n_ret = scan_swap_map_slots(si, SWAP_HAS_CACHE,
 						    n_goal, swp_entries);
@@ -1359,6 +1363,14 @@ check_out:
 	if (n_ret < n_goal)
 		atomic_long_add((long)(n_goal - n_ret) * size,
 				&nr_swap_pages);
+	if (!__si_can_version(si)){
+		for (int i = 0; i < n_ret; i++){
+			if (swp_entry_test_special(swp_entries[i])){
+				pr_err("shouldn't sopport version in none sync devices entry[%lx]", swp_entries[i].val);
+				BUG();
+			}
+		}
+	}
 noswap:
 	return n_ret;
 }
@@ -1367,7 +1379,7 @@ static struct swap_info_struct *_swap_info_get(swp_entry_t entry)
 {
 	struct swap_info_struct *p;
 	unsigned long offset;
-	unsigned long offset_v;
+	unsigned long offset_v, __offset_v;
 	unsigned long version;
 	if (!entry.val)
 		goto out;
@@ -1381,12 +1393,20 @@ static struct swap_info_struct *_swap_info_get(swp_entry_t entry)
 	offset_v = offset + version * p->max* __si_can_version(p);
 	if (offset >= p->max)
 		goto bad_offset;
+	if (__si_can_version(p)){
+		for (int v = 0; v < (1 << SWP_SPECIAL_MARK); v++){
+			__offset_v = offset + v * p->max;
+			if (p->swap_map[__offset_v])
+				return p;
+		}
+		goto bad_free;
+	}
 	if (data_race(!p->swap_map[offset_v])) //use raw
 		goto bad_free;
 	return p;
 
 bad_free:
-	// pr_err("%s: %s%08lx\n", __func__, Unused_offset, entry.val);
+	pr_err("%s: %s%08lx\n", __func__, Unused_offset, entry.val);
 	goto out;
 bad_offset:
 	pr_err("%s: %s%08lx\n", __func__, Bad_offset, entry.val);
@@ -1692,9 +1712,9 @@ void swapcache_free_entries(swp_entry_t *entries, int n, int free)
 		p = swap_info_get_cont(entries[i], prev);
 		if (p){
 			swap_entry_free(p, entries[i], free);
-			if (__si_can_version(p) && swp_entry_test_special(entries[i]))
-				pr_err("swapcache_free_entries entry[%lx], cnt[%d]", 
-						entries[i].val, swap_swapcount(p, entries[i]));
+			// if (__si_can_version(p) && swp_entry_test_special(entries[i]))
+			// 	pr_err("swapcache_free_entries entry[%lx], cnt[%d]", 
+			// 			entries[i].val, swap_swapcount(p, entries[i]));
 		}
 		prev = p;
 	}
@@ -1904,6 +1924,9 @@ int free_swap_and_cache(swp_entry_t entry)
 		    !swap_page_trans_huge_swapped(p, entry))
 			__try_to_reclaim_swap(p, swp_offset(entry),
 					      TTRS_UNMAPPED | TTRS_FULL);
+	}
+	else {
+		pr_err("free_s&$ err swap_info[%pK], count[%d], entry[%lx]", p, count, entry.val);
 	}
 	return p != NULL;
 }
@@ -3775,9 +3798,9 @@ EXPORT_SYMBOL_GPL(swapcache_mapping);
 pgoff_t __page_file_index(struct page *page)
 {
 	swp_entry_t swap = { .val = page_private(page) };
-	if (swp_entry_test_special(swap))
-		pr_err("__page_file_index page[%pK] ver[%d], entry[%lx]", 
-				page, swp_entry_test_special(swap), swap.val);
+	// if (swp_entry_test_special(swap))
+	// 	pr_err("__page_file_index page[%pK] ver[%d], entry[%lx]", 
+	// 			page, swp_entry_test_special(swap), swap.val);
 	return swp_raw_offset(swap);
 }
 EXPORT_SYMBOL_GPL(__page_file_index);

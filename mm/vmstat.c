@@ -1276,6 +1276,9 @@ const char * const vmstat_text[] = {
 #ifdef CONFIG_LRU_GEN
 	"pgsteal_kswapd_memcg",
 #endif
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
+	"pg_swapped_mig_saved",
+#endif
 /*DJL ADD END*/
 	"pgdemote_kswapd",
 	"pgdemote_direct",

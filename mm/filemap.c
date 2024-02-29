@@ -877,6 +877,8 @@ noinline int __filemap_add_folio(struct address_space *mapping,
 
 	gfp &= GFP_RECLAIM_MASK;
 	folio_ref_add(folio, nr);
+	if (folio_test_stalesaved(folio))
+		pr_err("__filemap_add_folio folio[%pK], ref[%d]", folio, folio_ref_count(folio));
 	folio->mapping = mapping;
 	folio->index = xas.xa_index;
 
@@ -901,8 +903,10 @@ noinline int __filemap_add_folio(struct address_space *mapping,
 				*shadowp = old;
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 			else{
-				if (entry_is_entry_ext(old))
+				if (entry_is_entry_ext(old)){
 					pr_err("__filemap_add_folio lost shadow_ext");
+					BUG();
+				}
 			}
 #endif
 			/* entry may have been split before we acquired lock */
@@ -2062,7 +2066,7 @@ repeat:
 			return folio;
 		folio = NULL;
 	}
-	else if (entry_is_entry_ext(folio)){
+	else if (entry_is_entry_ext(folio) != 0){
 		if (fgp_flags & FGP_ENTRY){
 			BUG();
 			return folio;
