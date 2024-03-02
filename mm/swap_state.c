@@ -1293,9 +1293,9 @@ struct page*__read_swap_cache_async_save(swp_entry_t entry,
 		goto fail_unlock;
 
 	/* May fail (-ENOMEM) if XArray node allocation failed. */
+	pr_err("ckpt3 add_to_swap_cache folio[%pK], entry[%lx]", folio, entry.val);
 	if (add_to_swap_cache(folio, entry, gfp_mask & GFP_RECLAIM_MASK, &shadow))
 		goto fail_unlock;
-	// pr_err("ckpt3 add_to_swap_cache folio[%pK], entry[%lx]", folio, entry.val);
 
 //	mem_cgroup_swapin_uncharge_swap(entry); //DJL doesn't count this
 	//now shadow has been used
