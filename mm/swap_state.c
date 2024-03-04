@@ -477,7 +477,6 @@ swp_entry_t entry_get_migentry_lock(swp_entry_t ori_swap)
 		void *entry = xas_load(&xas);
 		if (xa_is_value(entry)){
 			mig_swap.val = xa_to_value(entry);
-			pr_err("remap success [%lx]->[%lx]", ori_swap.val, mig_swap.val);
 			if (mig_swap.val && non_swap_entry(mig_swap)){
 				pr_err("remap err [%lx]->[%lx]", ori_swap.val, mig_swap.val);
 				BUG();

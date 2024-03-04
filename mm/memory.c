@@ -1456,6 +1456,7 @@ again:
 				//we try if it has been mapped, if enabled than it is valid
 				migentry = entry_get_migentry(entry);
 				if (!migentry.val || non_swap_entry(migentry)){
+					pr_err("mig lost entry[%lx]", entry.val);
 					goto fail_unmap_mig_entry;
 				}
 				if (unlikely(!free_swap_and_cache(migentry)))
@@ -3642,10 +3643,7 @@ static inline bool should_try_to_free_swap(struct folio *folio,
 	return try_free_entry_force && (fault_flags & FAULT_FLAG_WRITE) && !folio_test_ksm(folio);
 #endif
 	/*DJL ADD END*/
-	if (try_free_entry_force)
-		return (fault_flags & FAULT_FLAG_WRITE) && !folio_test_ksm(folio) && folio_ref_count(folio) == 2;
-	else
-		return (fault_flags & FAULT_FLAG_WRITE) && !folio_test_ksm(folio) &&
+	return (fault_flags & FAULT_FLAG_WRITE) && !folio_test_ksm(folio) && 
 			folio_ref_count(folio) == 2;
 }
 
@@ -4337,7 +4335,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	//first is valid_remap && try_to_free
 	if (valid_remap || invalid_remap){
 		if (valid_remap) { //valid remap case
-			if (valid_remap && should_try_to_free_swap(folio, vma, vmf->flags, try_free_entry)){			
+			if (should_try_to_free_swap(folio, vma, vmf->flags, try_free_entry)){			
 				folio_free_swap(folio);
 				if (valid_remap && !folio_test_swapcache(folio)){
 					pr_err("do_swap after folio_free_swap[%pK]entry[%lx] $[%d]", folio, entry.val,  folio_test_swapcache(folio));			
@@ -4348,7 +4346,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 						invalid_remap , valid_remap,
 						folio, folio_ref_count(folio), entry.val,  migentry.val, folio_test_ksm(folio), 
 						folio_test_swapcache(folio), folio_test_writeback(folio));
-				BUG();
+				// BUG();
 			}
 		}else{ //invalid remap case
 			if (should_try_to_free_swap(folio, vma, vmf->flags, try_free_entry)){ //invalid / normal
@@ -4356,18 +4354,17 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 							folio, page_private(folio_page(folio, 0)), orientry.val, folio_test_swapcache(folio));
 				if (orientry.val != entry.val)
 					BUG();
-				folio_free_swap(folio);
-				pr_err("invalid do_swap after folio_free_swap[%pK]entry[%lx] $[%d]", folio, entry.val,  folio_test_swapcache(folio));			
-
 				if (!folio_test_swapcache(folio) || valid_remap){
 					pr_err("do_swap folio_free_swap[%pK]entry[%lx]migentry[%lx] $[%d]wb[%d]", 
 							folio, entry.val,  migentry.val, folio_test_swapcache(folio), folio_test_writeback(folio));	
 					BUG();		
-				}
+				}				
+				folio_free_swap(folio);
+				pr_err("invalid do_swap after folio_free_swap[%pK]entry[%lx] $[%d]", folio, entry.val,  folio_test_swapcache(folio));			
 			}
 			else{
-				pr_err("do_swap skip folio_free_swapv[%d]inv[%d] folio[%pK]ref[%d]entry[%lx]migen[%lx]ksm[%d]$[%d]wb[%d]", 
-						invalid_remap , valid_remap,
+				pr_err("do_swap skip folio_free_swapv[%d]inv[%d]vmf[%d] folio[%pK]ref[%d]entry[%lx]migen[%lx]ksm[%d]$[%d]wb[%d]", 
+						invalid_remap , valid_remap, vmf->flags & FAULT_FLAG_WRITE,
 						folio, folio_ref_count(folio), entry.val,  migentry.val, folio_test_ksm(folio), 
 						folio_test_swapcache(folio), folio_test_writeback(folio));
 				BUG();
@@ -4386,7 +4383,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		//it shows that this is a invalid remap
 		//these entries are not saved, (probably because refaulted before end_bio_write check)
 		//since this refault happened, there's no need for remap to exists for now
-		
+
 		//we have to make sure if the folio now is valid, we check the 
 
 		swap_free(migentry);
@@ -4397,6 +4394,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 					    folio_test_swapbacked(folio),  folio_test_swapcache(folio));			
 		pr_err("folio[%pK] shouldn't have valid migentry[%lx] now, remap NULLed", 
 					folio, migentry.val);
+		if (invalid_remap || valid_remap)
+			BUG();
 		BUG();
 	}
 	if (folio && folio_test_stalesaved(folio)){
