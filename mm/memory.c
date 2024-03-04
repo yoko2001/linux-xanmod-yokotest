@@ -4014,16 +4014,20 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 							vmf->address, &page_allocated, false, &try_free_entry);
 				if (page_allocated){
 					pr_err("__read_swap_cache_async_save folio[%pK] remapped entry[%lx] refcount[%d]", 
-								page_folio(page), entry.val, folio_ref_count(folio));
+								page_folio(page), entry.val, folio_ref_count(page_folio(page)));
 					swap_readpage(page, true, plug);
 				}
 				else if (!page){
 					pr_err("__read_swap_cache_async_save fail entry[%lx]", entry.val);
 				}
+				else{ //in this case swapcache is ref_added by once for no mean
+					folio_ref_sub(page_folio(page), folio_nr_pages(page_folio(page)));
+				}
+
 				if (page) {
 					ClearPageStaleSaved(page);
-					pr_err("__read_swap_cache_async_save complete read_$_async entry[%lx] refcount[%d]", 
-								entry.val, folio_ref_count(page_folio(page)));
+					pr_err("__read_swap_cache_async_save complete new[%d] read_$_async entry[%lx] refcount[%d]", 
+								page_allocated, entry.val, folio_ref_count(page_folio(page)));
 				}
 			}
 			else {
@@ -4082,15 +4086,18 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		goto out_release;
 	}
 
-	if (invalid_remap)
-		pr_err("do_swap folio lock on invalid remap[%pK], flag[%d] entry[%lx]", 
-			folio, vmf->flags, entry.val);
+
 	
 	
 	locked = folio_lock_or_retry(folio, vma->vm_mm, vmf->flags);
 	if (!locked) {
 		ret |= VM_FAULT_RETRY;
 		goto out_release;
+	}
+	if (invalid_remap){
+		pr_err("do_swap folio locked on invalid remap[%pK], flag[%d] entry[%lx]", 
+			folio, vmf->flags, entry.val);
+		
 	}
 
 	if (swapcache) {
@@ -4127,6 +4134,12 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 						delete_from_swap_remap(folio, orientry, migentry, true);
 						delete_from_swap_cache_mig(folio, migentry, true);
 						if (!invalid_remap) 
+							BUG();
+					
+						if(folio_ref_count(folio) == 3){ // invalid的
+							folio_ref_sub(folio, folio_nr_pages(folio));
+						}
+						else
 							BUG();
 						pr_err("PF5 2 entry[%lx]->folio[%pK] mig cleared wb[%d]sw$[%d] stale[%d] refcount[%d]", 
 							orientry.val, folio, folio_test_writeback(folio), folio_test_swapcache(folio), 
@@ -4322,33 +4335,51 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		try_free_entry = 1;//force free, no excuse
 #endif
 	//first is valid_remap && try_to_free
-	if (!invalid_remap && should_try_to_free_swap(folio, vma, vmf->flags, try_free_entry)){			
-		if (valid_remap && !folio_test_swapcache(folio)){
-			pr_err("do_swap before folio_free_swap[%pK]entry[%lx] $[%d]", folio, entry.val,  folio_test_swapcache(folio));			
-		}
-		folio_free_swap(folio);
-		if (valid_remap && !folio_test_swapcache(folio)){
-			pr_err("do_swap after folio_free_swap[%pK]entry[%lx] $[%d]", folio, entry.val,  folio_test_swapcache(folio));			
-		}
-	} else if (should_try_to_free_swap(folio, vma, vmf->flags, try_free_entry)){
-		pr_err("invalid_remap folio[%pK] pri[%lx] orientry[%lx]  $[%d]", 
-					folio, page_private(folio_page(folio, 0)), orientry.val, folio_test_swapcache(folio));
-		if (orientry.val != entry.val)
-			BUG();
-		folio_free_swap(folio);
-		pr_err("invalid do_swap after folio_free_swap[%pK]entry[%lx] $[%d]", folio, entry.val,  folio_test_swapcache(folio));			
+	if (valid_remap || invalid_remap){
+		if (valid_remap) { //valid remap case
+			if (valid_remap && should_try_to_free_swap(folio, vma, vmf->flags, try_free_entry)){			
+				folio_free_swap(folio);
+				if (valid_remap && !folio_test_swapcache(folio)){
+					pr_err("do_swap after folio_free_swap[%pK]entry[%lx] $[%d]", folio, entry.val,  folio_test_swapcache(folio));			
+				}
+			} 
+			else{
+				pr_err("do_swap skip folio_free_swapv[%d]inv[%d] folio[%pK]ref[%d]entry[%lx]migen[%lx]ksm[%d]$[%d]wb[%d]", 
+						invalid_remap , valid_remap,
+						folio, folio_ref_count(folio), entry.val,  migentry.val, folio_test_ksm(folio), 
+						folio_test_swapcache(folio), folio_test_writeback(folio));
+				BUG();
+			}
+		}else{ //invalid remap case
+			if (should_try_to_free_swap(folio, vma, vmf->flags, try_free_entry)){ //invalid / normal
+				pr_err("invalid_remap folio[%pK] pri[%lx] orientry[%lx]  $[%d]", 
+							folio, page_private(folio_page(folio, 0)), orientry.val, folio_test_swapcache(folio));
+				if (orientry.val != entry.val)
+					BUG();
+				folio_free_swap(folio);
+				pr_err("invalid do_swap after folio_free_swap[%pK]entry[%lx] $[%d]", folio, entry.val,  folio_test_swapcache(folio));			
 
-		if (!folio_test_swapcache(folio) && valid_remap){
-			pr_err("do_swap folio_free_swap[%pK]entry[%lx]migentry[%lx] $[%d]wb[%d]", 
-					folio, entry.val,  migentry.val, folio_test_swapcache(folio), folio_test_writeback(folio));	
-			BUG();		
+				if (!folio_test_swapcache(folio) || valid_remap){
+					pr_err("do_swap folio_free_swap[%pK]entry[%lx]migentry[%lx] $[%d]wb[%d]", 
+							folio, entry.val,  migentry.val, folio_test_swapcache(folio), folio_test_writeback(folio));	
+					BUG();		
+				}
+			}
+			else{
+				pr_err("do_swap skip folio_free_swapv[%d]inv[%d] folio[%pK]ref[%d]entry[%lx]migen[%lx]ksm[%d]$[%d]wb[%d]", 
+						invalid_remap , valid_remap,
+						folio, folio_ref_count(folio), entry.val,  migentry.val, folio_test_ksm(folio), 
+						folio_test_swapcache(folio), folio_test_writeback(folio));
+				BUG();
+			}
 		}
 	}
-	else if (invalid_remap || valid_remap){
-		pr_err("do_swap skip folio_free_swap[%pK] ref[%d] entry[%lx]migentry[%lx] $[%d]wb[%d]", 
-					folio, folio_ref_count(folio), entry.val,  migentry.val, 
-					folio_test_swapcache(folio), folio_test_writeback(folio));
-		BUG();	
+	else{ //normal case
+		if (should_try_to_free_swap(folio, vma, vmf->flags, try_free_entry)){ //invalid / normal
+			if (orientry.val != entry.val)
+				BUG();
+			folio_free_swap(folio);
+		}
 	}
 
 	if (migentry.val && migentry.val != entry.val){ 

@@ -266,8 +266,8 @@ int enable_swp_entry_remap(struct folio* folio, swp_entry_t from_entry, swp_entr
 				}
 				else{
 					xas_store(&xas, xa_mk_value(to_entry_enabled.val + i));
-					pr_err("enable_swp_entry_remap success [%pK] $[%d] entry[%lx]->entry[%lx]", 
-							folio, folio_test_swapcache(folio), 
+					pr_err("enable_swp_entry_remap success [%pK]ref[%d] $[%d] entry[%lx]->entry[%lx] ", 
+							folio, folio_ref_count(folio), folio_test_swapcache(folio), 
 							from_entry.val, to_entry_enabled.val);					
 				}
 			}
@@ -1231,7 +1231,7 @@ struct page*__read_swap_cache_async_save(swp_entry_t entry,
 						swp_offset(entry));
 		put_swap_device(si);
 		if (folio)
-			pr_err("found already in swap_cache[%lx] -> folio[%pK]", entry.val, folio);
+			pr_err("found already in swap_cache[%lx] -> folio[%pK] ref[%d]", entry.val, folio, folio_ref_count(folio));
 		if (folio)
 			return folio_file_page(folio, swp_offset(entry));
 
@@ -1293,15 +1293,16 @@ struct page*__read_swap_cache_async_save(swp_entry_t entry,
 		goto fail_unlock;
 
 	/* May fail (-ENOMEM) if XArray node allocation failed. */
-	pr_err("ckpt3 add_to_swap_cache folio[%pK], entry[%lx]", folio, entry.val);
 	if (add_to_swap_cache(folio, entry, gfp_mask & GFP_RECLAIM_MASK, &shadow))
 		goto fail_unlock;
 
 //	mem_cgroup_swapin_uncharge_swap(entry); //DJL doesn't count this
 	//now shadow has been used
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
-	VM_BUG_ON_FOLIO(folio, folio->shadow_ext);
-	folio->shadow_ext = NULL;
+	if(folio && folio->shadow_ext){
+		pr_err("shouldn't have folio[%pK]->shadow_ext", folio);
+		folio->shadow_ext = NULL;
+	}
 	if (entry_is_entry_ext(shadow) > 0){
 		folio->shadow_ext = shadow;
 	}
@@ -1317,7 +1318,10 @@ struct page*__read_swap_cache_async_save(swp_entry_t entry,
 
 	//folio_add_lru_save(folio);
 
-	*new_page_allocated = true;
+	if (new_page_allocated)
+		*new_page_allocated = true;
+	pr_err("ckpt5 folio[%pK], entry[%lx]", folio, entry.val);
+
 	return &folio->page; 
 
 fail_unlock:
@@ -2081,8 +2085,8 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				folio_unlock(folio);
 				goto fail_delete_saved_cache;
 			}
-			pr_err("folio[%pK] saved[%lx] add_to_swap_cache_save_check success ", 
-					folio, saved_entry.val);			
+			pr_err("folio[%pK] saved[%lx] ref[%d] add_to_swap_cache_save_check success ", 
+					folio, saved_entry.val, folio_ref_count(folio));			
 			//first mark entry as faked for now (currently under initialization)
 			swp_entry_set_ext(&mig_entry, 0x1);
 			//adding a remap from saved_entry -> mig_entry
