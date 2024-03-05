@@ -1072,10 +1072,9 @@ checks:
 		offset_v = offset; //async pass check
 	}
 	WRITE_ONCE(si->swap_map[offset_v], usage); //mark at exact place
-	if (version > 0){
+	if (version > 0 && usage != SWAP_HAS_CACHE){
 		pr_err("version[%d]entry[%lx] offset_v[%lx] swap_map set usage[%d]", 
 				version, swp_entry_version(si->type, offset, version).val, offset_v, usage);		
-		
 	}
 	if (!swap_offset_any_version_occupied(si, offset)){
 		pr_err("manually occupied offset[%lx] v[%d] but fail", offset, version);

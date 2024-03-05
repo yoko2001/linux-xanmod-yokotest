@@ -4112,15 +4112,22 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				VM_BUG_ON_FOLIO(invalid_remap, folio); //should be invalid
 				folio_clear_stalesaved(folio);
 				if (migentry.val){
-					if (!swp_entry_test_ext(migentry)){ 
+					if (!swp_entry_test_ext(migentry)){ //valid enabled
 						if (!valid_remap) 
 							BUG();
 						//cached in by origin swap$, remap enabled (while read from origin)
-						delete_from_swap_remap(folio, orientry, migentry, false);
-						delete_from_swap_cache_mig(folio, migentry, true);
-						pr_err("PF1 entry[%lx]->folio[%pK] mig cleared wb[%d]sw$[%d] stale[%d] refcount[%d]", 
-							orientry.val, folio, folio_test_writeback(folio), 
-							folio_test_swapcache(folio), folio_test_stalesaved(folio), folio_ref_count(folio));	
+						//this remap and cache mig should stays, untill swap_free
+						if ( __swap_count(orientry) != 1) {
+							pr_err("PF1 ori[%lx]map[%d] folio[%pK]", orientry.val, __swap_count(orientry), folio);
+							BUG();
+						}
+						else{
+							delete_from_swap_remap(folio, orientry, migentry, false);
+							delete_from_swap_cache_mig(folio, migentry, true);
+							pr_err("PF1 entry[%lx]->folio[%pK] mig cleared wb[%d]sw$[%d] stale[%d] refcount[%d]", 
+								orientry.val, folio, folio_test_writeback(folio), 
+								folio_test_swapcache(folio), folio_test_stalesaved(folio), folio_ref_count(folio));								
+						}
 					} else{
 						//not enabled yet
 						// pr_err("enabler do the clean 1, folio[%pK] $[%d] entry[%lx]->mig[%lx]", 

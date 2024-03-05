@@ -947,8 +947,11 @@ void delete_from_swap_cache_mig(struct folio* folio, swp_entry_t entry, bool ref
 
 	if (ref_sub)
 		put_swap_folio(folio, entry_);
-	pr_err("folio[%pK] entry get out of cache mig[%lx]cnt[%d]", 
-				folio, entry_.val, __swap_count(entry_));
+	if (!ref_sub && __swap_count(entry_) != 1){
+		pr_err("folio[%pK] entry get out of cache mig[%lx]cnt[%d]", 
+				folio, entry_.val, __swap_count(entry_));	
+		BUG();	
+	}
 	folio_ref_sub(folio, folio_nr_pages(folio));
 }
 
@@ -2002,6 +2005,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 		    	!(__swap_count(saved_entry) == 1)) {
 				pr_err("entry[%lx] sync[%lu] cnt[%d] is not used anymore", 
 							saved_entry.val, data_race(p->flags & SWP_SYNCHRONOUS_IO), __swap_count(entry));
+				goto skip_this_save;
 			}
 
 			//valid entry, we can swapin
@@ -2084,8 +2088,8 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				folio_unlock(folio);
 				goto fail_delete_saved_cache;
 			}
-			pr_err("folio[%pK] saved[%lx] ref[%d] add_to_swap_cache_save_check success ", 
-					folio, saved_entry.val, folio_ref_count(folio));			
+			pr_err("folio[%pK] saved[%lx]cnt[%d] ref[%d] add_to_swap_cache_save_check success ", 
+					folio, saved_entry.val, __swap_count(saved_entry), folio_ref_count(folio));			
 			//first mark entry as faked for now (currently under initialization)
 			swp_entry_set_ext(&mig_entry, 0x1);
 			//adding a remap from saved_entry -> mig_entry
