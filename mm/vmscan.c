@@ -1986,9 +1986,13 @@ keep_next_time:
 				delete_from_swap_remap_get_mig(folio, entry, &migentry);
 				delete_from_swap_cache_mig(folio, migentry, true);
 				swap_free(migentry);
-				pr_err("folio[%pK]$[%d]private[%lx]cnt[%d] remap deleted add to lru, swap freed", 
+				if (__swap_count(migentry) != 0){
+					pr_err("folio[%pK]$[%d]private[%lx]cnt[%d]map[%d] remap deleted add to lru, swap freed", 
 						folio,	folio_test_swapcache(folio), 
-						page_private(folio_page(folio, 0)), folio_ref_count(folio));
+						page_private(folio_page(folio, 0)), folio_ref_count(folio), __swap_count(migentry));					
+					BUG();
+				}
+
 				//try clear original entry before unlock
 				if (!folio_test_ksm(folio)){
 					folio_free_swap(folio);
@@ -2004,7 +2008,8 @@ keep_next_time:
 			} 
 
 			delete_from_swap_cache_mig(folio, entry, false);
-			pr_err("folio[%pK] delete_from_swap_cache_mig ref[%d]", folio, folio_ref_count(folio));
+			pr_err("folio[%pK] delete_from_swap_cache_mig ref[%d] mig[%lx]cnt[%d]", 
+						folio, folio_ref_count(folio), entry.val, __swp_swapcount(entry));
 
 			ret = enable_swp_entry_remap(folio, entry, &migentry);
 			if (ret){
@@ -2025,9 +2030,11 @@ keep_next_time:
 				pr_err("before swap_free ori_entry[%lx]cnt[%d], mig_entry[%lx]cnt[%d]", 
 						entry.val, __swp_swapcount(entry), migentry.val, __swp_swapcount(migentry));
 			swap_free(entry);
-			if (__swp_swapcount(entry) != 0)
+			if (__swp_swapcount(entry) != 0){
 				pr_err("after swap_free ori_entry[%lx]cnt[%d], mig_entry[%lx]cnt[%d]", 
 						entry.val, __swp_swapcount(entry), migentry.val, __swp_swapcount(migentry));
+				BUG();			
+			}
 			folio_add_lru_save(folio);
 			folio_unlock(folio);
 		}

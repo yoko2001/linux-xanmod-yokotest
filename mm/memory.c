@@ -4040,13 +4040,13 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				folio = page_folio(page);
 				if (migentry.val) { //the remapping is useless now, discard it
 					VM_BUG_ON_FOLIO(non_swap_entry(migentry), folio);
-					delete_from_swap_remap(folio, orientry, migentry, false); //should come with no ref_sub
-					pr_err("PF0 entry[%lx]->folio[%pK] remap cleared wb[%d]sw$[%d] stale[%d] refcount[%d]", 
+					// delete_from_swap_remap(folio, orientry, migentry, false); //should come with no ref_sub
+					pr_err("PF0 entry[%lx]->folio[%pK] remap skip cleared wb[%d]sw$[%d] stale[%d] refcount[%d]", 
 							orientry.val, folio, folio_test_writeback(folio), folio_test_swapcache(folio), 
 							folio_test_stalesaved(folio), folio_ref_count(folio));
 					//set page private
 					set_page_private(page, migentry.val);
-					migentry.val = 0; //now migentry is completely useless
+					// migentry.val = 0; //now migentry is completely useless
 				}
 			}
 			else{
@@ -4116,11 +4116,17 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 						if (!valid_remap) 
 							BUG();
 						//cached in by origin swap$, remap enabled (while read from origin)
-						delete_from_swap_remap(folio, orientry, migentry, false);
-						delete_from_swap_cache_mig(folio, migentry, true);
-						pr_err("PF1 entry[%lx]->folio[%pK] mig cleared wb[%d]sw$[%d] stale[%d] refcount[%d]", 
-							orientry.val, folio, folio_test_writeback(folio), 
-							folio_test_swapcache(folio), folio_test_stalesaved(folio), folio_ref_count(folio));	
+						if ( __swap_count(orientry) != 1) {
+							pr_err("PF1 ori[%lx]map[%d] folio[%pK]", orientry.val, __swap_count(orientry), folio);
+							BUG();
+						}
+						else{
+							delete_from_swap_remap(folio, orientry, migentry, false);
+							delete_from_swap_cache_mig(folio, migentry, true);
+							pr_err("PF1 entry[%lx]->folio[%pK] mig cleared wb[%d]sw$[%d] stale[%d] refcount[%d]", 
+								orientry.val, folio, folio_test_writeback(folio), 
+								folio_test_swapcache(folio), folio_test_stalesaved(folio), folio_ref_count(folio));								
+						}
 					} else{
 						//not enabled yet
 						// pr_err("enabler do the clean 1, folio[%pK] $[%d] entry[%lx]->mig[%lx]", 
@@ -4182,15 +4188,6 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 			else{ //read from sync IO
 				pr_err("read from sync IO");
 				BUG();
-				// swp_entry_t migentry_;
-				// VM_BUG_ON_FOLIO(non_swap_entry(orientry), folio);
-				// migentry_ = folio_get_migentry(folio, orientry);
-				// pr_err("corner case entry[%lx]->folio[%pK] mig uncleared wb[%d]sw$[%d]d[%d] stale[%d] refcount[%d]", 
-				// 	orientry.val, folio, folio_test_writeback(folio), folio_test_swapcache(folio), 
-				// 	folio_test_dirty(folio), folio_test_stalesaved(folio), folio_ref_count(folio));	
-				// folio_clear_stalesaved(folio);  // we do the clean here now, just got found , unprocessed yet
-				// if (migentry_.val)
-				// 	delete_from_swap_remap(folio, orientry, migentry_);
 			}
 		}
 #endif
@@ -4379,24 +4376,21 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		}
 	}
 
-	if (migentry.val && migentry.val != entry.val){ 
+	if (migentry.val){ 
 		//it shows that this is a invalid remap
 		//these entries are not saved, (probably because refaulted before end_bio_write check)
 		//since this refault happened, there's no need for remap to exists for now
 
 		//we have to make sure if the folio now is valid, we check the 
 
-		swap_free(migentry);
-		pr_err("do_swap swap_free migentry[%lx], count %d", migentry.val, __swp_swapcount(migentry));		
+		if (__swap_count(migentry) == 0)	
+			delete_from_swap_remap(folio, orientry, migentry, false); //should come with no ref_sub
+
+		pr_err("do_swap delete_from_swap_remap migentry[%lx], count %d", migentry.val, __swp_swapcount(migentry));		
 		if (swapcache)
 			pr_err("do_swap folio[%pK] swapcache , wb[%d]d[%d]sb[%d]$[%d]", folio, 
 						folio_test_writeback(folio) , folio_test_dirty(folio), 
 					    folio_test_swapbacked(folio),  folio_test_swapcache(folio));			
-		pr_err("folio[%pK] shouldn't have valid migentry[%lx] now, remap NULLed", 
-					folio, migentry.val);
-		if (invalid_remap || valid_remap)
-			BUG();
-		BUG();
 	}
 	if (folio && folio_test_stalesaved(folio)){
 		pr_err("this shouldn't happen folio[%pK] stale", folio);

@@ -947,8 +947,11 @@ void delete_from_swap_cache_mig(struct folio* folio, swp_entry_t entry, bool ref
 
 	if (ref_sub)
 		put_swap_folio(folio, entry_);
-	pr_err("folio[%pK] entry get out of cache mig[%lx]cnt[%d]", 
-				folio, entry_.val, __swap_count(entry_));
+	if (!ref_sub && __swap_count(entry_) != 1){
+		pr_err("folio[%pK] entry get out of cache mig[%lx]cnt[%d]", 
+				folio, entry_.val, __swap_count(entry_));	
+		BUG();	
+	}
 	folio_ref_sub(folio, folio_nr_pages(folio));
 }
 
@@ -2002,6 +2005,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 		    	!(__swap_count(saved_entry) == 1)) {
 				pr_err("entry[%lx] sync[%lu] cnt[%d] is not used anymore", 
 							saved_entry.val, data_race(p->flags & SWP_SYNCHRONOUS_IO), __swap_count(entry));
+				goto skip_this_save;
 			}
 
 			//valid entry, we can swapin
@@ -2230,7 +2234,7 @@ skip_this_save:
 		}
 		else{
 			struct folio* folio = NULL;
-			pr_err("there's no lruvec, unlock all folio in list");
+			pr_err("there's no lruvec[%pK], unlock all folio in list", lruvec);
 			for (int i = 0; i < num_folio_list_wb; i++){
 				folio = folio_list_wb[i];
 				folio_unlock(folio);
