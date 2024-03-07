@@ -34,6 +34,7 @@
 #include <linux/vmalloc.h>
 #include <linux/mutex.h>
 #include <linux/mm.h>
+#include <linux/kernel.h>
 #include <trace/events/lru_gen.h>
 
 static DEFINE_PER_CPU(struct swap_slots_cache, swp_slots);
@@ -326,6 +327,7 @@ static int refill_swap_slots_cache(struct swap_slots_cache *cache)
 					   cache->slots, 1, 0, &cache->prio, &cache->left);
 	// if (fastest_swap_prio < cache->prio) fastest_swap_prio = cache->prio;
 	// if (slowest_swap_prio > cache->prio) slowest_swap_prio = cache->prio;
+	if (get_fastest_swap_prio() == cache->prio) {cache->fast_left = cache->left;} else {cache->fast_left = 0;}
 	trace_refill_swap_slots(0, cache->nr, cache->prio);
 	return cache->nr;
 }
@@ -347,14 +349,25 @@ static int refill_swap_slots_slow_cache(struct swap_slots_cache *cache)
 }
 static int refill_swap_slots_fast_cache(struct swap_slots_cache *cache)
 {
+	long left = 0;
 	if (!use_swap_slot_cache)
 		return 0;
 
 	cache->cur_fast = 0;
 	if (swap_slot_cache_active)
 		cache->nr_fast = get_swap_pages(SWAP_SLOTS_CACHE_SIZE,
-					   cache->slots_fast, 1, 2, &cache->prio_fast, &cache->fast_left);	//DJL ADD PARAMETER
-	// if (fastest_swap_prio < cache->prio_fast) fastest_swap_prio = cache->prio_fast;
+					   cache->slots_fast, 1, 2, &cache->prio_fast, &left);//&cache->fast_left);	//DJL ADD PARAMETER
+
+	if (cache->prio_fast == get_fastest_swap_prio())
+		cache->fast_left = left;
+	else
+		cache->fast_left = 0;
+	if (cache->prio_fast == get_fastest_swap_prio() && 
+			cache->nr_fast && (0 == cache->fast_left)) //prio_fast didn't change && prio fast has left
+	{
+		pr_err("get_swap_pages inner err nrfast[%d] fastleft[%ld]", cache->nr_fast ,cache->fast_left);
+		BUG();
+	}	
 	trace_refill_swap_slots(2, cache->nr_fast, cache->prio_fast);
 	return cache->nr_fast;
 }
@@ -398,6 +411,7 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space)
 	unsigned short prio;
 	int _nr, _cur, _prio;
 	swp_entry_t* _slots;
+	int dec_tree_result;
 	/*DJL ADD END*/
 	
 	entry.val = 0;
@@ -440,7 +454,38 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space)
 	WARN_ON_ONCE(folio_test_swappriolow(folio) && folio_test_swappriohigh(folio));
 	/*DJL ADD END*/
 
+#ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP
+	dec_tree_result = 0;
+	if (entry_is_entry_ext(folio->shadow_ext)){
+		struct dec_feature features;
+		features.pid = 0;
+		features.space_left = cache->fast_left;
+		features.swapprio_b = cache->prio_fast;
+		features.readahead_b = folio_test_readahead(folio);
+		features.seq0 = ((struct shadow_entry*)(folio->shadow_ext))->hist_ts[0];
+		features.seq1 = ((struct shadow_entry*)(folio->shadow_ext))->hist_ts[1];
+		features.seq2 = ((struct shadow_entry*)(folio->shadow_ext))->hist_ts[2];
+		features.seq3 = 0;
+		features.tier = 0;
+		struct lruvec* temp_lruvec;
+		temp_lruvec = folio_lruvec(folio);
+		dec_tree_result = temp_lruvec->predict(temp_lruvec->lru_dec_tree, (short*)(&features));
+		// int i;
+		// // if (cache->fast_left != 0)
+		// // 	printk(KERN_INFO "space_left:%ld \n", cache->fast_left);
+		// for(i = 0; i < 9;i++){
+		// 	printk(KERN_INFO "%hd  ",((short*)(&features))[i]);
+		// }
+		// printk(KERN_INFO "\n");
+		printk(KERN_INFO "Tree predict ok in kernel 2024-3-6, result:%d\n",dec_tree_result);
+	}
+#endif
+#ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP
+	// dec_tree_result = 1;
+	if (dec_tree_result == 0){
+#else
 	if (folio_test_swappriolow(folio)){
+#endif
 		if (likely(check_cache_active() && cache->slots_slow)) {
 			mutex_lock(&cache->alloc_lock);
 			if (cache->slots_slow) {
@@ -466,7 +511,11 @@ repeat_slow:
 			}
 		}	
 	}
+#ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP
+	else if (dec_tree_result == 1){
+#else
 	else if (folio_test_swappriohigh(folio)){//fast
+#endif
 		if (likely(check_cache_active() && cache->slots_fast)) {
 			mutex_lock(&cache->alloc_lock);
 			if (cache->slots_fast) {

@@ -63,6 +63,7 @@
 #include <linux/resume_user_mode.h>
 #include <linux/psi.h>
 #include <linux/seq_buf.h>
+#include <linux/kernel.h>
 #include "internal.h"
 #include <net/sock.h>
 #include <net/ip.h>
@@ -5249,6 +5250,312 @@ struct mem_cgroup *mem_cgroup_get_from_ino(unsigned long ino)
 }
 #endif
 
+#ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP
+struct dec_node* get_left(struct dec_node* parent){
+    return (struct dec_node*)(parent->left);
+}
+struct dec_node* get_right(struct dec_node* parent){
+    return (struct dec_node*)(parent->right);
+}
+void set_left(struct dec_node* parent, struct dec_node* left){
+    parent->left = (char*) left;
+}
+void set_right(struct dec_node* parent, struct dec_node* right){
+    parent->right = (char*) right;
+}
+
+
+struct dec_node* creat_node(void){
+    struct dec_node* new_node = (struct dec_node*)kmalloc(sizeof(struct dec_node), GFP_KERNEL);
+    return new_node;
+}
+void destory_node(struct dec_node* old_node){
+    kfree(old_node);
+}
+
+void destory_features(short* old_features){
+    kfree(old_features);
+}
+
+int search_tree(struct dec_node* root, short* features){
+    if(root->which_feature >= 0){
+        if(features[root->which_feature] <= root->threshold_value){
+            // printf("left\n");
+            return search_tree(get_left(root), features);
+        }else{
+            // printf("right\n");
+            return search_tree(get_right(root), features);
+        }
+    }else{
+        return root->label;
+    }
+}
+
+int predict(struct dec_tree* lru_dec_tree, short* features){
+    // printk(KERN_INFO "predicting\n");
+    return search_tree((struct dec_node*)lru_dec_tree->root, features);
+}
+
+struct dec_tree* tree_init(struct dec_tree* lru_dec_tree){
+	struct dec_node* root;
+    root = creat_node();
+    lru_dec_tree = (struct dec_tree*)kmalloc(sizeof(struct dec_tree), GFP_KERNEL);
+    lru_dec_tree->root = (char*)root;
+    lru_dec_tree->deep = 5;
+    root->threshold_value = 3;
+    root->label = 0;
+    root->which_feature = space_left;
+
+    // left1
+    struct dec_node* left1 = creat_node();
+    left1->threshold_value = 1;
+    left1->label = 0;
+    left1->which_feature = space_left;
+    set_left(root, left1);
+
+    // right1
+    struct dec_node* right1 = creat_node();
+    right1->threshold_value = 58;
+    right1->label = 1;
+    right1->which_feature = seq2;
+    set_right(root, right1);
+
+
+    // left2
+    struct dec_node* left2 = creat_node();
+    left2->threshold_value = 0;
+    left2->label = 0;
+    left2->which_feature = space_left;
+    set_left(left1, left2);
+
+    // right2
+    struct dec_node* right2 = creat_node();
+    right2->threshold_value = 100;
+    right2->label = 0;
+    right2->which_feature = seq2;
+    set_right(left1, right2);
+
+    // left3
+    struct dec_node* left3 = creat_node();
+    left3->threshold_value = 11;
+    left3->label = 0;
+    left3->which_feature = seq0;
+    set_left(right1, left3);
+
+    // right3
+    struct dec_node* right3 = creat_node();
+    right3->threshold_value = 58;
+    right3->label = 1;
+    right3->which_feature = seq0;
+    set_right(right1, right3);
+
+    // left4 -- end node
+    struct dec_node* left4 = creat_node();
+    left4->threshold_value = 0;
+    left4->label = 0;
+    left4->which_feature = -1;
+    left4->left = NULL;
+    left4->right = NULL;
+    set_left(left2, left4);
+
+    // right4
+    struct dec_node* right4 = creat_node();
+    right4->threshold_value = 99;
+    right4->label = 0;
+    right4->which_feature = seq2;
+    set_right(left2, right4);
+
+    // left5 
+    struct dec_node* left5 = creat_node();
+    left5->threshold_value = 10;
+    left5->label = 0;
+    left5->which_feature = seq1;
+    set_left(right2, left5);
+
+    // right5
+    struct dec_node* right5 = creat_node();
+    right5->threshold_value = 112;
+    right5->label = 0;
+    right5->which_feature = seq2;
+    set_right(right2, right5);
+
+    // left6
+    struct dec_node* left6 = creat_node();
+    left6->threshold_value = 3;
+    left6->label = 1;
+    left6->which_feature = seq0;
+    set_left(left3, left6);
+
+    // right6
+    struct dec_node* right6 = creat_node();
+    right6->threshold_value = 44;
+    right6->label = 0;
+    right6->which_feature = seq2;
+    set_right(left3, right6);
+
+    // left7
+    struct dec_node* left7 = creat_node();
+    left7->threshold_value = 16;
+    left7->label = 1;
+    left7->which_feature = seq0;
+    set_left(right3, left7);
+
+    // right7
+    struct dec_node* right7 = creat_node();
+    right7->threshold_value = 12;
+    right7->label = 1;
+    right7->which_feature = space_left;
+    set_right(right3, right7);
+
+    // left8  -- end node
+    struct dec_node* left8 = creat_node();
+    left8->threshold_value = 0;
+    left8->label = 0;
+    left8->which_feature = -1;
+    left8->left = NULL;
+    left8->right = NULL;
+    set_left(right4, left8);
+
+    // right8 -- end node
+    struct dec_node* right8 = creat_node();
+    right8->threshold_value = 0;
+    right8->label = 0;
+    right8->which_feature = -1;
+    right8->left = NULL;
+    right8->right = NULL;
+    set_right(right4, right8);
+
+    // left9  -- end node
+    struct dec_node* left9 = creat_node();
+    left9->threshold_value = 0;
+    left9->label = 0;
+    left9->which_feature = -1;
+    left9->left = NULL;
+    left9->right = NULL;
+    set_left(left5, left9);
+
+    // right9 -- end node
+    struct dec_node* right9 = creat_node();
+    right9->threshold_value = 0;
+    right9->label = 0;
+    right9->which_feature = -1;
+    right9->left = NULL;
+    right9->right = NULL;
+    set_right(left5, right9);
+
+    // left10  -- end node
+    struct dec_node* left10 = creat_node();
+    left10->threshold_value = 0;
+    left10->label = 1;
+    left10->which_feature = -1;
+    left10->left = NULL;
+    left10->right = NULL;
+    set_left(right5, left10);
+
+    // right10 -- end node
+    struct dec_node* right10 = creat_node();
+    right10->threshold_value = 0;
+    right10->label = 0;
+    right10->which_feature = -1;
+    right10->left = NULL;
+    right10->right = NULL;
+    set_right(right5, right10);
+
+    // left11  -- end node
+    struct dec_node* left11 = creat_node();
+    left11->threshold_value = 0;
+    left11->label = 0;
+    left11->which_feature = -1;
+    left11->left = NULL;
+    left11->right = NULL;
+    set_left(left6, left11);
+
+    // right11 -- end node
+    struct dec_node* right11 = creat_node();
+    right11->threshold_value = 0;
+    right11->label = 1;
+    right11->which_feature = -1;
+    right11->left = NULL;
+    right11->right = NULL;
+    set_right(left6, right11);
+
+    // left12  -- end node
+    struct dec_node* left12 = creat_node();
+    left12->threshold_value = 0;
+    left12->label = 0;
+    left12->which_feature = -1;
+    left12->left = NULL;
+    left12->right = NULL;
+    set_left(right6, left12);
+
+    // right12 -- end node
+    struct dec_node* right12 = creat_node();
+    right12->threshold_value = 0;
+    right12->label = 0;
+    right12->which_feature = -1;
+    right12->left = NULL;
+    right12->right = NULL;
+    set_right(right6, right12);
+
+    // left13  -- end node
+    struct dec_node* left13 = creat_node();
+    left13->threshold_value = 0;
+    left13->label = 1;
+    left13->which_feature = -1;
+    left13->left = NULL;
+    left13->right = NULL;
+    set_left(left7, left13);
+
+    // right13 -- end node
+    struct dec_node* right13 = creat_node();
+    right13->threshold_value = 0;
+    right13->label = 0;
+    right13->which_feature = -1;
+    right13->left = NULL;
+    right13->right = NULL;
+    set_right(left7, right13);
+
+    // left14  -- end node
+    struct dec_node* left14 = creat_node();
+    left14->threshold_value = 0;
+    left14->label = 1;
+    left14->which_feature = -1;
+    left14->left = NULL;
+    left14->right = NULL;
+    set_left(right7, left14);
+
+    // right14 -- end node
+    struct dec_node* right14 = creat_node();
+    right14->threshold_value = 0;
+    right14->label = 1;
+    right14->which_feature = -1;
+    right14->left = NULL;
+    right14->right = NULL;
+    set_right(right7, right14);
+    return lru_dec_tree;
+}
+
+void tree_destory(struct dec_node* tree_node){
+    if(!tree_node) return;
+    // printf("hello");
+    struct dec_node* left_child = get_left(tree_node);
+    // printf("hello");
+    struct dec_node* right_child = get_right(tree_node);
+    if(left_child){
+        tree_destory(left_child);
+    }
+    if(right_child){
+        tree_destory(right_child);
+    }
+    destory_node(tree_node);
+}
+
+void destory_tree(struct dec_tree* lru_dec_tree){
+	tree_destory((struct dec_node*)(lru_dec_tree->root));
+    kfree(lru_dec_tree);
+}
+#endif
+
 static int alloc_mem_cgroup_per_node_info(struct mem_cgroup *memcg, int node)
 {
 	struct mem_cgroup_per_node *pn;
@@ -5265,6 +5572,17 @@ static int alloc_mem_cgroup_per_node_info(struct mem_cgroup *memcg, int node)
 	}
 
 	lruvec_init(&pn->lruvec);
+	// init tree
+#ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP
+	// // lruvec->dec_tree = tree_init(lruvec->dec_tree);
+    // lruvec->predict = &predict;
+	// // lruvec->predict = (int (*)(tree*, short*))(predict);
+    // lruvec->dec_tree = NULL;
+	// // lruvec->predict = NULL;
+	pn->lruvec.lru_dec_tree = tree_init(pn->lruvec.lru_dec_tree);
+	pn->lruvec.predict = &predict;
+	printk(KERN_INFO "Tree init ok in kernel 2024-3-4\n");
+#endif
 	pn->memcg = memcg;
 
 	memcg->nodeinfo[node] = pn;
@@ -5279,6 +5597,12 @@ static void free_mem_cgroup_per_node_info(struct mem_cgroup *memcg, int node)
 		return;
 
 	free_percpu(pn->lruvec_stats_percpu);
+#ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP
+	// TODO: del dec_tree
+	if (pn->lruvec.lru_dec_tree)
+		destory_tree(pn->lruvec.lru_dec_tree);
+	printk(KERN_INFO "Tree destory ok in kernel 2024-3-4\n");
+#endif
 	kfree(pn);
 }
 

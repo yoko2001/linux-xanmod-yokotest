@@ -1151,7 +1151,9 @@ start_over:
 		spin_unlock(&si->lock);
 		if (n_ret || size == SWAPFILE_CLUSTER){
 			if (av_pg_before_assi) 
-				*av_pg_before_assi = si->pages - si->inuse_pages;
+				*av_pg_before_assi = si->pages - si->inuse_pages + n_ret;
+			if (0 >= av_pg_before_assi)
+				BUG();
 			goto check_out;
 		}
 		cond_resched();

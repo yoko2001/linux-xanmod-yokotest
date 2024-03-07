@@ -1,0 +1,6 @@
+  DESCEND objtool
+  INSTALL libsubcmd_headers
+  CALL    scripts/checksyscalls.sh
+  LD [M]  sound/soundcore.o
+  CHK     kernel/kheaders_data.tar.xz
+  CC [M]  sound/usb/card.o
