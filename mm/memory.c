@@ -4376,6 +4376,10 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		}
 	}
 
+	if (folio_test_stalesaved(folio)){
+		folio_clear_stalesaved(folio);
+	}
+
 	if (migentry.val){ 
 		//it shows that this is a invalid remap
 		//these entries are not saved, (probably because refaulted before end_bio_write check)

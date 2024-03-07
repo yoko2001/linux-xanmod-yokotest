@@ -1064,7 +1064,8 @@ struct folio *swap_cache_get_folio(struct swap_info_struct * si, swp_entry_t ent
 		folio = syncio_swapcache_get_folio(swap_address_space(entry), offset_v ,&is_stale_saved_folio);
 		if (folio){
 			if (is_stale_saved_folio)
-				pr_err("swap_cache_get_folio si[%d] return stale saved folio [%pK]", si->prio, folio);
+				pr_err("swap_cache_get_folio si[%d] entry[%lx] return folio [%pK]", 
+							si->prio, entry.val, folio);
 			// pr_err("scgf si[%d] return entry[%lx]->[%pK]", si->prio, entry.val, folio);
 		}	
 	}
