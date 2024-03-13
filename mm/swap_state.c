@@ -552,7 +552,7 @@ swp_entry_t entry_get_migentry(swp_entry_t ori_swap)
 	return mig_swap;
 }
 
-bool entry_remap_empty(swp_entry_t entry)
+static bool entry_remap_empty(swp_entry_t entry)
 {
 	swp_entry_t mig_swap;
 	void* xavalue;
@@ -577,6 +577,7 @@ bool entry_remap_empty(swp_entry_t entry)
 
 	return ret;
 }
+
 /*
  * check if this entry already has some remaps
  * find a sutable version for it if manage to find one, 
@@ -588,24 +589,50 @@ int entry_remap_usable_version(swp_entry_t entry)
 {
 	swp_entry_t check_entry;
 	int i;
+	struct address_space *address_space_remap;
+	pgoff_t idx;
+	void* xavalue;
+
+	address_space_remap = swap_address_space_remap(entry);
+
 	VM_BUG_ON(swp_entry_test_ext(entry));
 	i = 0;
+	xa_lock_irq(&address_space_remap->i_pages); //lock
 	while (i <= SWP_ENTRY_MAX_SPEC){
 		check_entry.val = entry.val;
 		swp_entry_set_special(&check_entry, i);
 		swp_entry_clear_ext(&check_entry, 0x3); //clear all ext
-		if (entry_remap_empty(check_entry)){
-			if (i)
-				pr_err("entry_remap_usable_version first [0x%lx]v[%d]", check_entry.val, i);
+		idx = swp_offset(check_entry);
+		XA_STATE(xas, &address_space_remap->i_pages, idx);
+
+		xavalue = xas_load(&xas);
+		if (!xa_is_value(xavalue)) //not occupied
+		{
+			xa_unlock_irq(&address_space_remap->i_pages);//unlock
 			return i;
-		} else {
-			// pr_err("entry_remap_usable_version $ed [0x%lx]v[%d]", check_entry.val, i);
 		}
 check_next_version:
 		i++;
 	}
-	pr_err("entry_remap_usable_version all occupied [0x%lx]", check_entry.val);
+	xa_unlock_irq(&address_space_remap->i_pages);//unlock
+
+	pr_err("entry_remap_usable_version all occupied [0x%lx]", entry.val);
 	return -1;//didn't found
+
+// 	while (i <= SWP_ENTRY_MAX_SPEC){
+// 		check_entry.val = entry.val;
+// 		swp_entry_set_special(&check_entry, i);
+// 		swp_entry_clear_ext(&check_entry, 0x3); //clear all ext
+// 		if (entry_remap_empty(check_entry)){
+// 			if (i)
+// 				pr_err("entry_remap_usable_version first [0x%lx]v[%d]", check_entry.val, i);
+// 			return i;
+// 		} else {
+// 			// pr_err("entry_remap_usable_version $ed [0x%lx]v[%d]", check_entry.val, i);
+// 		}
+// check_next_version:
+// 		i++;
+// 	}
 }
 swp_entry_t folio_get_migentry(struct folio* folio, swp_entry_t ori_swap)
 {
@@ -731,11 +758,11 @@ void __delete_from_swap_cache_mig(struct folio *folio,
 					swp_offset(entry), folio, entry_);
 			BUG();
 		}
-		if (page_private(folio_page(folio, i)) != 0){
-			pr_err("try delete from s$ folio[%pK] pri[%lx]<>[0]", 
-							folio, page_private(folio_page(folio, i)));
+		// if (page_private(folio_page(folio, i)) != 0){
+		// 	pr_err("try delete from s$ folio[%pK] pri[%lx]<>[0]", 
+		// 					folio, page_private(folio_page(folio, i)));
 			// set_page_private_debug(folio_page(folio, i), 0, 4);
-		}
+		// }
 		xas_next(&xas);
 	}
 	address_space->nrpages -= nr;
@@ -1337,7 +1364,7 @@ fail_unlock:
 struct page *__read_swap_cache_async(swp_entry_t entry, 	
 	gfp_t gfp_mask, struct vm_area_struct *vma, 
 	unsigned long addr,	bool *new_page_allocated, 	bool no_ra, 
-	int* try_free_entry)
+	int* try_free_entry, bool allow_null)
 /*DJL ADD END*/
 {
 	struct swap_info_struct *si;
@@ -1378,7 +1405,11 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 		 * else swap_off will be aborted if we return NULL.
 		 */
 		if (!__swp_swapcount(entry) && swap_slot_cache_enabled){
-			pr_err("swap count entry[%lx][%d] not used", entry.val, __swp_swapcount(entry));
+			if (!allow_null && !entry_get_migentry(entry).val){
+				pr_err("swap count entry[%lx][%d] not used exact[%d]", 
+						entry.val, __swp_swapcount(entry), allow_null);
+				BUG();
+			}
 			return NULL;
 		}
 
@@ -1533,7 +1564,7 @@ struct page *read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 	struct swap_info_struct *si;
 	/*DJL ADD END*/
 	struct page *retpage = __read_swap_cache_async(entry, gfp_mask,
-			vma, addr, &page_was_allocated, true, try_free_entry);
+			vma, addr, &page_was_allocated, true, try_free_entry, false);
 	
 	if (page_was_allocated)
 		swap_readpage(retpage, do_poll, plug);
@@ -1707,7 +1738,7 @@ struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t gfp_mask,
 		/* Ok, do the async read-ahead now */
 		page = __read_swap_cache_async(
 			swp_entry(swp_type(entry), offset),
-			gfp_mask, vma, addr, &page_allocated, true, &try_free); //DJL doesn't support fast swapout
+			gfp_mask, vma, addr, &page_allocated, true, &try_free, false); //DJL doesn't support fast swapout
 		if (!page)
 			continue;
 		if (page_allocated) {
@@ -1929,7 +1960,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 		/*DJL ADD BEGIN*/
 		page = __read_swap_cache_async(entry, gfp_mask, vma,
 					       vmf->address, &page_allocated, (!enable_ra_fast_evict) || (i == ra_info.offset), 
-						   &try_free);//, (((vmf->address >> PAGE_SHIFT) + (i - ra_info.offset))<<PAGE_SHIFT));
+						   &try_free, true);//, (((vmf->address >> PAGE_SHIFT) + (i - ra_info.offset))<<PAGE_SHIFT));
 		/*DJL ADD END*/
 		if (!page)
 			continue;
@@ -2193,9 +2224,6 @@ skip_this_save:
 			}
 			if (p)
 				put_swap_device(p);
-			//if (!(page_private(folio_page(folio, 0)) == saved_entry.val)){
-			//	BUG();
-			//}
 
 			//get next
 			if (entry_saved >= SWAP_SLOTS_SCAN_SAVE_ONCE)

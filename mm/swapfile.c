@@ -876,10 +876,10 @@ static bool swap_offset_any_version_occupied(struct swap_info_struct* si,
 	}
 }
 static bool swap_offset_all_version_available_and_locked(struct swap_info_struct *si,
-					     unsigned long offset)
+					     unsigned long offset, bool debug)
 {
 	if (!swap_offset_any_version_occupied(si, offset)){ //available
-		// if (__si_can_version(si))
+		// if (debug && __si_can_version(si))
 		// 	pr_err("si[%d] offset[0x%lx] available", si->prio, offset);
 		spin_lock(&si->lock);
 		return true;
@@ -1072,11 +1072,13 @@ checks:
 		offset_v = offset; //async pass check
 	}
 	WRITE_ONCE(si->swap_map[offset_v], usage); //mark at exact place
-	if (version > 0){
-		pr_err("version[%d]entry[%lx] offset_v[%lx] swap_map set usage[%d]", 
-				version, swp_entry_version(si->type, offset, version).val, offset_v, usage);		
-		
-	}
+	// if (version > 0){
+	// 	pr_err("version[%d]entry[%lx] offset_v[%lx] swap_map set usage[%d]", 
+	// 			version, swp_entry_version(si->type, offset, version).val, offset_v, usage);		
+	// 	if (swap_offset_all_version_available_and_locked(si, offset, false)){
+	// 		BUG();
+	// 	}
+	// }
 	if (!swap_offset_any_version_occupied(si, offset)){
 		pr_err("manually occupied offset[%lx] v[%d] but fail", offset, version);
 		BUG();
@@ -1180,7 +1182,7 @@ scan:
 			latency_ration = LATENCY_LIMIT;
 			scanned_many = true;
 		}
-		if (swap_offset_all_version_available_and_locked(si, offset))
+		if (swap_offset_all_version_available_and_locked(si, offset, true))
 			goto checks;
 		// if (swap_offset_available_and_locked(si, offset))
 		// 	goto checks;
@@ -1192,7 +1194,7 @@ scan:
 			latency_ration = LATENCY_LIMIT;
 			scanned_many = true;
 		}
-		if (swap_offset_all_version_available_and_locked(si, offset))
+		if (swap_offset_all_version_available_and_locked(si, offset, true))
 			goto checks;
 		// if (swap_offset_available_and_locked(si, offset))
 		// 	goto checks;

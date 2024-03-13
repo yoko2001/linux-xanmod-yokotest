@@ -2179,6 +2179,9 @@ unsigned swap_scan_entries_savior(struct address_space *mapping,
 					trace_scan_entries_savior(memcg_id, old_seq, min_seq, threshold);
 					offset = xas.xa_index;
 					entry = swp_entry(type, offset);
+					if (__swap_count(entry) != 1){
+						continue;
+					}
 					add_to_scan_slot(entry);
 					count_choosed ++;
 				}

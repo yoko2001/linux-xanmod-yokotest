@@ -1977,6 +1977,7 @@ keep_next_time:
 			swp_entry_t migentry, entry = {.val = page_private(folio_page(folio, 0))};
 			VM_BUG_ON_FOLIO(folio_nr_pages(folio) > 1, folio);
 			VM_BUG_ON_FOLIO(non_swap_entry(entry), folio);	
+			VM_BUG_ON_FOLIO(folio_mapped(folio), folio);	
 			if (!folio_test_stalesaved(folio)){
 				//we're fucked up by do swap turn this page into safe state
 				pr_err("intercepted before enable remap folio[%pK]cnt[%d]$[%d]", 

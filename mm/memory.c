@@ -4040,13 +4040,13 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				folio = page_folio(page);
 				if (migentry.val) { //the remapping is useless now, discard it
 					VM_BUG_ON_FOLIO(non_swap_entry(migentry), folio);
-					// delete_from_swap_remap(folio, orientry, migentry, false); //should come with no ref_sub
-					pr_err("PF0 entry[%lx]->folio[%pK] remap skip cleared wb[%d]sw$[%d] stale[%d] refcount[%d]", 
+					delete_from_swap_remap(folio, orientry, migentry, false); //should come with no ref_sub
+					pr_err("PF0 entry[%lx]->folio[%pK] remap cleared wb[%d]sw$[%d] stale[%d] refcount[%d]", 
 							orientry.val, folio, folio_test_writeback(folio), folio_test_swapcache(folio), 
 							folio_test_stalesaved(folio), folio_ref_count(folio));
 					//set page private
 					set_page_private(page, migentry.val);
-					// migentry.val = 0; //now migentry is completely useless
+					migentry.val = 0; //now migentry is completely useless
 				}
 			}
 			else{
@@ -4387,10 +4387,14 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 
 		//we have to make sure if the folio now is valid, we check the 
 
-		if (__swap_count(migentry) == 0)	
+		if (__swap_count(migentry) == 0){
 			delete_from_swap_remap(folio, orientry, migentry, false); //should come with no ref_sub
-
-		pr_err("do_swap delete_from_swap_remap migentry[%lx], count %d", migentry.val, __swp_swapcount(migentry));		
+			pr_err("do_swap delete_from_swap_remap migentry[%lx], count %d", migentry.val, __swp_swapcount(migentry));		
+		}
+		else{
+			pr_err("do_swap cannot delete reamp migentry[%lx], count %d", migentry.val, __swp_swapcount(migentry));		
+			BUG();
+		}
 		if (swapcache)
 			pr_err("do_swap folio[%pK] swapcache , wb[%d]d[%d]sb[%d]$[%d]", folio, 
 						folio_test_writeback(folio) , folio_test_dirty(folio), 
