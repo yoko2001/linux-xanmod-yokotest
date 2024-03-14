@@ -7152,7 +7152,11 @@ static void uncharge_folio(struct folio *folio, struct uncharge_gather *ug)
 	}
 
 	if (!memcg){
-		VM_BUG_ON_FOLIO(folio_test_stalesaved(folio), folio);
+		if (folio_test_stalesaved(folio)){
+			pr_err("staled folio [%pK] nr[%ld] fail uncharged to memcg[%d]" ,
+							folio, nr_pages, mem_cgroup_id(memcg));
+			BUG();
+		}
 		return;
 	}
 
@@ -7183,6 +7187,7 @@ static void uncharge_folio(struct folio *folio, struct uncharge_gather *ug)
 			if (folio_test_stalesaved(folio)){
 				pr_err("staled folio [%pK] nr[%ld] uncharged to memcg[%pK]" ,
 							folio, nr_pages, memcg);
+				folio_clear_stalesaved(folio);
 			}
 		}
 		ug->pgpgout++;

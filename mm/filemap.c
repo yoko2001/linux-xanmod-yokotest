@@ -2050,7 +2050,6 @@ struct folio *__syncio_swapcache_get_folio(struct address_space *mapping, pgoff_
 	struct folio *folio;
 	swp_entry_t entry;
 	bool valid_folio = false;
-repeat:
 	if (!mapping)
 		BUG();
 	folio = mapping_get_entry(mapping, index);
@@ -2077,6 +2076,10 @@ repeat:
 		valid_folio = true;
 		if (folio_test_stalesaved(folio) && is_stale_saved_folio)
 			*is_stale_saved_folio = true;
+		if (!pfn_valid(folio_pfn(folio))){
+			pr_err("__syncio_swapcache_get_folio got invalid entry[%lx]", entry.val);
+			BUG();
+		}
 	}
 
 

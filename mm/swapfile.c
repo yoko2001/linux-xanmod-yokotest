@@ -1100,8 +1100,10 @@ checks:
 		if 	(__si_can_version(si)) {
 			if (usage == SWAP_HAS_CACHE)
 				;
-			else
+			else{
 				pr_err("normal entry[%lx] added to slots [%x]", slots[n_ret-1].val, usage);
+				BUG();
+			}
 		}
 	}
 
@@ -1489,6 +1491,10 @@ static unsigned char __swap_entry_free_locked(struct swap_info_struct *p,
 				offset, version, p->prio, usage == SWAP_MAP_BAD ? "SWAP_MAP_BAD" : "COUNT_CONTINUED");
 		BUG();
 	}
+	if 	(__si_can_version(p) && version > 0) {
+		pr_err("__swap_entry_free_locked version[%d] offset[%lx] set slots to[%x]", 
+				version,  offset, usage);
+	}
 	if (usage)
 		WRITE_ONCE(p->swap_map[offset_v], usage);
 	else
@@ -1568,8 +1574,8 @@ static unsigned char __swap_entry_free(struct swap_info_struct *p,
 	unsigned long offset = swp_raw_offset(entry);
 	unsigned long version = (unsigned long) swp_entry_test_special(entry);
 	unsigned char usage;
-	// if (__si_can_version(p))
-		// pr_err("__swap_entry_free entry[%lx]v[%lu]", entry.val, version);
+	// if (__si_can_version(p) && version > 0)
+	// 	pr_err("__swap_entry_free entry[%lx]v[%lu]", entry.val, version);
 	ci = lock_cluster_or_swap_info(p, offset);
 	usage = __swap_entry_free_locked(p, offset, version, 1);
 	unlock_cluster_or_swap_info(p, ci);
@@ -1606,8 +1612,11 @@ void swap_free(swp_entry_t entry)
 	struct swap_info_struct *p;
 
 	p = _swap_info_get(entry);
-	if (p)
+	if (p){
 		__swap_entry_free(p, entry);
+		if (__si_can_version(p) && swp_entry_test_special(entry) > 0)
+			pr_err("swap_free entry[%lx]v[%lu]", entry.val, swp_entry_test_special(entry));
+	}
 }
 
 /*
@@ -1926,6 +1935,8 @@ int free_swap_and_cache(swp_entry_t entry)
 		    !swap_page_trans_huge_swapped(p, entry))
 			__try_to_reclaim_swap(p, swp_offset(entry),
 					      TTRS_UNMAPPED | TTRS_FULL);
+		if (__si_can_version(p) && swp_entry_test_special(entry) > 0)
+			pr_err("free_swap_and_cache entry[%lx]v[%lu]", entry.val, (unsigned long)swp_entry_test_special(entry));
 	}
 	else {
 		pr_err("free_s&$ err swap_info[%pK], count[%d], entry[%lx]", p, count, entry.val);
@@ -3732,7 +3743,10 @@ static int __swap_duplicate(swp_entry_t entry, unsigned char usage)
 		err = -ENOENT;			/* unused swap entry */
 
 	WRITE_ONCE(p->swap_map[offset_v], count | has_cache);
-
+	if 	(__si_can_version(p) && version > 0) {
+		pr_err("__swap_duplicate version[%lu] offset[%lx] set slots to[%x]", 
+				version,  offset, count | has_cache);
+	}
 unlock_out:
 	unlock_cluster_or_swap_info(p, ci);
 	put_swap_device(p);

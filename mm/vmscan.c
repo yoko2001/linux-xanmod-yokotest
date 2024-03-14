@@ -2008,9 +2008,9 @@ keep_next_time:
 				continue;
 			} 
 
-			delete_from_swap_cache_mig(folio, entry, false);
-			pr_err("folio[%pK] delete_from_swap_cache_mig ref[%d] mig[%lx]cnt[%d]", 
-						folio, folio_ref_count(folio), entry.val, __swp_swapcount(entry));
+			delete_from_swap_cache_mig(folio, entry, false); //delete from origin entry
+			pr_err("folio[%pK] delete_from_swap_cache_mig ref[%d] origin[%lx]cnt[%d]", 
+						folio, folio_ref_count(folio), migentry.val, __swp_swapcount(migentry));
 
 			ret = enable_swp_entry_remap(folio, entry, &migentry);
 			if (ret){

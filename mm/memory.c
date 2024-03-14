@@ -1452,8 +1452,6 @@ again:
 			rss[MM_SWAPENTS]--;
 			if (unlikely(!free_swap_and_cache(entry))){
 				swp_entry_t migentry;
-				pr_err("print_bad_pte 2 entry[%lx]", entry.val);
-				//we try if it has been mapped, if enabled than it is valid
 				migentry = entry_get_migentry(entry);
 				if (!migentry.val || non_swap_entry(migentry)){
 					pr_err("mig lost entry[%lx]", entry.val);

@@ -1695,6 +1695,9 @@ static bool try_to_unmap_one(struct folio *folio, struct vm_area_struct *vma,
 				page_vma_mapped_walk_done(&pvmw);
 				break;
 			}
+			if (swp_entry_test_special(entry)){
+				pr_err("unmap swap_duplicate [%lx] v[%d]", entry.val,swp_entry_test_special(entry));
+			}			
 			if (arch_unmap_one(mm, vma, address, pteval) < 0) {
 				swap_free(entry);
 				set_pte_at(mm, address, pvmw.pte, pteval);
