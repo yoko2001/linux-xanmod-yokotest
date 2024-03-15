@@ -1927,9 +1927,9 @@ void destory_node(struct dec_node* old_node);
 void destory_features(short* old_features);
 
 
-int search_tree(struct dec_node* root, short* features);
+int search_tree(struct dec_node* root, short* features, struct folio* folio);
 
-int predict(struct dec_tree* dec_tree, short* features);
+int predict(struct dec_tree* dec_tree, short* features, struct folio* folio);
 
 void destory_tree(struct dec_tree* dec_tree);
 

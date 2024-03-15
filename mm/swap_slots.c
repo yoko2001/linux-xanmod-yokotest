@@ -328,6 +328,13 @@ static int refill_swap_slots_cache(struct swap_slots_cache *cache)
 	// if (fastest_swap_prio < cache->prio) fastest_swap_prio = cache->prio;
 	// if (slowest_swap_prio > cache->prio) slowest_swap_prio = cache->prio;
 	if (get_fastest_swap_prio() == cache->prio) {cache->fast_left = cache->left;} else {cache->fast_left = 0;}
+	// if (cache->prio_fast == get_fastest_swap_prio() && 
+	// 		cache->nr_fast && (0 == cache->fast_left)) //prio_fast didn't change && prio fast has left
+	// {
+	// 	pr_err("get_swap_pages inner err nrfast[%d] fastleft[%ld]", cache->nr_fast ,cache->fast_left);
+	// 	BUG();
+	// }
+	// printk(KERN_INFO "cache-->prio = %d\n", cache->prio);
 	trace_refill_swap_slots(0, cache->nr, cache->prio);
 	return cache->nr;
 }
@@ -345,6 +352,7 @@ static int refill_swap_slots_slow_cache(struct swap_slots_cache *cache)
 					   cache->slots_slow, 1, 1, &cache->prio_slow, &cache->slow_left);	//DJL ADD PARAMETER
 	// if (slowest_swap_prio > cache->prio_slow) slowest_swap_prio = cache->prio_slow;
 	trace_refill_swap_slots(1, cache->nr_slow, cache->prio_slow);
+	// printk(KERN_INFO "slow cache-->prio = %d\n", cache->prio);
 	return cache->nr_slow;
 }
 static int refill_swap_slots_fast_cache(struct swap_slots_cache *cache)
@@ -367,7 +375,8 @@ static int refill_swap_slots_fast_cache(struct swap_slots_cache *cache)
 	{
 		pr_err("get_swap_pages inner err nrfast[%d] fastleft[%ld]", cache->nr_fast ,cache->fast_left);
 		BUG();
-	}	
+	}
+	// printk(KERN_INFO "fast cache-->prio = %d\n", cache->prio);	
 	trace_refill_swap_slots(2, cache->nr_fast, cache->prio_fast);
 	return cache->nr_fast;
 }
@@ -456,8 +465,9 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space)
 
 #ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP
 	dec_tree_result = 0;
+	struct dec_feature features;
 	if (entry_is_entry_ext(folio->shadow_ext)){
-		struct dec_feature features;
+		
 		features.pid = 0;
 		features.space_left = cache->fast_left;
 		features.swapprio_b = cache->prio_fast;
@@ -467,17 +477,36 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space)
 		features.seq2 = ((struct shadow_entry*)(folio->shadow_ext))->hist_ts[2];
 		features.seq3 = 0;
 		features.tier = 0;
+		if(features.seq2 == 0 && features.seq1 == 0){
+			features.seq0 = 65535;
+			features.seq1 = 65535;
+		}
+		else if(features.seq1 != 0 && features.seq2 == 0){
+			features.seq0 = features.seq0 - features.seq1;
+			features.seq1 = 65535;
+		}else{
+			features.seq0 = features.seq0 - features.seq1;
+			features.seq1 = features.seq1 - features.seq2;
+		}
 		struct lruvec* temp_lruvec;
 		temp_lruvec = folio_lruvec(folio);
-		dec_tree_result = temp_lruvec->predict(temp_lruvec->lru_dec_tree, (short*)(&features));
+		dec_tree_result = temp_lruvec->predict(temp_lruvec->lru_dec_tree, (short*)(&features), folio);
+		if(dec_tree_result == 1){
+			count_memcg_folio_events(folio, PREDICT_FAST, 1);
+		}else if(dec_tree_result == 0){
+			count_memcg_folio_events(folio, PREDICT_SLOW, 1);
+		}
 		// int i;
-		// // if (cache->fast_left != 0)
-		// // 	printk(KERN_INFO "space_left:%ld \n", cache->fast_left);
-		// for(i = 0; i < 9;i++){
-		// 	printk(KERN_INFO "%hd  ",((short*)(&features))[i]);
+		// if (cache->fast_left != 0){
+		// 	printk(KERN_INFO "space_left:%hd \n", features.space_left);
+		// 	printk(KERN_INFO "space_left:%hd \n", cache->fast_left);
+		// 	printk(KERN_INFO "seq0:%hd \n", features.seq0);
+		// 	printk(KERN_INFO "seq1:%hd \n", features.seq1);
+		// 	printk(KERN_INFO "seq2:%hd \n", features.seq2);
+		// 	printk(KERN_INFO "Tree predict ok in kernel 2024-3-15, result:%d\n",dec_tree_result);
+		// 	printk(KERN_INFO "\n");
 		// }
-		// printk(KERN_INFO "\n");
-		printk(KERN_INFO "Tree predict ok in kernel 2024-3-6, result:%d\n",dec_tree_result);
+		
 	}
 #endif
 #ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP

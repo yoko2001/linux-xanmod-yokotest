@@ -3788,6 +3788,9 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	if (folio){
  		page = folio_file_page(folio, swp_offset(entry));
 		count_memcg_event_mm(vma->vm_mm, SWAPIN_FROM_SWAPCACHE);
+		if (!(si->flags & SWP_SYNCHRONOUS_IO)){
+			count_memcg_event_mm(vma->vm_mm, SWAPIN_FROM_SWAPCACHE_SLOW);
+		}
 	}
 		// if (folio)
 		//	 	page = folio_file_page(folio, swp_offset(entry));
@@ -3868,6 +3871,12 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				}
 				/*DJL ADD END*/
 				swap_readpage(page, true, NULL);
+				struct swap_info_struct* info = page_swap_info((folio_page(folio, 0)));
+				if (info->prio >= 100){ // -2 1005
+					count_memcg_folio_events(folio ,SWAP_FREE_FAST, folio_nr_pages(folio));
+				}else{
+					count_memcg_folio_events(folio ,SWAP_FREE_SLOW, folio_nr_pages(folio));
+				}
 				folio->private = NULL;
 				/*DJL ADD BEGIN*/
 				trace_readahead_swap_readpage(page_folio(page), si);
@@ -3903,6 +3912,14 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		ret = VM_FAULT_MAJOR;
 		count_vm_event(PGMAJFAULT);
 		count_memcg_event_mm(vma->vm_mm, PGMAJFAULT);
+		struct swap_info_struct* info = swp_swap_info(entry);
+		if (info->prio >= 100){ // -2 1005
+			// pr_err("PG_FAST");
+			// BUG();
+			count_vm_event(PGMAJFAULT_FAST);
+			count_memcg_event_mm(vma->vm_mm, PGMAJFAULT_FAST);
+		}
+		// TODO
 	} else if (PageHWPoison(page)) {
 		/*
 		 * hwpoisoned dirty swapcache pages are kept for killing
@@ -4043,9 +4060,13 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 #ifndef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
 	try_free_entry = 1;//force free, no excuse
 #endif
-	if (should_try_to_free_swap(folio, vma, vmf->flags, try_free_entry))
+	if (should_try_to_free_swap(folio, vma, vmf->flags, try_free_entry)){
 		folio_free_swap(folio);
-
+		struct swap_info_struct* info = page_swap_info((folio_page(folio, 0)));
+		if (info->prio < 100){ // -2 1005
+			count_memcg_folio_events(folio ,SWAP_FREE_SLOW, folio_nr_pages(folio));
+		}
+	}
 	inc_mm_counter(vma->vm_mm, MM_ANONPAGES);
 	dec_mm_counter(vma->vm_mm, MM_SWAPENTS);
 	pte = mk_pte(page, vma->vm_page_prot);

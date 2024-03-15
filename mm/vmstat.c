@@ -1265,6 +1265,7 @@ const char * const vmstat_text[] = {
 
 	"pgfault",
 	"pgmajfault",
+	"pgmajfault_fast",
 	"pglazyfreed",
 
 	"pgrefill",
@@ -1419,6 +1420,7 @@ const char * const vmstat_text[] = {
 	"assign_fast_swap_fail",
 	"swap_out_raw(no_slot_cache)",
 	"swap_in_intercept_by_swapcache",
+	"swap_in_slow_intercept_by_swapcache",
 	"swap_in_from_slow",
 	"swap_in_from_fast",
 	"swap_in_from_mid",
@@ -1429,6 +1431,22 @@ const char * const vmstat_text[] = {
 	"workingset_refault_dist_2",
 	"workingset_refault_dist_3",
 	"workingset_refault_dist_4",
+	"workingset_refault_dist_fast_0",
+	"workingset_refault_dist_fast_1",
+	"workingset_refault_dist_fast_2",
+	"workingset_refault_dist_fast_3",
+	"workingset_refault_dist_fast_4",
+	"refault_free_from_slow",
+	"refault_free_from_fast",
+	"leaf1",
+	"leaf2",
+	"leaf3",
+	"leaf4",
+	"leaf5",
+	"leaf6",
+	"leaf7",
+	"predict_fast",
+	"predict_slow",
 #endif
 /*DJL ADD END*/
 #endif /* CONFIG_VM_EVENT_COUNTERS || CONFIG_MEMCG */

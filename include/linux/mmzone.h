@@ -617,6 +617,7 @@ struct dec_node
     char* right;
     int label;
     int which_feature;
+	int name;
 } ;
 struct dec_tree
 {
@@ -671,7 +672,7 @@ struct lruvec {
 #endif
 #ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP
 	struct dec_tree* lru_dec_tree;
-	int (*predict)(struct dec_tree*, short*);
+	int (*predict)(struct dec_tree*, short*, struct folio*);
 #endif
 };
 

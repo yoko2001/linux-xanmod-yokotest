@@ -45,7 +45,7 @@ struct address_space *swapper_spaces[MAX_SWAPFILES] __read_mostly;
 static unsigned int nr_swapper_spaces[MAX_SWAPFILES] __read_mostly;
 static bool enable_vma_readahead __read_mostly = true;
 /*DJL ADD BEGIN*/
-static bool enable_vma_readahead_boost __read_mostly = true;//controller of boost
+static bool enable_vma_readahead_boost __read_mostly = false;//controller of boost
 static bool enable_ra_fast_evict __read_mostly = false;//controller of boost
 /*DJL ADD END*/
 
@@ -675,6 +675,7 @@ struct page *read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 		si = get_swap_device(entry);
 		if (get_fastest_swap_prio() == si->prio){
 			count_memcg_event_mm(vma->vm_mm, SWAPIN_FAST);
+			pr_err("read_swap_cache_async entry[%lx]", entry.val);
 		} else if (get_slowest_swap_prio() == si->prio){
 			count_memcg_event_mm(vma->vm_mm, SWAPIN_SLOW);
 		} else{
@@ -819,7 +820,8 @@ struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t gfp_mask,
 	struct vm_area_struct *vma = vmf->vma;
 	unsigned long addr = vmf->address;
 	int try_free;
-
+	pr_err("swap_cluster_readahead");
+	BUG();
 	mask = swapin_nr_pages(offset) - 1;
 	if (!mask)
 		goto skip;
@@ -911,7 +913,7 @@ static void swap_ra_info(struct vm_fault *vmf,
 	/*DJL ADD BEGIN*/
 	// max_win = 1 << min_t(unsigned int, READ_ONCE(page_cluster),
 	// 		     SWAP_RA_ORDER_CEILING);
-	max_win = 1 << min_t(unsigned int, READ_ONCE(page_cluster) + READ_ONCE(ra_boost_order),
+	max_win = 1 << min_t(unsigned int, READ_ONCE(page_cluster),// + READ_ONCE(ra_boost_order),
 			     SWAP_RA_ORDER_CEILING + SWAP_RA_ORDER_CEILING_BOOST);
 	/*DJL ADD END*/
 
@@ -1026,6 +1028,9 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 		entry = pte_to_swp_entry(pentry);
 		if (unlikely(non_swap_entry(entry)))
 			continue;
+		si = swp_swap_info(entry);
+		if (data_race(si->flags & SWP_SYNCHRONOUS_IO)) // SWP_SYNCHRONOUS_IO<-->fast
+			continue; //we don't readahead from SYNC IO
 		/*DJL ADD BEGIN*/
 		page = __read_swap_cache_async(entry, gfp_mask, vma,
 					       vmf->address, &page_allocated, (!enable_ra_fast_evict) || (i == ra_info.offset), 
@@ -1045,6 +1050,8 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 			trace_readahead_swap_readpage(page_folio(page), si);
 			if (get_fastest_swap_prio() == si->prio){
 				count_memcg_event_mm(vma->vm_mm, SWAPIN_FAST);
+				pr_err("swap_vma_readahead");
+				BUG();
 			} else if (get_slowest_swap_prio() == si->prio){
 				count_memcg_event_mm(vma->vm_mm, SWAPIN_SLOW);
 			} else{
