@@ -49,7 +49,7 @@ void __delete_from_swap_cache(struct folio *folio,
 void delete_from_swap_remap(struct folio *folio, swp_entry_t entry_from, swp_entry_t entry_to, bool delete_unpepared);
 void delete_from_swap_remap_get_mig(struct folio* folio, swp_entry_t entry_from, swp_entry_t* entry_to);
 void __delete_from_swap_cache_mig(struct folio *folio,
-			swp_entry_t entry);
+			swp_entry_t entry, bool shadow_transfer);
 bool folio_swapped(struct folio *folio);
 swp_entry_t folio_get_migentry(struct folio* folio, swp_entry_t ori);
 int entry_remap_usable_version(swp_entry_t entry);

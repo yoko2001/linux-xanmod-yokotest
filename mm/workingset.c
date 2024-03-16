@@ -409,6 +409,7 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, long swap_spa
 			pr_err("bug2 in pack_shadow");
 			shadow_entry_free(folio->shadow_ext);
 			atomic_dec(&ext_count);
+			BUG();
 		}
 		folio->shadow_ext = NULL;
 		// spin_unlock_irq(&shadow_ext_lock);
@@ -427,7 +428,8 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, long swap_spa
 				ret = pack_shadow_ext(mem_cgroup_id(memcg), pgdat, token, refs, se, min_seq, NULL, folio, entry);
 			}
 			else{ // == 0 broken
-				pr_err("folio->has broken shadow_ext %s:%d", __FILE__, __LINE__);
+				pr_err("folio[%pK]->has broken shadow_ext[%lx] %s:%d", 
+					folio, (unsigned long)folio->shadow_ext, __FILE__, __LINE__);
 				folio->shadow_ext = NULL;
 				ret = pack_shadow_ext(mem_cgroup_id(memcg), pgdat, token, refs, se, min_seq, NULL, folio, entry);
 			} 

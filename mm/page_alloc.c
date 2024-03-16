@@ -3544,12 +3544,14 @@ void free_unref_page_list(struct list_head *list)
 		check_private_debug(folio);
 		// spin_lock_irq(&shadow_ext_lock);
 		if (folio->shadow_ext){
-			if (entry_is_entry_ext(folio->shadow_ext) > 0){
+			if (entry_is_entry_ext_debug(folio->shadow_ext) > 0){
 				shadow_entry_free(folio->shadow_ext);
+				pr_err("free_unref_page_list normal free[%lx] folio[%pK]", (unsigned long)folio->shadow_ext, folio);
 			}
 			else if (entry_is_entry_ext(folio->shadow_ext) == 0){
 				pr_err("free_unref_page_list folio[%lx] has broken shadow_ext", (unsigned long)folio->shadow_ext);
-			}		
+				BUG();
+			}	
 		}
 		folio->shadow_ext = NULL;
 		// spin_unlock_irq(&shadow_ext_lock);

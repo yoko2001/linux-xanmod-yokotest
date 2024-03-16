@@ -1090,11 +1090,11 @@ checks:
 	if (version > 0){
 		slots[n_ret++] = swp_entry_version(si->type, offset, version);
 		if (usage == SWAP_HAS_CACHE)
-			pr_err("version[%d]entry[%lx] offset_v[%lx] added to slots SWAP_HAS_CACHE", 
-				version, slots[n_ret-1].val, offset_v);
+			pr_err("version[%d]entry[%lx] offset[%lx] added to slots SWAP_HAS_CACHE", 
+				version, slots[n_ret-1].val, offset);
 		else
-			pr_err("version[%d]entry[%lx] offset_v[%lx] added to slots[%x]", 
-				version, slots[n_ret-1].val, offset_v, usage);
+			pr_err("version[%d]entry[%lx] offset[%lx] added to slots[%x]", 
+				version, slots[n_ret-1].val, offset, usage);
 	} else {
 		slots[n_ret++] = swp_entry(si->type, offset);
 		if 	(__si_can_version(si)) {
@@ -1491,10 +1491,10 @@ static unsigned char __swap_entry_free_locked(struct swap_info_struct *p,
 				offset, version, p->prio, usage == SWAP_MAP_BAD ? "SWAP_MAP_BAD" : "COUNT_CONTINUED");
 		BUG();
 	}
-	if 	(__si_can_version(p) && version > 0) {
-		pr_err("__swap_entry_free_locked version[%d] offset[%lx] set slots to[%x]", 
-				version,  offset, usage);
-	}
+	// if 	(__si_can_version(p) && version > 0) {
+	// 	pr_err("__swap_entry_free_locked version[%d] offset[%lx] set slots to[%x]", 
+	// 			version,  offset, usage);
+	// }
 	if (usage)
 		WRITE_ONCE(p->swap_map[offset_v], usage);
 	else
@@ -1615,7 +1615,7 @@ void swap_free(swp_entry_t entry)
 	if (p){
 		__swap_entry_free(p, entry);
 		if (__si_can_version(p) && swp_entry_test_special(entry) > 0)
-			pr_err("swap_free entry[%lx]v[%lu]", entry.val, swp_entry_test_special(entry));
+			pr_err("swap_free entry[%lx]v[%d] cnt[%d]", entry.val, swp_entry_test_special(entry), __swap_count(entry));
 	}
 }
 

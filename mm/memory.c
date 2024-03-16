@@ -3813,6 +3813,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 			pr_err("folio[%pK]stale[%d] private[%lx] entry[%lx]swapcache hit $[%d] private mismatch", 
 					folio, folio_test_stalesaved(folio),  
 					page_private(page), entry.val, folio_test_swapcache(folio));
+			BUG();
 			if (entry_is_entry_ext_debug(folio) < 1){
 				folio = NULL;
 				debugging = true;				
@@ -3910,7 +3911,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 				xa_lock_irq(&address_space->i_pages);
 				if (folio->shadow_ext){
-					pr_err("allocated folio has shadow??");
+					pr_err("allocated folio has shadow?? folio[%pK]", folio);
 					folio->shadow_ext = NULL; // might lost
 					BUG();
 				}

@@ -1565,8 +1565,16 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 
 				struct address_space *address_space = swap_address_space(mig_entry);
 				xa_lock_irq(&address_space->i_pages);
-				__delete_from_swap_cache_mig(folio, mig_entry_phy);
+				__delete_from_swap_cache_mig(folio, mig_entry_phy, true);
 				xa_unlock_irq(&address_space->i_pages);
+
+				if (folio->shadow_ext && !shadow_ext
+					&& entry_is_entry_ext(folio->shadow_ext) )
+				{
+					shadow_entry_free(folio->shadow_ext);
+					folio->shadow_ext = NULL;
+				}
+
 				pr_err("after clear folio[%pK]ref[%d] private[%lx]found mig_entry[%lx] count %d", 
 							folio, folio_ref_count(folio), page_private(folio_page(folio, 0)), mig_entry_phy.val, __swp_swapcount(mig_entry_phy));
 				put_swap_folio(folio, mig_entry_phy);
@@ -1624,6 +1632,8 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 
 		if (free_folio){
 			if (folio->shadow_ext){
+				pr_err("__remove_mapping free folioshadow[%pK]->[%lx]", 
+						folio, (unsigned long)folio->shadow_ext);
 				shadow_entry_free(folio->shadow_ext);
 				folio->shadow_ext = NULL;
 			}
@@ -1650,6 +1660,8 @@ cannot_free:
 	if (!folio_test_swapcache(folio))
 		spin_unlock(&mapping->host->i_lock);
 	if (shadow_ext){
+		pr_err("__remove_mapping free2 folioshadow[%pK]->[%lx]", 
+				folio, (unsigned long)folio->shadow_ext);
 		shadow_entry_free(shadow_ext);
 		atomic_dec(&ext_count);
 	}

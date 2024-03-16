@@ -1696,7 +1696,7 @@ static bool try_to_unmap_one(struct folio *folio, struct vm_area_struct *vma,
 				break;
 			}
 			if (swp_entry_test_special(entry)){
-				pr_err("unmap swap_duplicate [%lx] v[%d]", entry.val,swp_entry_test_special(entry));
+				pr_err("unmap swap_duplicate folio[%pK] [%lx] v[%d]", folio, entry.val,swp_entry_test_special(entry));
 			}			
 			if (arch_unmap_one(mm, vma, address, pteval) < 0) {
 				swap_free(entry);
