@@ -1614,8 +1614,9 @@ void swap_free(swp_entry_t entry)
 	p = _swap_info_get(entry);
 	if (p){
 		__swap_entry_free(p, entry);
-		if (__si_can_version(p) && swp_entry_test_special(entry) > 0)
+		if (__si_can_version(p) && swp_entry_test_special(entry) > 0){
 			pr_err("swap_free entry[%lx]v[%d] cnt[%d]", entry.val, swp_entry_test_special(entry), __swap_count(entry));
+		}
 	}
 }
 

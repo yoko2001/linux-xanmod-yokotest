@@ -39,6 +39,7 @@ extern struct address_space *swapper_spaces_remap[];
 void show_swap_cache_info(void);
 bool add_to_swap(struct folio *folio,  long* left_space);
 void *get_shadow_from_swap_cache(swp_entry_t entry);
+void *get_shadow_from_swap_cache_erase(swp_entry_t entry);
 int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 		      gfp_t gfp, void **shadowp);
 int add_swp_entry_remap(struct folio* folio, swp_entry_t from_entry, swp_entry_t to_entry, 
@@ -56,7 +57,7 @@ int entry_remap_usable_version(swp_entry_t entry);
 swp_entry_t entry_get_migentry(swp_entry_t ori_swap);
 swp_entry_t entry_get_migentry_lock(swp_entry_t ori_swap);
 void delete_from_swap_cache(struct folio *folio);
-void delete_from_swap_cache_mig(struct folio* folio, swp_entry_t entry, bool sub_ref);
+void delete_from_swap_cache_mig(struct folio* folio, swp_entry_t entry, bool sub_ref, bool transfer_shadow);
 void clear_shadow_from_swap_cache(int type, unsigned long begin,
 				  unsigned long end, int free);
 struct folio *swap_cache_get_folio(struct swap_info_struct * si, swp_entry_t entry,

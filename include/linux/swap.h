@@ -405,6 +405,10 @@ static inline struct shadow_entry* shadow_entry_alloc(void){
 }
 static inline void shadow_entry_free(struct shadow_entry* entry_ext){
 	if (get_shadow_entry_cache() && entry_ext){
+		if (entry_ext->magic == 0xFFFFFFFF){//freed already
+			pr_err("shadow_entry_free refreed[%lx]", (unsigned long)entry_ext);
+			return;
+		}
 		entry_ext->magic = 0xFFFFFFFF;
 		if (((unsigned long)entry_ext & 0xFFFFFFFF) == 0xFFFFFFFF){
 			pr_err("bad shadow entry addr");

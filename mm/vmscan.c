@@ -1455,7 +1455,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 
 		mig_entry = folio_swap_entry(folio);//folio_get_migentry(folio, ori_swap);
 		if (!folio_test_active(folio)){
-			pr_err("__remove_mapping folio[%pK]ori[%lx]->mig[%lx]ref[%d]wb[%dd[%d]$[%d]", 
+			pr_err("__remove_mapping folio[%pK]ori[%lx]->mig[%lx]ref[%d]wb[%d]d[%d]$[%d]", 
 						folio, ori_swap.val, mig_entry.val,
 						folio_ref_count(folio), folio_test_writeback(folio),
 						folio_test_dirty(folio), folio_test_swapcache(folio));
@@ -1650,6 +1650,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	if (folio->shadow_ext){
 		pr_err("unexpected folio[%pK] got shadow_ext stale[%d] ref[%d]", 
 					folio, folio_test_stalesaved(folio), folio_ref_count(folio));
+		BUG();
 	}
 #endif
 	return 1;
@@ -1997,7 +1998,7 @@ keep_next_time:
 				//we need to handle the remap & mig cache clean up part
 
 				delete_from_swap_remap_get_mig(folio, entry, &migentry);
-				delete_from_swap_cache_mig(folio, migentry, true);
+				delete_from_swap_cache_mig(folio, migentry, true, false);
 				swap_free(migentry);
 				if (__swap_count(migentry) != 0){
 					pr_err("folio[%pK]$[%d]private[%lx]cnt[%d]map[%d] remap deleted add to lru, swap freed", 
@@ -2020,7 +2021,7 @@ keep_next_time:
 				continue;
 			} 
 
-			delete_from_swap_cache_mig(folio, entry, false); //delete from origin entry
+			delete_from_swap_cache_mig(folio, entry, false, true); //delete from origin entry
 			pr_err("folio[%pK] delete_from_swap_cache_mig ref[%d] origin[%lx]cnt[%d]", 
 						folio, folio_ref_count(folio), migentry.val, __swp_swapcount(migentry));
 
@@ -2043,10 +2044,10 @@ keep_next_time:
 				pr_err("before swap_free ori_entry[%lx]cnt[%d], mig_entry[%lx]cnt[%d]", 
 						entry.val, __swp_swapcount(entry), migentry.val, __swp_swapcount(migentry));
 			swap_free(entry);
-			if (__swp_swapcount(entry) != 0){
+			if (1){ //__swp_swapcount(entry) != 0){
 				pr_err("after swap_free ori_entry[%lx]cnt[%d], mig_entry[%lx]cnt[%d]", 
 						entry.val, __swp_swapcount(entry), migentry.val, __swp_swapcount(migentry));
-				BUG();			
+				// BUG();			
 			}
 			folio_add_lru_save(folio);
 			folio_unlock(folio);
