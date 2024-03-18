@@ -354,6 +354,7 @@ int add_swp_entry_remap(struct folio* folio, swp_entry_t from_entry, swp_entry_t
 	struct address_space *address_space = swap_address_space_remap(from_entry);
 	long nr = folio_nr_pages(folio);
 	int i;
+	void* old;
 	pgoff_t idx = swp_offset(from_entry);
 	XA_STATE_ORDER(xas, &address_space->i_pages, idx, folio_order(folio));
 
@@ -369,6 +370,11 @@ int add_swp_entry_remap(struct folio* folio, swp_entry_t from_entry, swp_entry_t
 		if (xas_error(&xas))
 			goto unlock;
 		for (i = 0; i < nr; i++) {
+			old = xas_load(&xas);
+			if (xa_is_value(old)) {
+				xas_unlock_irq(&xas);
+				return -EEXIST;
+			}
 			VM_BUG_ON_FOLIO(xas.xa_index != idx + i, folio);
 			VM_BUG_ON_FOLIO(from_entry.val + i != page_private(folio_page(folio, i)), folio);
 			xas_store(&xas, xa_mk_value(to_entry.val + i));
@@ -2212,7 +2218,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				pr_err("folio[%pK] add_to_swap_cache_save fail", folio);
 				put_swap_folio(folio, mig_entry);
 				folio_unlock(folio);
-				goto fail_delete_saved_cache;
+				goto fail_delete_mig_cache;
 			}
 			pr_err("folio[%pK] saved[%lx] ref[%d] add_to_swap_cache_save_check success ", 
 					folio, saved_entry.val, folio_ref_count(folio));			
@@ -2225,7 +2231,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 			if (err){
 				pr_err("folio[%pK] add_swp_entry_remap fail", folio);
 				folio_unlock(folio);
-				goto fail_delete_mig_cache;
+				goto fail_delete_saved_cache;
 			}
 			pr_err("add_swp_entry_remap [%lx]=>[%lx]", saved_entry.val, mig_entry.val);
 			swp_entry_clear_ext(&mig_entry, 0x3); // 局部变量无所谓
