@@ -3487,10 +3487,23 @@ void free_unref_page(struct page *page, unsigned int order)
 	struct zone *zone;
 	unsigned long pfn = page_to_pfn(page);
 	int migratetype;
-
+	struct folio* folio;
 	if (!free_unref_page_prepare(page, pfn, order))
 		return;
-
+#ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
+	folio = page_folio(page);
+	if (folio->shadow_ext){
+		if (entry_is_entry_ext_debug(folio->shadow_ext) > 0){
+			shadow_entry_free(folio->shadow_ext);
+			pr_err("free_unref_page_list normal free[%lx] folio[%pK]", (unsigned long)folio->shadow_ext, folio);
+		}
+		else if (entry_is_entry_ext(folio->shadow_ext) == 0){
+			pr_err("free_unref_page_list folio[%lx] has broken shadow_ext", (unsigned long)folio->shadow_ext);
+			BUG();
+		}	
+	}
+	folio->shadow_ext = NULL;
+#endif
 	/*
 	 * We only track unmovable, reclaimable and movable on pcp lists.
 	 * Place ISOLATE pages on the isolated list because they are being
