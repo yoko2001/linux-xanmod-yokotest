@@ -3843,6 +3843,12 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				invalid_remap = true;
 			}
 		}
+
+		if (unlikely(!folio_test_uptodate(folio))) { //stale saving right now
+			ret |= VM_FAULT_RETRY;
+			pr_err("swap cache mapped but intercepting stale saved read entry[%lx]", orientry.val);
+			goto out_release;
+		}
 	}
 	else{ //migentry has to hold the actual page copy
 		if (migentry.val){ //!0
@@ -3995,13 +4001,10 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				/*DJL ADD BEGIN*/
 				trace_readahead_swap_readpage(page_folio(page), si);
 				/*DJL ADD END*/
-				if (invalid_remap){
-					pr_err("remap is not ready on entry[%lx], has to be cleared", migentry.val);
-				}
 			}
 		} else {
 			if (data_race(si->flags & SWP_SYNCHRONOUS_IO)){
-				pr_err("ASYNC_IO on sync entry[%lx] cnt[%lx]", entry.val, __swap_count(entry));
+				pr_err("ASYNC_IO on sync entry[%lx] cnt[%d]", entry.val, __swap_count(entry));
 			}
 			if (migentry.val) { //use remap
 				bool page_allocated;
@@ -4390,8 +4393,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 			}
 		}
 		else{
-			if (swp_entry_test_special(entry) > 0){
-				pr_err("do_swap skip folio_free_swap[%lx] folio[%pK] $[%d] ref[%d] cnt[%d] ksm[%d] write[%d]", 
+			if (swp_entry_test_special(entry) > 0 && folio_test_swapcache(folio)){
+				pr_err("do_swap SKIP folio_free_swap[%lx] folio[%pK] $[%d] ref[%d] cnt[%d] ksm[%d] write[%d]", 
 					entry.val, folio, folio_test_swapcache(folio),  folio_ref_count(folio),  
 					__swp_swapcount(entry), folio_test_ksm(folio), vmf->flags & FAULT_FLAG_WRITE);
 			}		
@@ -4400,6 +4403,9 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 
 	if (folio_test_stalesaved(folio)){
 		folio_clear_stalesaved(folio);
+		pr_err("do_swap CLEAN STALESAVED entry[%lx] folio[%pK] $[%d] ref[%d] cnt[%d]", 
+					entry.val, folio, folio_test_swapcache(folio),  folio_ref_count(folio), 
+					__swp_swapcount(entry));
 	}
 
 	if (migentry.val){ 

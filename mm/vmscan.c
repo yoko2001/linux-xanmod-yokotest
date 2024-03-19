@@ -2044,11 +2044,12 @@ keep_next_time:
 				pr_err("before swap_free ori_entry[%lx]cnt[%d], mig_entry[%lx]cnt[%d]", 
 						entry.val, __swp_swapcount(entry), migentry.val, __swp_swapcount(migentry));
 			swap_free(entry);
-			if (1){ //__swp_swapcount(entry) != 0){
+			if (__swp_swapcount(entry) != 0){
 				pr_err("after swap_free ori_entry[%lx]cnt[%d], mig_entry[%lx]cnt[%d]", 
 						entry.val, __swp_swapcount(entry), migentry.val, __swp_swapcount(migentry));
 				// BUG();			
 			}
+			count_memcg_events(lruvec_memcg(lruvec), PGSWAPPED_MIG_SAVED, folio_nr_pages(folio));
 			folio_add_lru_save(folio);
 			folio_unlock(folio);
 		}

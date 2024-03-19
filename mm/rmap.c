@@ -1695,9 +1695,9 @@ static bool try_to_unmap_one(struct folio *folio, struct vm_area_struct *vma,
 				page_vma_mapped_walk_done(&pvmw);
 				break;
 			}
-			if (swp_entry_test_special(entry)){
-				pr_err("unmap swap_duplicate folio[%pK] [%lx] v[%d]", folio, entry.val,swp_entry_test_special(entry));
-			}			
+			// if (swp_entry_test_special(entry)){
+			// 	pr_err("unmap swap_duplicate folio[%pK] [%lx] v[%d]", folio, entry.val,swp_entry_test_special(entry));
+			// }			
 			if (arch_unmap_one(mm, vma, address, pteval) < 0) {
 				swap_free(entry);
 				set_pte_at(mm, address, pvmw.pte, pteval);
@@ -1721,9 +1721,9 @@ static bool try_to_unmap_one(struct folio *folio, struct vm_area_struct *vma,
 					list_add(&mm->mmlist, &init_mm.mmlist);
 				spin_unlock(&mmlist_lock);
 			}
-			if (swp_entry_test_special(entry)){
-				pr_err("unmap swap_duplicate complete folio[%pK] [%lx] v[%d]", folio, entry.val,swp_entry_test_special(entry));
-			}				
+			// if (swp_entry_test_special(entry)){
+			// 	pr_err("unmap swap_duplicate complete folio[%pK] [%lx] v[%d]", folio, entry.val,swp_entry_test_special(entry));
+			// }				
 			dec_mm_counter(mm, MM_ANONPAGES);
 			inc_mm_counter(mm, MM_SWAPENTS);
 			swp_pte = swp_entry_to_pte(entry);

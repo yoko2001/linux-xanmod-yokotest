@@ -949,7 +949,7 @@ bool add_to_swap(struct folio *folio, long* left_space)
 		return false;
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
 	if (swp_entry_test_special(entry)){
-		count_memcg_folio_events(folio, PGSWAPPED_MIG_SAVED, folio_nr_pages(folio));
+		// count_memcg_folio_events(folio, PGSWAPPED_MIG_SAVED, folio_nr_pages(folio));
 		pr_err("folio_alloc_swap normal entry[%lx] v[%d] for folio[%pK] cnt:%d",
 				 entry.val, swp_entry_test_special(entry), folio, __swap_count(entry));		
 	}
@@ -2167,6 +2167,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 
 			//folio alloc ok
 			__folio_set_locked(folio);
+			SetPageStaleSaved(page);
 			__folio_set_swapbacked(folio);
 			if (mem_cgroup_swapin_charge_folio(folio,
 						vma->vm_mm, GFP_KERNEL,
@@ -2178,10 +2179,9 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 			folio_set_swap_entry(folio, saved_entry);
 			swap_readpage(page, true, &splug_save);
 			pr_err("swap_readpage finished page[%pK]", page);
-			count_vm_event(SWAP_STALE_SAVE);
+			count_memcg_event_mm(vma->vm_mm, SWAP_STALE_SAVE);
 
 			//page was ok now
-			SetPageStaleSaved(page);
 			folio_set_swappriolow(folio);
 			folio_clear_swappriohigh(folio);
 
@@ -2263,6 +2263,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 					//check if sync io
 					if (folio_test_dirty(folio)){ //unexpected
 						pr_err("PAGE_SUCCESS dirty folio[%pK]", folio);
+						BUG();
 					}					
 					if (folio_test_writeback(folio)){//sync, under wb	
 						folio_list_wb[num_folio_list_wb++] = folio; 	
@@ -2272,6 +2273,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 						; //should remove mapping and clean & free it
 						pr_err("not inplemented [%s:%d] folio[%pK] -> pageout -> entry[%lx]",
 								 __FILE__, __LINE__, folio, mig_entry.val);
+						BUG();
 					}
 					goto scceed_pageout;
 				case 3: //PAGE_CLEAN
