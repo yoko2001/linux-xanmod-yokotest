@@ -130,7 +130,7 @@ static inline unsigned char swap_count(unsigned char ent)
 /* Reclaim the swap entry if swap is getting full*/
 #define TTRS_FULL		0x4
 
-static int __si_can_version(struct swap_info_struct *si){
+int __si_can_version(struct swap_info_struct *si){
 	if (si->flags & SWP_SYNCHRONOUS_IO)
 		return 1;
 	return 0;
@@ -1334,7 +1334,7 @@ start_over:
 			if (av_pg_before_assi){
 				*av_pg_before_assi = si->pages - si->inuse_pages;
 			}
-			if (retprio == get_fastest_swap_prio())
+			if (__si_can_version(si))	
 				check_swap_scan_active(si, si->pages - si->inuse_pages, si->pages);
 			goto check_out;
 		}
@@ -1379,7 +1379,7 @@ noswap:
 	return n_ret;
 }
 
-static struct swap_info_struct *_swap_info_get(swp_entry_t entry)
+static struct swap_info_struct *_swap_info_get(swp_entry_t entry, bool allow_unused)
 {
 	struct swap_info_struct *p;
 	unsigned long offset;
@@ -1410,7 +1410,8 @@ static struct swap_info_struct *_swap_info_get(swp_entry_t entry)
 	return p;
 
 bad_free:
-	pr_err("%s: %s%08lx\n", __func__, Unused_offset, entry.val);
+	if (unlikely(allow_unused))
+		pr_err("%s: %s%08lx\n", __func__, Unused_offset, entry.val);
 	goto out;
 bad_offset:
 	pr_err("%s: %s%08lx\n", __func__, Bad_offset, entry.val);
@@ -1429,7 +1430,7 @@ struct swap_info_struct *swap_info_get_test(swp_entry_t entry)
 	struct swap_info_struct *p;
 	if (non_swap_entry(entry))
 		return NULL;
-	p = _swap_info_get(entry);
+	p = _swap_info_get(entry, false);
 	return p;
 }
 
@@ -1438,7 +1439,7 @@ static struct swap_info_struct *swap_info_get_cont(swp_entry_t entry,
 {
 	struct swap_info_struct *p;
 
-	p = _swap_info_get(entry);
+	p = _swap_info_get(entry, false);
 
 	if (p != q) {
 		if (q != NULL)
@@ -1611,7 +1612,7 @@ void swap_free(swp_entry_t entry)
 {
 	struct swap_info_struct *p;
 
-	p = _swap_info_get(entry);
+	p = _swap_info_get(entry, false);
 	if (p){
 		__swap_entry_free(p, entry);
 		// if (__si_can_version(p) && swp_entry_test_special(entry) > 0){
@@ -1636,7 +1637,7 @@ void put_swap_folio(struct folio *folio, swp_entry_t entry)
 	unsigned char val;
 	int size = swap_entry_size(folio_nr_pages(folio));
 
-	si = _swap_info_get(entry);
+	si = _swap_info_get(entry, false);
 	if (!si)
 		return;
 	if (!__si_can_version(si) && version)
@@ -1685,7 +1686,7 @@ int split_swap_cluster(swp_entry_t entry)
 	unsigned long offset = swp_raw_offset(entry);
 	pr_err("split swap cluster called");
 	BUG();
-	si = _swap_info_get(entry);
+	si = _swap_info_get(entry, false);
 	if (!si)
 		return -EBUSY;
 	ci = lock_cluster(si, offset);
@@ -1800,7 +1801,7 @@ int swp_swapcount(swp_entry_t entry)
 	unsigned char *map;
 	unsigned long version;
 
-	p = _swap_info_get(entry);
+	p = _swap_info_get(entry, false);
 	if (!p)
 		return 0;
 
@@ -1864,14 +1865,14 @@ unlock_out:
 bool folio_swapped(struct folio *folio)
 {
 	swp_entry_t entry = folio_swap_entry(folio);
-	struct swap_info_struct *si = _swap_info_get(entry);
+	struct swap_info_struct *si = _swap_info_get(entry, false);
 
 	if (!si)
 		return false;
 
 	if (!IS_ENABLED(CONFIG_THP_SWAP) || likely(!folio_test_large(folio)))
 		return swap_swapcount(si, entry) != 0;
-
+	pr_err("folio_swapped empty folio[%pK]", folio);
 	return swap_page_trans_huge_swapped(si, entry);
 }
 
@@ -1929,7 +1930,7 @@ int free_swap_and_cache(swp_entry_t entry)
 	if (non_swap_entry(entry))
 		return 1;
 
-	p = _swap_info_get(entry);
+	p = _swap_info_get(entry, true);
 	if (p) {
 		count = __swap_entry_free(p, entry);
 		if (count == SWAP_HAS_CACHE &&
@@ -1939,9 +1940,9 @@ int free_swap_and_cache(swp_entry_t entry)
 		if (__si_can_version(p) && swp_entry_test_special(entry) > 0)
 			pr_err("free_swap_and_cache entry[%lx]v[%lu]", entry.val, (unsigned long)swp_entry_test_special(entry));
 	}
-	else {
-		pr_err("free_s&$ err swap_info[%pK], count[%d], entry[%lx]", p, count, entry.val);
-	}
+	// else {
+	// 	// pr_err("free_s&$ err swap_info[%pK], count[%d], entry[%lx]", p, count, entry.val);
+	// }
 	return p != NULL;
 }
 

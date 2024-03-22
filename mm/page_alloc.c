@@ -3586,6 +3586,7 @@ void free_unref_page_list(struct list_head *list)
 		if (PageStaleSaved(page)){
 			pr_err("free_unref_page_list page[%pK]{p[%pK]n[%pK]}", 
 					page, page->lru.prev, page->lru.next);
+			BUG();
 		}
 		list_del(&page->lru);
 		migratetype = get_pcppage_migratetype(page);

@@ -6,7 +6,7 @@
 #include <linux/spinlock.h>
 #include <linux/mutex.h>
 
-#define SWAP_SCAN_SLOT_SIZE			SWAP_BATCH
+#define SWAP_SCAN_SLOT_SIZE			  32  //SWAP_BATCH
 #define SWAP_SLOTS_SCAN_MIN            SWAP_SCAN_SLOT_SIZE * 4
 #define SWAP_SLOTS_SCAN_SAVE_ONCE		2 
 //load 8 page to slow at most in one attempt

@@ -1319,6 +1319,12 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 	if (mapping->a_ops->writepage == NULL)
 		return PAGE_ACTIVATE;
 
+	if (unlikely(folio_test_stalesaved(folio))){
+		if (unlikely(folio_test_dirty(folio))){
+			pr_err("stalesaved folio[%pK] got dirty again", folio);
+			BUG();
+		}
+	}
 	if (folio_clear_dirty_for_io(folio)) {
 		int res;
 		struct writeback_control wbc = {
@@ -1660,12 +1666,12 @@ cannot_free:
 	xa_unlock_irq(&mapping->i_pages);
 	if (!folio_test_swapcache(folio))
 		spin_unlock(&mapping->host->i_lock);
-	if (shadow_ext){
-		pr_err("__remove_mapping free2 folioshadow[%pK]->[%lx]", 
-				folio, (unsigned long)folio->shadow_ext);
-		shadow_entry_free(shadow_ext);
-		atomic_dec(&ext_count);
-	}
+	// if (shadow_ext){
+	// 	pr_err("__remove_mapping free folio shadow[%pK]->[%lx]", 
+	// 			folio, (unsigned long)folio->shadow_ext);
+	// 	shadow_entry_free(shadow_ext);
+	// 	atomic_dec(&ext_count);
+	// }
 	
 	return 0;
 }

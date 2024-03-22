@@ -441,11 +441,15 @@ static int add_to_swap_cache_save_check(struct folio *folio, swp_entry_t entry,
 						BUG();
 					}
 				}
-				else {
+				else if (entry_is_entry_ext(_entry) == 0){
 					pr_err("add_to_swap_cache_save_check [%lx]->[%pK] got folio value ?",
 								entry,  _entry);
 					xas_unlock_irq(&xas);
 					return -3;
+				}
+				else{
+					pr_err("add_to_swap_cache_save_check [%lx]->[%pK] got freed entry_ext",
+								entry,  _entry);
 				}
 			}
 
@@ -949,7 +953,7 @@ bool add_to_swap(struct folio *folio, long* left_space)
 		return false;
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
 	if (swp_entry_test_special(entry)){
-		// count_memcg_folio_events(folio, PGSWAPPED_MIG_SAVED, folio_nr_pages(folio));
+		count_memcg_folio_events(folio, SWAP_STALE_SAVE_REUSE, folio_nr_pages(folio));
 		pr_err("folio_alloc_swap normal entry[%lx] v[%d] for folio[%pK] cnt:%d",
 				 entry.val, swp_entry_test_special(entry), folio, __swap_count(entry));		
 	}
@@ -2176,10 +2180,10 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				goto fail_page_out;
 			}
 			//don't mem_cgroup_swapin_uncharge_swap(entry);
-			folio_set_swap_entry(folio, saved_entry);
+			folio_set_swap_entry(folio, saved_entry);			
 			swap_readpage(page, true, &splug_save);
 			pr_err("swap_readpage finished page[%pK]", page);
-			count_memcg_event_mm(vma->vm_mm, SWAP_STALE_SAVE);
+			count_memcg_event_mm(vma->vm_mm, SWAPIN_FAST_SAVE);
 
 			//page was ok now
 			folio_set_swappriolow(folio);
@@ -2299,6 +2303,8 @@ scceed_pageout:
 				;
 				reset_private = true;
 			}
+			//success triggered a swapout to slow for migration
+			count_memcg_event_mm(vma->vm_mm, SWAPOUT_SLOW_SAVE);
 
 			//set back private just for progressing test
 			si = get_swap_device(saved_entry);

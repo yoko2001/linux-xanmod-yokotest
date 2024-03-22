@@ -6,7 +6,7 @@
 #include <linux/mutex.h>
 #include <linux/mm.h>
 #include <trace/events/lru_gen.h>
-
+#include "swap.h"
 // static DEFINE_PER_CPU(struct swap_scan_slot, swp_scan_slots);
 static DEFINE_MUTEX(swap_scan_slot_mutex);
 static DEFINE_MUTEX(swap_scan_slot_enable_mutex);
@@ -42,7 +42,8 @@ void check_swap_scan_active(struct swap_info_struct *si, long left, long total)
 {
 	if (!swap_scan_slot_enabled)
 		return;
-
+	if (!__si_can_version(si))
+		return;
 	//check if fast swap low, use scan
 	if (left * THRESHOLD_ACTIVATE_SWAP_SCAN_SLOT < total){
 		reactivate_swap_scan_slot();

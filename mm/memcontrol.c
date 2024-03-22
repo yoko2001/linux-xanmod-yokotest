@@ -727,6 +727,7 @@ static const unsigned int memcg_vm_event_stat[] = {
 	WORKINGSET_REFAULT_DIST3,
 	WORKINGSET_REFAULT_DIST4,
 	SWAP_STALE_SAVE,
+	SWAP_STALE_SAVE_REUSE,
 #endif
 /*DJL ADD END*/
 };
@@ -1561,7 +1562,7 @@ static const struct memory_stat memory_stats[] = {
 	{ "workingset_activate_file",	WORKINGSET_ACTIVATE_FILE	},
 	{ "workingset_restore_anon",	WORKINGSET_RESTORE_ANON		},
 	{ "workingset_restore_file",	WORKINGSET_RESTORE_FILE		},
-	{ "workingset_nodereclaim",	WORKINGSET_NODERECLAIM		},
+	{ "workingset_nodereclaim",	    WORKINGSET_NODERECLAIM		},
 };
 
 /* Translate stat items to the correct unit for memory.stat output */
@@ -7187,10 +7188,11 @@ static void uncharge_folio(struct folio *folio, struct uncharge_gather *ug)
 		/* LRU pages aren't accounted at the root level */
 		if (!mem_cgroup_is_root(memcg)){
 			ug->nr_memory += nr_pages;
-			if (folio_test_stalesaved(folio)){
+			if (unlikely(folio_test_stalesaved(folio))){
 				pr_err("staled folio [%pK] nr[%ld] uncharged to memcg[%pK]" ,
 							folio, nr_pages, memcg);
 				folio_clear_stalesaved(folio);
+				count_memcg_folio_events(folio, SWAP_STALE_SAVE, folio_nr_pages(folio));
 			}
 		}
 		ug->pgpgout++;

@@ -3828,10 +3828,11 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	orientry.val = entry.val; //save origin
 	migentry = entry_get_migentry_lock(entry); //this will only lock on existed migentry
 
-	if (migentry.val && swp_entry_test_ext(migentry) & 0x2) //locked, wait for the other to finish
+	if (unlikely(migentry.val && (swp_entry_test_ext(migentry) & 0x2))) //locked, wait for the other to finish
 	{
 		ret |= VM_FAULT_RETRY;
-		goto out_release;
+		pr_err("[IOing]swap cache mapped but intercepting stale saved entry[%lx]", orientry.val);
+		goto out;
 	}
 
 	if (swapcache){ //we do nothing in this case
@@ -3844,14 +3845,15 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 			}
 		}
 
-		if (unlikely(!folio_test_uptodate(folio))) { //stale saving right now
+		if (unlikely(!folio_test_uptodate(folio)) && __si_can_version(si)) { //stale saving right now
 			ret |= VM_FAULT_RETRY;
-			pr_err("swap cache mapped but intercepting stale saved read entry[%lx]", orientry.val);
-			goto out_release;
+			pr_err("[Scanning]swap cache mapped but intercepting stale saved entry[%lx]", orientry.val);
+			BUG();
+			goto out;
 		}
 	}
 	else{ //migentry has to hold the actual page copy
-		if (migentry.val){ //!0
+		if (unlikely(migentry.val)){ //!0
 		 	if (non_swap_entry(migentry)){
 				pr_err("swap cache remapper err [%lx]->[%lx]", orientry.val, migentry.val);
 				migentry.val = 0;
@@ -3904,8 +3906,6 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				mem_cgroup_swapin_uncharge_swap(entry);
 
 				shadow = get_shadow_from_swap_cache_erase(entry);//get_shadow_from_swap_cache(entry);
-				// pr_err("folio[%pK] try get shadow from entry[%lx] -> shadow[%lx]", 
-				// 			folio, entry.val, shadow);
 				/*DJL ADD BEGIN*/
 				if (get_fastest_swap_prio() == si->prio){
 					swap_level = 1;
@@ -4004,17 +4004,18 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 			}
 		} else {
 			if (data_race(si->flags & SWP_SYNCHRONOUS_IO)){
-				pr_err("ASYNC_IO on sync entry[%lx] cnt[%d]", entry.val, __swap_count(entry));
+				pr_err("ASYNC_IO si[%d] on sync entry[%lx] cnt[%d]", 
+							si->prio,  entry.val, __swap_count(entry));
 			}
 			if (migentry.val) { //use remap
 				bool page_allocated;
 				struct swap_iocb **plug;
-				if (migentry.val != entry.val){
+				if (unlikely(migentry.val != entry.val)){
 					pr_err("pf inner err entry[%lx]<>migentry[%lx]", entry.val, migentry.val);
 					BUG();
 				}
-				pr_err("__read_swap_cache_async_save try read_$_async entry[%lx]", 
-								entry.val);
+				// pr_err("__read_swap_cache_async_save try read_$_async entry[%lx]", 
+				// 				entry.val);
 				page = __read_swap_cache_async_save(entry, GFP_HIGHUSER_MOVABLE, vma, 
 							vmf->address, &page_allocated, false, &try_free_entry);
 				if (page_allocated){
@@ -4022,7 +4023,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 								page_folio(page), entry.val, folio_ref_count(page_folio(page)));
 					swap_readpage(page, true, plug);
 				}
-				else if (!page){
+				else if (unlikely(!page)){
 					pr_err("__read_swap_cache_async_save fail entry[%lx]", entry.val);
 				}
 				else{ //in this case swapcache is ref_added by once for no mean
@@ -4355,8 +4356,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				}
 			} 
 			else{
-				pr_err("do_swap skip folio_free_swapv[%d]inv[%d] folio[%pK]ref[%d]entry[%lx]migen[%lx]ksm[%d]$[%d]wb[%d]", 
-						invalid_remap , valid_remap,
+				pr_err("do_swap skip folio_free_swap v[%d]inv[%d]vmf[%d] folio[%pK]ref[%d]entry[%lx]migen[%lx]ksm[%d]$[%d]wb[%d]", 
+						valid_remap, invalid_remap, vmf->flags & FAULT_FLAG_WRITE,
 						folio, folio_ref_count(folio), entry.val,  migentry.val, folio_test_ksm(folio), 
 						folio_test_swapcache(folio), folio_test_writeback(folio));
 			}
@@ -4375,8 +4376,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				pr_err("invalid do_swap after folio_free_swap[%pK]entry[%lx] $[%d]", folio, entry.val,  folio_test_swapcache(folio));			
 			}
 			else{
-				pr_err("do_swap skip folio_free_swapv[%d]inv[%d]vmf[%d] folio[%pK]ref[%d]entry[%lx]migen[%lx]ksm[%d]$[%d]wb[%d]", 
-						invalid_remap , valid_remap, vmf->flags & FAULT_FLAG_WRITE,
+				pr_err("do_swap skip folio_free_swap v[%d]inv[%d]vmf[%d] folio[%pK]ref[%d]entry[%lx]migen[%lx]ksm[%d]$[%d]wb[%d]", 
+						valid_remap, invalid_remap , vmf->flags & FAULT_FLAG_WRITE,
 						folio, folio_ref_count(folio), entry.val,  migentry.val, folio_test_ksm(folio), 
 						folio_test_swapcache(folio), folio_test_writeback(folio));
 				BUG();
