@@ -1006,7 +1006,7 @@ fail:
  */
 void delete_from_swap_remap(struct folio *folio, swp_entry_t entry_from, swp_entry_t entry_to, bool delete_unpepared){
 	struct address_space *address_space = swap_address_space_remap(entry_from);
-	if (!address_space){
+	if (unlikely(!address_space)){
 		pr_err("delete_from_swap_remap address space BUG");
 		return;
 	}
@@ -1018,6 +1018,44 @@ void delete_from_swap_remap(struct folio *folio, swp_entry_t entry_from, swp_ent
 	__delete_from_swap_remap(folio, entry_from, entry_to, delete_unpepared);
 	xa_unlock_irq(&address_space->i_pages);
 	// folio_ref_sub(folio, folio_nr_pages(folio));
+}
+
+void swap_remap_unlock(struct folio *folio, swp_entry_t ori_swap, swp_entry_t mig_swap){
+	swp_entry_t _locked_mig_swap, locked_mig;
+	struct address_space *address_space_remap;
+	long nr = 1, i;
+
+	address_space_remap = swap_address_space_remap(ori_swap);
+	if (!address_space_remap){
+		BUG();
+	}
+	pgoff_t idx = swp_offset(ori_swap);
+	XA_STATE(xas, &address_space_remap->i_pages, idx);
+
+	xa_lock_irq(&address_space_remap->i_pages);
+	for (i = 0; i < nr; i++) {
+		void *entry = xas_load(&xas);
+		if (xa_is_value(entry)){
+			_locked_mig_swap.val = xa_to_value(entry);
+			swp_entry_clear_ext(&_locked_mig_swap, 0x3);
+			if (_locked_mig_swap.val && non_swap_entry(_locked_mig_swap)){
+				pr_err("remap err [%lx]->[%lx]", ori_swap.val, mig_swap.val);
+				BUG();
+			}
+			if (_locked_mig_swap.val != mig_swap.val){
+				pr_err("remap mismatch [%lx]->[%lx]", _locked_mig_swap.val, mig_swap.val);
+				BUG();
+			}
+			xas_store(&xas, xa_mk_value(mig_swap.val));
+			pr_err("remap unlock[%lx]->[%lx]", ori_swap.val, mig_swap.val);
+		}
+		else if (entry){
+			pr_err("remap inner bug [%lx]->[%pK]",  ori_swap.val, entry);
+			BUG();
+		}
+		xas_next(&xas);
+	}
+	xa_unlock_irq(&address_space_remap->i_pages);
 }
 
 void delete_from_swap_remap_get_mig(struct folio* folio, swp_entry_t entry_from, swp_entry_t* entry_to)

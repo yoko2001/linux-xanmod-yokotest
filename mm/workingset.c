@@ -252,6 +252,22 @@ int entry_is_entry_ext_debug(const void *entry){
 extern spinlock_t shadow_ext_lock;
 extern atomic_t ext_count;
 
+int entry_ext_memcg_id(struct shadow_entry* entry_ext){
+	int _memcgid, _nid;
+	bool _workingset;
+	unsigned long _entry;
+	if (!entry_ext || !entry_is_entry_ext(entry_ext) > 0){
+		return -5;
+	}
+	_entry = xa_to_value(entry_ext->shadow);
+	_workingset = _entry & ((1UL << WORKINGSET_SHIFT) - 1);
+	_entry >>= WORKINGSET_SHIFT;
+	_nid = _entry & ((1UL << NODES_SHIFT) - 1);
+	_entry >>= NODES_SHIFT;
+	_memcgid = _entry & ((1UL << MEM_CGROUP_ID_SHIFT) - 1);
+	return _memcgid;
+}
+
 /*
 THIS will also free old_entry_ext
  */
@@ -260,6 +276,9 @@ static void *pack_shadow_ext(int memcgid, pg_data_t *pgdat, unsigned long evicti
 			 struct folio* folio, swp_entry_t entry)
 {
 	int i;
+	unsigned long _entry;
+	int _memcgid, _nid;
+	bool _workingset;
 	eviction &= EVICTION_MASK;
 	eviction = (eviction << MEM_CGROUP_ID_SHIFT) | memcgid;
 	eviction = (eviction << NODES_SHIFT) | pgdat->node_id;
@@ -267,10 +286,16 @@ static void *pack_shadow_ext(int memcgid, pg_data_t *pgdat, unsigned long evicti
 	if (entry_ext){
 		entry_ext->shadow = xa_mk_value(eviction);
 		entry_ext->magic = shadow_entry_magic ^ ((unsigned long)entry_ext & 0xFFFFFFFF); //valid
-		entry_ext->memcg_id = memcgid;
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 		if (old_entry_ext){
-			if (entry_ext->memcg_id == old_entry_ext->memcg_id){
+			_entry = xa_to_value(old_entry_ext->shadow);
+			_workingset = _entry & ((1UL << WORKINGSET_SHIFT) - 1);
+			_entry >>= WORKINGSET_SHIFT;
+			_nid = _entry & ((1UL << NODES_SHIFT) - 1);
+			_entry >>= NODES_SHIFT;
+			_memcgid = _entry & ((1UL << MEM_CGROUP_ID_SHIFT) - 1);
+
+			if (memcgid == _memcgid){ //match
 				for(i = 0; i < SE_HIST_SIZE - 1; i++){
 					entry_ext->hist_ts[i+1] = old_entry_ext->hist_ts[i];
 				}

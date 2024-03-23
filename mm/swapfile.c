@@ -2156,7 +2156,7 @@ static int unuse_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 			unsigned long addr, unsigned long end,
 			unsigned int type)
 {
-	swp_entry_t entry;
+	swp_entry_t entry, migentry;
 	pte_t *pte;
 	struct swap_info_struct *si;
 	int ret = 0;
@@ -2190,11 +2190,29 @@ static int unuse_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 				.real_address = addr,
 				.pmd = pmd,
 			};
-
-			page = swapin_readahead(entry, GFP_HIGHUSER_MOVABLE,
-						&vmf, &try_free_entry);
-			if (page)
+			migentry = entry_get_migentry(entry);
+			if (migentry.val && !swp_entry_test_ext(migentry)){
+				page = swapin_readahead(migentry, GFP_HIGHUSER_MOVABLE,
+							&vmf, &try_free_entry);
+			}
+			else{
+				page = swapin_readahead(entry, GFP_HIGHUSER_MOVABLE,
+							&vmf, &try_free_entry);				
+			}
+			if (page){
 				folio = page_folio(page);
+				//disable migentry
+				if (migentry.val){
+					swap_free(migentry);
+					if (swp_entry_test_ext(migentry) && swp_swapcount(migentry) == 0){
+						delete_from_swap_remap(folio, entry, migentry, false); //should come with no ref_sub
+					}
+					else{
+						pr_err("unuse_pte_range fail entry[%lx] mig[%lx]", entry.val, migentry.val);
+						BUG();
+					}
+				}
+			}
 		}
 		if (!folio) {
 			swp_count = READ_ONCE(si->swap_map[offset_v]);

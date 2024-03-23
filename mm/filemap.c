@@ -2157,9 +2157,9 @@ unsigned swap_scan_entries_savior(struct address_space *mapping,
 	scan_count = save_count = 0;
 	rcu_read_lock();
 	while ((folio = find_get_entry(&xas, end, XA_PRESENT)) != NULL) {
-		if(entry_is_entry_ext(folio)){
+		if(entry_is_entry_ext(folio) > 0){
 			entry_ext = (struct shadow_entry*)folio;
-			memcg_id = entry_ext->memcg_id;
+			memcg_id = entry_ext_memcg_id(entry_ext);
 			if (target_memcg_id == memcg_id){ //match check it
 				old_seq = entry_ext->hist_ts[0];
 				if (old_seq == 0) {

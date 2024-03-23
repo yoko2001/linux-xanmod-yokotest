@@ -1446,7 +1446,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 #endif 
 	}
 	else{
-		shadow_ext = NULL;
+		shadow_ext = NULL; //stale case
 	}
 
 	BUG_ON(!folio_test_locked(folio) && folio_test_swapcache(folio));
@@ -2027,9 +2027,9 @@ keep_next_time:
 				continue;
 			} 
 
-			delete_from_swap_cache_mig(folio, entry, false, true); //delete from origin entry
+			delete_from_swap_cache_mig(folio, entry, false, false); //delete from origin entry
 			pr_err("folio[%pK] delete_from_swap_cache_mig ref[%d] origin[%lx]cnt[%d]", 
-						folio, folio_ref_count(folio), migentry.val, __swp_swapcount(migentry));
+						folio, folio_ref_count(folio), entry.val, __swp_swapcount(entry));
 
 			ret = enable_swp_entry_remap(folio, entry, &migentry);
 			if (ret){
