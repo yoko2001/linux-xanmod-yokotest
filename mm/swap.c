@@ -1148,7 +1148,7 @@ void __init swap_setup(void)
 	else
 		page_cluster = 3;
 	/*DJL ADD BEGIN*/
-	ra_boost_order = 5;
+	ra_boost_order = 0;
 	/*DJL ADD END*/
 	/*
 	 * Right now other parts of the system means that we

@@ -13,8 +13,8 @@ static DEFINE_MUTEX(swap_scan_slot_enable_mutex);
 static bool	swap_scan_slot_initialized;
 static bool swap_scan_slot_enabled;
 static bool	swap_scan_slot_active;
-
-#define use_swap_scan_slot (swap_scan_slot_enabled && swap_scan_slot_active)
+extern bool swap_scan_enabled_sysfs;
+#define use_swap_scan_slot (swap_scan_slot_enabled && swap_scan_slot_active && swap_scan_enabled_sysfs)
 
 struct swap_scan_slot global_swp_scan_slot;
 
@@ -150,6 +150,18 @@ void reenable_scan_cpu(void){
 	spin_lock_irq(&cache->scan_lock);
 
 	cache->scan_stop = false;
+	spin_unlock_irq(&cache->scan_lock);
+}
+
+//might fail
+void putback_last_saved_entry(swp_entry_t last){
+	struct swap_scan_slot *cache;
+	cache = &global_swp_scan_slot;//raw_cpu_ptr(&swp_scan_slots);
+	spin_lock_irq(&cache->scan_lock); //put it in the last space
+	if (cache->cur == 0)
+		return;
+	cache->cur--;
+	cache->slots[cache->cur] = last;
 	spin_unlock_irq(&cache->scan_lock);
 }
 

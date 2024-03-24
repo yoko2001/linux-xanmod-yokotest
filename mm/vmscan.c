@@ -2037,6 +2037,7 @@ keep_next_time:
 				if (ret == 1){
 					folio_clear_stalesaved(folio); 
 					//we wait for it to get useless, when we get it, it'll be freed
+					folio_unlock(folio);
 					continue;
 				} //locked by do_swap_page, it will unlock it
 			}

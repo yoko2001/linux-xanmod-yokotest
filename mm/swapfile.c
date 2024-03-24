@@ -1050,7 +1050,7 @@ checks:
 	ci = lock_cluster(si, offset); //relock
 
 	if 	(__si_can_version(si)){
-		if (version <= 3) {//<= SWP_ENTRY_MAX_SPEC){ // 测试版我们只允许version=0,1 通过，测试正确性
+		if (version <= SWP_ENTRY_ALIVE_VERSION_SPEC) {//<= SWP_ENTRY_MAX_SPEC){ // 测试版我们只允许version=0,1 通过，测试正确性
 			offset_v = offset + si->max * version;
 			// if (version > 0){
 			// 	// if (usage == SWAP_HAS_CACHE)

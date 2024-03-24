@@ -28,6 +28,7 @@ struct swap_scan_slot {
 void enable_swap_scan_slot(void);
 void disable_swap_scan_slot(void);
 swp_entry_t get_next_saved_entry(bool* finished);
+void putback_last_saved_entry(swp_entry_t last);
 void reenable_scan_cpu(void);
 
 #endif /* _LINUX_SWAP_SLOTS_H */

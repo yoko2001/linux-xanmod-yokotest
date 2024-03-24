@@ -327,7 +327,7 @@ struct swap_info_struct {
 };
 
 #ifdef CONFIG_64BIT
-#define SWAP_RA_ORDER_CEILING_BOOST 3
+#define SWAP_RA_ORDER_CEILING_BOOST 0
 #define SWAP_RA_ORDER_CEILING	5
 #else
 /* Avoid stack overflow, because we need to save part of page table */

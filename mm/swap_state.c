@@ -52,6 +52,7 @@ static bool enable_vma_readahead __read_mostly = true;
 /*DJL ADD BEGIN*/
 static bool enable_vma_readahead_boost __read_mostly = true;//controller of boost
 static bool enable_ra_fast_evict __read_mostly = false;//controller of boost
+bool swap_scan_enabled_sysfs __read_mostly = true;
 /*DJL ADD END*/
 
 #define SWAP_RA_WIN_SHIFT	(PAGE_SHIFT / 2)
@@ -673,7 +674,7 @@ int entry_remap_usable_version(swp_entry_t entry)
 	VM_BUG_ON(swp_entry_test_ext(entry));
 	i = 0;
 	xa_lock_irq(&address_space_remap->i_pages); //lock
-	while (i <= SWP_ENTRY_MAX_SPEC){
+	while (i <= SWP_ENTRY_ALIVE_VERSION_SPEC){
 		check_entry.val = entry.val;
 		swp_entry_set_special(&check_entry, i);
 		swp_entry_clear_ext(&check_entry, 0x3); //clear all ext
@@ -996,7 +997,7 @@ bool add_to_swap(struct folio *folio, long* left_space)
 	return true;
 
 fail:
-	pr_err("add_to_swap failling folio[%pK], entry[%lx]", folio, entry);
+	pr_err("add_to_swap failling folio[%pK], entry[%lx]", folio, entry.val);
 	put_swap_folio(folio, entry);
 	return false;
 }
@@ -1242,9 +1243,9 @@ struct folio *swap_cache_get_folio(struct swap_info_struct * si, swp_entry_t ent
 	if (folio) {
 		bool vma_ra = swap_use_vma_readahead();
 		bool readahead;
-		if (version)
-			pr_err("swap_cache_get_folio offset_v[%lx], ver[%lu] entry[%lx] folio[%pK]", 
-						offset_v, version, entry.val, folio);
+		// if (version)
+		// 	pr_err("swap_cache_get_folio offset_v[%lx], ver[%lu] entry[%lx] folio[%pK]", 
+		// 				offset_v, version, entry.val, folio);
 		/*
 		 * At the moment, we don't support PG_readahead for anon THP
 		 * so let's bail out rather than confusing the readahead stat.
@@ -2067,6 +2068,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 	/*DJL ADD END*/
 	pte_t *pte, pentry;
 	swp_entry_t entry, saved_entry, mig_entry;
+	bool entry_retry_putback;
 	bool save_slot_finish;
 	unsigned int i;
 	long tmp;
@@ -2096,6 +2098,10 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 		entry = pte_to_swp_entry(pentry);
 		if (unlikely(non_swap_entry(entry)))
 			continue;
+		si = swp_swap_info(entry);
+		if (si->flags & SWP_SYNCHRONOUS_IO){ // block all IOs
+			continue;
+		}
 		/*DJL ADD BEGIN*/
 		page = __read_swap_cache_async(entry, gfp_mask, vma,
 					       vmf->address, &page_allocated, (!enable_ra_fast_evict) || (i == ra_info.offset), 
@@ -2158,6 +2164,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 		int num_moved = 0;
 		bool reset_private = false;
 		struct swap_info_struct* p = NULL;
+		entry_retry_putback = false;
 		blk_start_plug(&plug_save);
 		do { //continue
 			int _err;
@@ -2199,13 +2206,14 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 			put_swap_device(si);
 			pr_err("saved_entry[%lx] dealed with",saved_entry.val);
 
-			folio = vma_alloc_folio(gfp_mask, 0,
-						vma, vmf->address, false);
-			page = &folio->page;
+			folio = vma_alloc_folio(GFP_NOWAIT, 0,
+						vma, vmf->address, false); //we don't support derect recalim so it may fail
 			if (!folio) {
 				pr_err("saved_entry[%lx] fail alloc folio", saved_entry.val);
+				entry_retry_putback = true;
 				goto skip_this_save;
 			}
+			page = &folio->page;
 
 			//folio alloc ok
 			__folio_set_locked(folio);
@@ -2368,6 +2376,11 @@ skip_this_save:
 				// pr_err("reset folio[%pK]lru[%d] private [%lx]", folio, 
 				// 			folio_test_lru(folio), page_private(folio_page(folio, 0)));
 			}
+			if (entry_retry_putback){
+				putback_last_saved_entry(saved_entry);
+				pr_err("putback entry[%lx]", saved_entry.val);
+			}
+
 			if (p)
 				put_swap_device(p);
 
@@ -2455,6 +2468,12 @@ static ssize_t vma_ra_enabled_show(struct kobject *kobj,
 	return sysfs_emit(buf, "%s\n",
 			  enable_vma_readahead ? "true" : "false");
 }
+static ssize_t swap_scan_enabled_show(struct kobject *kobj,
+				     struct kobj_attribute *attr, char *buf)
+{
+	return sysfs_emit(buf, "%s\n",
+			  swap_scan_enabled_sysfs ? "true" : "false");
+}
 static ssize_t vma_ra_enabled_store(struct kobject *kobj,
 				      struct kobj_attribute *attr,
 				      const char *buf, size_t count)
@@ -2467,10 +2486,25 @@ static ssize_t vma_ra_enabled_store(struct kobject *kobj,
 
 	return count;
 }
+static ssize_t swap_scan_enabled_store(struct kobject *kobj,
+				      struct kobj_attribute *attr,
+				      const char *buf, size_t count)
+{
+	ssize_t ret;
+
+	ret = kstrtobool(buf, &swap_scan_enabled_sysfs);
+	if (ret)
+		return ret;
+
+	return count;
+}
+
 static struct kobj_attribute vma_ra_enabled_attr = __ATTR_RW(vma_ra_enabled);
+static struct kobj_attribute swap_scan_enabled_attr = __ATTR_RW(swap_scan_enabled);
 
 static struct attribute *swap_attrs[] = {
 	&vma_ra_enabled_attr.attr,
+	&swap_scan_enabled_attr.attr,
 	NULL,
 };
 

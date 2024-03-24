@@ -4351,9 +4351,9 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		if (!folio_test_swapcache(folio))
 			BUG();
 	}
-	if (swp_entry_test_special(entry)){
-		pr_err("do_swap swap_free[%lx] folio[%pK]", entry.val, folio);
-	}
+	// if (swp_entry_test_special(entry)){
+	// 	pr_err("do_swap swap_free[%lx] folio[%pK]", entry.val, folio);
+	// }
 #ifndef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
 	if (invalid_remap || valid_remap)	
 		try_free_entry = 1;//force free, no excuse
@@ -4401,9 +4401,9 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 			if (orientry.val != entry.val)
 				BUG();
 			folio_free_swap(folio);
-			if (swp_entry_test_special(entry)){
-				pr_err("do_swap folio_free_swap[%lx] folio[%pK]", entry.val, folio);
-			}
+			// if (swp_entry_test_special(entry)){
+			// 	pr_err("do_swap folio_free_swap[%lx] folio[%pK]", entry.val, folio);
+			// }
 		}
 		else{
 			if (swp_entry_test_special(entry) > 0 && folio_test_swapcache(folio)){
