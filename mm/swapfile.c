@@ -3763,7 +3763,7 @@ static int __swap_duplicate(swp_entry_t entry, unsigned char usage)
 		err = -ENOENT;			/* unused swap entry */
 
 	WRITE_ONCE(p->swap_map[offset_v], count | has_cache);
-	if 	(__si_can_version(p) && version > 0) {
+	if 	(unlikely(__si_can_version(p) && version > 1)) {
 		pr_err("__swap_duplicate version[%lu] offset[%lx] set slots to[%x]", 
 				version,  offset, count | has_cache);
 	}

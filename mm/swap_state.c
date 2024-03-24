@@ -761,11 +761,11 @@ void __delete_from_swap_cache(struct folio *folio,
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 	VM_BUG_ON_FOLIO(!folio_test_swapcache(folio), folio);
 	VM_BUG_ON_FOLIO(folio_test_writeback(folio), folio);
-	if (folio_test_stalesaved(folio)){
+	if (unlikely(folio_test_stalesaved(folio))){
 		pr_err("folio[%pK] entry[%lx] cnt:%d origin swapcache clearing", 
 					folio, entry.val, __swp_swapcount(entry));
 	}
-	if (shadow && !xa_is_value(shadow) && !entry_is_entry_ext(shadow)){
+	if (unlikely(shadow && !xa_is_value(shadow) && !entry_is_entry_ext(shadow))){
 		pr_err("bad shadow $ folio[%pK] entry[%lx] shadow[%lx]", folio, entry, shadow);
 		shadow = NULL;
 		BUG();
@@ -775,28 +775,19 @@ void __delete_from_swap_cache(struct folio *folio,
 		// if (shadow)
 		// 	pr_err("__delete_s$ folio[%pK] entry[%lx] shadow[%lx]", folio, entry, shadow);
 		VM_BUG_ON_PAGE(entry_ != folio, entry_);
-#ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
-		// spin_lock_irq(&shadow_ext_lock);
-		// if (folio->shadow_ext && entry_is_entry_ext(folio->shadow_ext)){
-		// 	pr_err("delete_from_swap_cache has folio->shadow_ext");
-		// 	shadow_entry_free(folio->shadow_ext);
-		// 	folio->shadow_ext = NULL;
-		// 	atomic_dec(&ext_count);
-		// }
-		// spin_unlock_irq(&shadow_ext_lock);
-#endif
-		if (entry_ != folio) {
+
+		if (unlikely(entry_ != folio)) {
 			pr_err("__delete_sc_mig mismatch entry[%lx]->[%pK]<>folio[%pK]", 
 					entry.val, entry_, folio);
 			BUG();
 		}
-		if (page_private(folio_page(folio, i)) != entry.val + i){
+		if (unlikely(page_private(folio_page(folio, i)) != entry.val + i)){
 			pr_err("try delete from s$2 folio[%pK] [%lx]<>[%lx]", folio, page_private(folio_page(folio, i)), entry.val + i);
 			BUG();
 		}
 		// set_page_private_debug(folio_page(folio, i), 0, 3);
 		set_page_private(folio_page(folio, i), 0);
-		if (swp_entry_test_special(entry))
+		if (unlikely(swp_entry_test_special(entry) > 1))
 			pr_err("__delete_from_swap_cache entry[%lx] folio[%pK]->shadow[%lx]", 
 				entry.val, folio, shadow);
 		xas_next(&xas);
