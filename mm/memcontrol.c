@@ -739,6 +739,11 @@ static const unsigned int memcg_vm_event_stat[] = {
 	LEAF7,
 	PREDICT_FAST,
 	PREDICT_SLOW,
+	WI_TREE,
+	WO_TREE,
+	HIS_NUM_1,
+	HIS_NUM_2,
+	HIS_NUM_3,
 #endif
 /*DJL ADD END*/
 };
@@ -5323,7 +5328,7 @@ struct dec_tree* tree_init(struct dec_tree* lru_dec_tree){
     lru_dec_tree->root = (char*)root;
     lru_dec_tree->deep = 5;
 	// 10% of fast_dev
-    root->threshold_value = 1638*2;
+    root->threshold_value = 1638;
     root->label = 0;
     root->which_feature = space_left;
 
@@ -5336,10 +5341,10 @@ struct dec_tree* tree_init(struct dec_tree* lru_dec_tree){
 
     // right1
     struct dec_node* right1 = creat_node();
-    right1->threshold_value = 30;
+    right1->threshold_value = 40;
     right1->label = 1;
     right1->which_feature = seq0;
-	// right1->name = LEAF5;
+	right1->name = LEAF5;
     set_right(root, right1);
 
 
@@ -5373,7 +5378,7 @@ struct dec_tree* tree_init(struct dec_tree* lru_dec_tree){
 
     // right3
     struct dec_node* right3 = creat_node();
-    right3->threshold_value = 30;
+    right3->threshold_value = 40;
     right3->label = 1;
     right3->which_feature = seq1;
     set_right(right1, right3);
@@ -5398,7 +5403,7 @@ struct dec_tree* tree_init(struct dec_tree* lru_dec_tree){
 
     // left5 
     struct dec_node* left5 = creat_node();
-    left5->threshold_value = 20;
+    left5->threshold_value = 15;
     left5->label = 1;
     left5->which_feature = seq1;
     set_left(right2, left5);
@@ -5426,7 +5431,7 @@ struct dec_tree* tree_init(struct dec_tree* lru_dec_tree){
     // right6
     struct dec_node* right6 = creat_node();
     right6->threshold_value = 44;
-    right6->label = 0;
+    right6->label = 1;
     right6->which_feature = -1;
 	right6->left = NULL;
 	right6->right = NULL;

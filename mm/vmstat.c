@@ -1447,6 +1447,11 @@ const char * const vmstat_text[] = {
 	"leaf7",
 	"predict_fast",
 	"predict_slow",
+	"wi_tree",
+	"wo_tree",
+	"his_num_1",
+	"his_num_2",
+	"his_num_3",
 #endif
 /*DJL ADD END*/
 #endif /* CONFIG_VM_EVENT_COUNTERS || CONFIG_MEMCG */

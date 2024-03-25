@@ -411,7 +411,7 @@ direct_free:
 		swapcache_free_entries(&entry, 1, 1);
 	}
 }
-
+static int is_first = 1;
 swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space)
 {
 	swp_entry_t entry;
@@ -465,6 +465,11 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space)
 
 #ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP
 	dec_tree_result = 0;
+	// if (is_first == 1){
+	// 	cache->fast_left = 16384;
+	// 	is_first = 0;
+	// 	printk(KERN_INFO "CHANGE IS FIRST\n");
+	// }
 	struct dec_feature features;
 	if (entry_is_entry_ext(folio->shadow_ext)){
 		
@@ -475,6 +480,15 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space)
 		features.seq0 = ((struct shadow_entry*)(folio->shadow_ext))->hist_ts[0];
 		features.seq1 = ((struct shadow_entry*)(folio->shadow_ext))->hist_ts[1];
 		features.seq2 = ((struct shadow_entry*)(folio->shadow_ext))->hist_ts[2];
+		if(features.seq0 != 0 && features.seq1 == 0){
+			count_memcg_folio_events(folio, HIS_NUM_1, 1);
+		}
+		if(features.seq0 != 0 && features.seq1 != 0 && features.seq2 == 0){
+			count_memcg_folio_events(folio, HIS_NUM_2, 1);
+		}
+		if(features.seq0 != 0 && features.seq1 != 0 && features.seq2 != 0){
+			count_memcg_folio_events(folio, HIS_NUM_3, 1);
+		}
 		features.seq3 = 0;
 		features.tier = 0;
 		if(features.seq2 == 0 && features.seq1 == 0){
@@ -496,6 +510,12 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space)
 		}else if(dec_tree_result == 0){
 			count_memcg_folio_events(folio, PREDICT_SLOW, 1);
 		}
+		count_memcg_folio_events(folio, WI_TREE, 1);
+		if (features.seq0 <= 15){
+			dec_tree_result = 1;
+		}else{
+			dec_tree_result = 0;
+		}
 		// int i;
 		// if (cache->fast_left != 0){
 		// 	printk(KERN_INFO "space_left:%hd \n", features.space_left);
@@ -507,6 +527,15 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space)
 		// 	printk(KERN_INFO "\n");
 		// }
 		
+	}else{
+		// default swap out to fast dev
+		count_memcg_folio_events(folio, WO_TREE, 1);
+		// if (cache->fast_left >= 1638*4){
+		// 	dec_tree_result = 1;
+		// }else{
+		// 	dec_tree_result = 0;
+		// }
+		dec_tree_result = 1;
 	}
 #endif
 #ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP

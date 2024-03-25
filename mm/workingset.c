@@ -476,6 +476,7 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 	swp_entry_t temp_entry;
 	temp_entry.val = entry;
 	struct swap_info_struct* info = swp_swap_info(temp_entry);
+	if (!memcg){goto skip_count;}
 	switch(dist){
 		case 0: 
 			count_memcg_events(memcg, WORKINGSET_REFAULT_DIST0, 1);
@@ -512,6 +513,7 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 			}
 			break;
 	};
+skip_count:
 	/*DJL ADD END*/
 	/*DJL ADD BEGIN*/
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
