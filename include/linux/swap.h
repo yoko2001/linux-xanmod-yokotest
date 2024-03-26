@@ -356,7 +356,7 @@ static inline swp_entry_t folio_swap_entry(struct folio *folio)
 static inline void check_private_debug(struct folio *folio)
 {
 	swp_entry_t entry = { .val = page_private(&folio->page) };
-	if ((entry.val & 0xffffffff00000000) == 0xffffffff00000000){
+	if (unlikely((entry.val & 0xffffffff00000000) == 0xffffffff00000000)){
 		dump_stack();
 		BUG();
 	}
