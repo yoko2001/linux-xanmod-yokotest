@@ -5328,7 +5328,7 @@ struct dec_tree* tree_init(struct dec_tree* lru_dec_tree){
     lru_dec_tree->root = (char*)root;
     lru_dec_tree->deep = 5;
 	// 10% of fast_dev
-    root->threshold_value = 1638;
+    root->threshold_value = 1638*4;
     root->label = 0;
     root->which_feature = space_left;
 
@@ -5361,7 +5361,7 @@ struct dec_tree* tree_init(struct dec_tree* lru_dec_tree){
 
     // right2
     struct dec_node* right2 = creat_node();
-    right2->threshold_value = 10;
+    right2->threshold_value = 15;
     right2->label = 0;
     right2->which_feature = seq0;
     set_right(left1, right2);
@@ -5403,7 +5403,7 @@ struct dec_tree* tree_init(struct dec_tree* lru_dec_tree){
 
     // left5 
     struct dec_node* left5 = creat_node();
-    left5->threshold_value = 15;
+    left5->threshold_value = 25;
     left5->label = 1;
     left5->which_feature = seq1;
     set_left(right2, left5);
@@ -5431,7 +5431,7 @@ struct dec_tree* tree_init(struct dec_tree* lru_dec_tree){
     // right6
     struct dec_node* right6 = creat_node();
     right6->threshold_value = 44;
-    right6->label = 1;
+    right6->label = 0;
     right6->which_feature = -1;
 	right6->left = NULL;
 	right6->right = NULL;

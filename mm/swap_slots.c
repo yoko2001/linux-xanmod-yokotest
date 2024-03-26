@@ -511,11 +511,11 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space)
 			count_memcg_folio_events(folio, PREDICT_SLOW, 1);
 		}
 		count_memcg_folio_events(folio, WI_TREE, 1);
-		if (features.seq0 <= 15){
-			dec_tree_result = 1;
-		}else{
-			dec_tree_result = 0;
-		}
+		// if (features.seq0 <= 15){
+		// 	dec_tree_result = 1;
+		// }else{
+		// 	dec_tree_result = 0;
+		// }
 		// int i;
 		// if (cache->fast_left != 0){
 		// 	printk(KERN_INFO "space_left:%hd \n", features.space_left);
@@ -530,12 +530,12 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space)
 	}else{
 		// default swap out to fast dev
 		count_memcg_folio_events(folio, WO_TREE, 1);
-		// if (cache->fast_left >= 1638*4){
-		// 	dec_tree_result = 1;
-		// }else{
-		// 	dec_tree_result = 0;
-		// }
-		dec_tree_result = 1;
+		if (cache->fast_left >= 1638*4){
+			dec_tree_result = 1;
+		}else{
+			dec_tree_result = 0;
+		}
+		// dec_tree_result = 1;
 	}
 #endif
 #ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP
