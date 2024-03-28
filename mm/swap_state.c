@@ -129,14 +129,17 @@ void *get_shadow_from_swap_cache_erase(swp_entry_t entry)
 					xas_store(&xas, NULL);
 					// pr_err("get shadow clean shadow_ext entry[%lx]->shadow_ext[%pK]", entry.val, old);
 				}
-				else if (0 > entry_state){ //might be still in swapcache ?
+				else if (-1 == entry_state){ //might be still in swapcache ?
 					pr_err("return a freed entry[%lx]->shadow[%pK]", entry.val, old);
 					BUG();
 					old = NULL;
 				}
-				else if ( 0 == entry_state){
+				else if (0 == entry_state){
 					// pr_err("get_shadow_from_s$ delete origin folio entry[%lx]->folio[%pK]", entry.val, old);
 					old = NULL;
+				}
+				else{
+					BUG();
 				}
 			}
 			xas_next(&xas);
@@ -185,31 +188,34 @@ int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 		for (i = 0; i < nr; i++) {
 			VM_BUG_ON_FOLIO(xas.xa_index != idx + i, folio);
 			old = xas_load(&xas);
-			if (xa_is_value(old)) { //files
-				if (shadowp)
-					*shadowp = old;
-			}
-			else {
-				entry_state = entry_is_entry_ext_debug(old);
-				if (entry_state > 0){ //swap
-					if (shadowp){
+			if (old){
+				if (xa_is_value(old)) { //files
+					if (shadowp)
 						*shadowp = old;
-					}else{ //
-						pr_err("folio[%pK] add to swcache but not freed entry[%lx] ext[%lx]", 
-									folio, entry.val, (unsigned long)old);
-						shadow_entry_free(old);
-						atomic_dec(&ext_count);
+				}
+				else{
+					entry_state = entry_is_entry_ext_debug(old);
+					if (entry_state > 0){ //swap
+						if (shadowp){
+							*shadowp = old;
+						}else{ //
+							pr_err("folio[%pK] add to swcache but not freed entry[%lx] ext[%lx]", 
+										folio, entry.val, (unsigned long)old);
+							shadow_entry_free(old);
+							atomic_dec(&ext_count);
+						}
+					}
+					else if (old && 0 == entry_state){
+						pr_err("return a fucked entry[%lx]->shadow[%pK], folio[%pK] failed add $", entry.val, old, folio);
+						BUG();
+					}
+					else if (-1 == entry_state){
+						pr_err("add_to_swap_cache invalid entry[%lx]->shadow[%pK], folio[%pK] failed add $", entry.val, old, folio);
+						BUG();
 					}
 				}
-				else if (old && 0 == entry_state){
-					pr_err("return a fucked entry[%lx]->shadow[%pK], folio[%pK] failed add $", entry.val, old, folio);
-					BUG();
-				}
-				else if (0 > entry_state){
-					pr_err("add_to_swap_cache invalid entry[%lx]->shadow[%pK], folio[%pK] failed add $", entry.val, old, folio);
-					BUG();
-				}
 			}
+
 			// set_page_private_debug(folio_page(folio, i), entry.val + i, 1);
 			set_page_private(folio_page(folio, i), entry.val + i);
 			xas_store(&xas, folio);

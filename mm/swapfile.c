@@ -2212,7 +2212,8 @@ static int unuse_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 						delete_from_swap_remap(folio, entry, migentry, false); //should come with no ref_sub
 					}
 					else{
-						pr_err("unuse_pte_range fail entry[%lx] mig[%lx]", entry.val, migentry.val);
+						pr_err("unuse_pte_range fail entry[%lx]cnt[%d] mig[%lx] cnt[%d]", 
+									entry.val, swp_swapcount(entry), migentry.val, swp_swapcount(migentry));
 						BUG();
 					}
 				}
@@ -2518,7 +2519,7 @@ retry:
 	 * and robust (though cpu-intensive) just to keep retrying.
 	 */
 	if (READ_ONCE(si->inuse_pages)) {
-		pr_err("try_to_unuse[%d] after left unuse[%d] [%pK]", type, si->inuse_pages);
+		pr_err("try_to_unuse[%d] after left unuse[%d]", type, si->inuse_pages);
 		if (!signal_pending(current))
 			goto retry;
 		return -EINTR;
@@ -2852,7 +2853,7 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 	p->flags &= ~SWP_WRITEOK;
 	spin_unlock(&p->lock);
 	spin_unlock(&swap_lock);
-
+	pr_err("swapoff disaple slots type[%d]", p->type);
 	disable_swap_slots_cache_lock();
 	disable_swap_scan_slot_lock();
 

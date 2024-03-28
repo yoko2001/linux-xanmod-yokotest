@@ -196,6 +196,8 @@ const unsigned int shadow_entry_magic = 0xABCD4321;
 const unsigned int shadow_entry_invalidmagic = 0xDCBA8765; 
 
 int entry_is_entry_ext(const void *entry){
+	if (!entry)
+		return -2;
 	if (xa_is_value(entry)) return 0;
 	if (entry){
 		if (((struct shadow_entry*)entry)->magic != ((shadow_entry_magic) ^ ((unsigned long)entry & 0xFFFFFFFF))){
@@ -218,9 +220,13 @@ int entry_is_entry_ext(const void *entry){
 		}
 		return 1;
 	}
-	return 0;
+	return -2;
 }
 int entry_is_entry_ext_debug(const void *entry){
+	if (!entry){
+		pr_err("entry_is_entry_ext_debug entry[%pK] NULL", entry);
+		return -2;	
+	}
 	if (xa_is_value(entry)) {
 		pr_err("entry_is_entry_ext_debug entry[%pK] xa_is_value", entry);
 		return 0;
@@ -245,9 +251,7 @@ int entry_is_entry_ext_debug(const void *entry){
 		}
 		return 1;
 	}
-	if (entry)
-		BUG();
-	return 0;
+	return -2;
 }
 extern spinlock_t shadow_ext_lock;
 extern atomic_t ext_count;
@@ -256,7 +260,7 @@ int entry_ext_memcg_id(struct shadow_entry* entry_ext){
 	int _memcgid, _nid;
 	bool _workingset;
 	unsigned long _entry;
-	if (!entry_ext || !entry_is_entry_ext(entry_ext) > 0){
+	if (!entry_ext || !(entry_is_entry_ext(entry_ext) > 0)){
 		return -5;
 	}
 	_entry = xa_to_value(entry_ext->shadow);
@@ -476,9 +480,11 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, long swap_spa
 		// if (!xa_is_value(ret)){
 		// 	pr_err("bug in pack_shadow");
 		// }
-		if (ret && (entry_is_entry_ext_debug(ret) < 1)){
-			pr_err("bug in pack_shadow_ext ret[%pK] se[%pK]", ret, se);
-			BUG();
+		if (ret){
+			if  (entry_is_entry_ext_debug(ret) < 1){
+				pr_err("bug in pack_shadow_ext ret[%pK] se[%pK]", ret, se);
+				BUG();				
+			}
 		}
 	}
 	
@@ -497,6 +503,12 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, long swap_spa
 	if (folio->shadow_ext){
 		pr_err("folio->shaodw_ext <> NULL");
 		BUG();
+	}
+	if (se){
+		if (ret != se || entry_is_entry_ext_debug(se) < 1){
+			pr_err("ret[%p] se[%p]", ret, se);
+			BUG();
+		}
 	}
 	return ret;
 	// return pack_shadow(mem_cgroup_id(memcg), pgdat, token, refs);

@@ -3935,6 +3935,13 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 					try_free_entry = should_try_change_swap_entry(
 						rf_dist_ts >= MAX_NR_GENS ? rf_dist_ts - 4 : rf_dist_ts, 
 						swap_level, rf_dist_ts >= MAX_NR_GENS ? 0 : 1);
+#ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
+					// spin_lock_irq(&shadow_ext_lock);
+					if (entry_is_entry_ext(shadow) == 1){
+						folio->shadow_ext = shadow;
+					}
+					// spin_unlock_irq(&shadow_ext_lock);
+#endif				
 				}
 				/*DJL ADD END*/
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
@@ -4323,17 +4330,19 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		}
 	}
 
-#ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
-// 	//locked now
-	address_space = swap_address_space(entry);
-	if (address_space){
-		xa_lock_irq(&address_space->i_pages);
-		if (shadow && (!folio->shadow_ext) && (entry_is_entry_ext(shadow) > 0)){
-			folio->shadow_ext = shadow;
-		}
-		xa_unlock_irq(&address_space->i_pages);		
-	}
-#endif
+// #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
+// // 	//locked now
+// 	// address_space = swap_address_space(entry);
+// 	// if (address_space){
+// 	// 	xa_lock_irq(&address_space->i_pages);
+// 	// 	if (shadow){
+// 	// 		if ((!folio->shadow_ext) && (entry_is_entry_ext(shadow) == 1)){
+// 	// 			folio->shadow_ext = shadow;
+// 	// 		}
+// 	// 	}
+// 	// 	xa_unlock_irq(&address_space->i_pages);		
+// 	// }
+// #endif
 
 	/*
 	 * Remove the swap entry and conditionally try to free up the swapcache.
