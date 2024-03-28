@@ -1537,8 +1537,10 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 			put_swap_device(si);
 
 		if (!folio_test_stalesaved(folio)){
-			if (shadow_ext && shadow == shadow_ext)
+			if (shadow_ext && shadow == shadow_ext){
 				__delete_from_swap_cache(folio, swap, shadow_ext);
+				shadow_ext = NULL;				
+			}
 			else{
 				__delete_from_swap_cache(folio, swap, shadow);			
 				if (shadow_ext){
@@ -1676,8 +1678,10 @@ cannot_free:
 	if (!folio_test_swapcache(folio))
 		spin_unlock(&mapping->host->i_lock);
 	if (shadow_ext){
-		pr_err("__remove_mapping free folio shadow[%pK]->[%lx]", 
-				folio, (unsigned long)folio->shadow_ext);
+		// if (folio->shadow_ext){
+		// 	pr_err("__remove_mapping free folio shadow[%p]->[%lx]", 
+		// 			folio, (unsigned long)folio->shadow_ext);		
+		// }
 		shadow_entry_free(shadow_ext);
 		atomic_dec(&ext_count);
 	}

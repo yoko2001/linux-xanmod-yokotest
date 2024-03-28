@@ -1290,7 +1290,7 @@ static inline bool free_page_is_bad(struct page *page)
 {
 	if (likely(page_expected_state(page, PAGE_FLAGS_CHECK_AT_FREE)))
 		return false;
-	pr_err("free_page_is_bad[%pK], lru[%d]lock[%d]pr[%d]pr2[%d]wb[%d]res[%d]slab[%d]ev[%d]mlock[%d]", page, 
+	pr_err("free_page_is_bad[%p], lru[%d]lock[%d]pr[%d]pr2[%d]wb[%d]res[%d]slab[%d]ev[%d]mlock[%d]", page, 
 			PageLRU(page), PageLocked(page), PagePrivate(page), PagePrivate2(page),
 			PageWriteback(page), PageReserved(page), PageSlab(page), PageUnevictable(page),
 			PageMlocked(page)
@@ -1714,9 +1714,21 @@ static void __free_pages_ok(struct page *page, unsigned int order,
 	int migratetype;
 	unsigned long pfn = page_to_pfn(page);
 	struct zone *zone = page_zone(page);
+	struct folio* folio;
 
 	if (!free_pages_prepare(page, order, true, fpi_flags))
 		return;
+	folio = page_folio(page);
+	if (folio->shadow_ext){
+		if (entry_is_entry_ext_debug(folio->shadow_ext) == 1){
+			shadow_entry_free(folio->shadow_ext);
+			pr_err("__free_pages_ok normal free[%lx] folio[%p]", (unsigned long)folio->shadow_ext, folio);
+		}
+		else if (entry_is_entry_ext(folio->shadow_ext) == 0){
+			pr_err("__free_pages_ok folio[%lx] has broken shadow_ext", (unsigned long)folio->shadow_ext);
+			BUG();
+		}	
+	}
 
 	/*
 	 * Calling get_pfnblock_migratetype() without spin_lock_irqsave() here
@@ -3493,9 +3505,9 @@ void free_unref_page(struct page *page, unsigned int order)
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 	folio = page_folio(page);
 	if (folio->shadow_ext){
-		if (entry_is_entry_ext_debug(folio->shadow_ext) > 0){
+		if (entry_is_entry_ext_debug(folio->shadow_ext) == 1){
 			shadow_entry_free(folio->shadow_ext);
-			pr_err("free_unref_page normal free[%lx] folio[%pK]", (unsigned long)folio->shadow_ext, folio);
+			pr_err("free_unref_page normal free[%lx] folio[%p]", (unsigned long)folio->shadow_ext, folio);
 		}
 		else if (entry_is_entry_ext(folio->shadow_ext) == 0){
 			pr_err("free_unref_page_list folio[%lx] has broken shadow_ext", (unsigned long)folio->shadow_ext);
@@ -3520,7 +3532,7 @@ void free_unref_page(struct page *page, unsigned int order)
 		migratetype = MIGRATE_MOVABLE;
 	}
 	if (PageStaleSaved(page)){
-		pr_err("free_unref_page page[%pK]{p[%pK]n[%pK]}", 
+		pr_err("free_unref_page page[%p]{p[%p]n[%p]}", 
 				page, page->lru.prev, page->lru.next);
 		BUG();
 	}
@@ -3563,7 +3575,7 @@ void free_unref_page_list(struct list_head *list)
 		if (folio->shadow_ext){
 			if (entry_is_entry_ext_debug(folio->shadow_ext) > 0){
 				shadow_entry_free(folio->shadow_ext);
-				pr_err("free_unref_page_list normal free[%lx] folio[%pK]", (unsigned long)folio->shadow_ext, folio);
+				pr_err("free_unref_page_list normal free[%lx] folio[%p]", (unsigned long)folio->shadow_ext, folio);
 			}
 			else if (entry_is_entry_ext(folio->shadow_ext) == 0){
 				pr_err("free_unref_page_list folio[%lx] has broken shadow_ext", (unsigned long)folio->shadow_ext);
@@ -3588,7 +3600,7 @@ void free_unref_page_list(struct list_head *list)
 	list_for_each_entry_safe(page, next, list, lru) {
 		struct zone *zone = page_zone(page);
 		if (PageStaleSaved(page)){
-			pr_err("free_unref_page_list page[%pK]{p[%pK]n[%pK]}", 
+			pr_err("free_unref_page_list page[%p]{p[%p]n[%p]}", 
 					page, page->lru.prev, page->lru.next);
 			BUG();
 		}

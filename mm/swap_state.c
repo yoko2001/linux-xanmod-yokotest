@@ -840,7 +840,7 @@ void __delete_from_swap_cache_mig(struct folio *folio,
 		// }
 		if (shadow_transfer){
 			if (folio->shadow_ext){ //may transfer, check
-				if (entry_is_entry_ext(folio->shadow_ext)){
+				if (entry_is_entry_ext(folio->shadow_ext) == 1){
 					shadow = folio->shadow_ext;
 					xas_store(&xas, shadow);
 					xas_next(&xas);
@@ -1132,13 +1132,13 @@ void clear_shadow_from_swap_cache(int type, unsigned long begin,
 
 		xa_lock_irq(&address_space->i_pages);
 		xas_for_each(&xas, old, end) {
-			if (!xa_is_value(old) && !entry_is_entry_ext(old))
+			if (!xa_is_value(old) && entry_is_entry_ext(old) < 1)
 				continue;
-			if (free && old && entry_is_entry_ext(old) > 0){
+			if (free && old && entry_is_entry_ext(old) == 1){
 				// pr_err("clear_shadow_from_s [%lx]", old);
 				// spin_lock_irq(&shadow_ext_lock);
 				xas_store(&xas, NULL);
-				// shadow_entry_free(old);
+				shadow_entry_free(old);
 				// spin_unlock_irq(&shadow_ext_lock);
 				continue;
 			}
@@ -1233,9 +1233,9 @@ struct folio *swap_cache_get_folio(struct swap_info_struct * si, swp_entry_t ent
 	}
 	else{
 		folio = filemap_get_folio(swap_address_space(entry), offset_v);
-		if (folio){
-			// pr_err("scgf async return entry[%lx]->[%pK]", entry.val, folio);
-		}
+		// if (folio){
+		// 	// pr_err("scgf async return entry[%lx]->[%pK]", entry.val, folio);
+		// }
 	}
 	if (folio) {
 		bool vma_ra = swap_use_vma_readahead();
@@ -1544,7 +1544,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 			if (!allow_null && !entry_get_migentry(entry).val){
 				pr_err("swap count entry[%lx][%d] not used exact[%d]", 
 						entry.val, __swp_swapcount(entry), allow_null);
-				BUG();
+				// BUG();
 			}
 			return NULL;
 		}
@@ -1640,7 +1640,13 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 	//now shadow has been used
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 	// spin_lock_irq(&shadow_ext_lock);
-	VM_BUG_ON_FOLIO(folio, folio->shadow_ext);
+	if (folio->shadow_ext){
+		pr_err("folio[%p]->shadowext[%p] shadow[%p]", 
+			folio, folio->shadow_ext, shadow);
+		if (folio->shadow_ext != shadow){
+			shadow_entry_free(folio->shadow_ext);
+		}
+	}
 	folio->shadow_ext = NULL;
 	if (entry_is_entry_ext(shadow) > 0){
 		folio->shadow_ext = shadow;
