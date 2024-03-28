@@ -3808,11 +3808,11 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
  		page = folio_file_page(folio, swp_offset(entry));
 		count_memcg_event_mm(vma->vm_mm, SWAPIN_FROM_SWAPCACHE);
 		if (page_private(page) != entry.val){
-			pr_err("folio[%p]stale[%d] private[%lx] entry[%lx]swapcache hit $[%d] private mismatch", 
+			pr_info("folio[%p]stale[%d] private[%lx] entry[%lx]swapcache hit $[%d] private mismatch", 
 					folio, folio_test_stalesaved(folio),  
 					page_private(page), entry.val, folio_test_swapcache(folio));
 			// BUG();
-			if (entry_is_entry_ext_debug(folio) == 0){
+			if (entry_is_entry_ext(folio) == 0){
 				folio = NULL;
 				debugging = true;				
 			}
@@ -4011,7 +4011,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 			}
 		} else {
 			if (data_race(si->flags & SWP_SYNCHRONOUS_IO)){
-				pr_err("ASYNC_IO si[%d] on sync entry[%lx] cnt[%d]", 
+				pr_info("ASYNC_IO si[%d] on sync entry[%lx] cnt[%d]", 
 							si->prio,  entry.val, __swap_count(entry));
 			}
 			if (migentry.val) { //use remap
@@ -4078,7 +4078,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				}
 			}
 			else{
-				pr_err("PF entry[%lx]->folio[NULL] swapin_readahead fail", entry.val);
+				pr_info("PF entry[%lx]->folio[NULL] swapin_readahead fail", entry.val);
 			}
 			swapcache = folio;
 		}
@@ -4095,7 +4095,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 					vmf->address, &vmf->ptl);
 			if (likely(pte_same(*vmf->pte, vmf->orig_pte)))
 				ret = VM_FAULT_OOM;
-			pr_err("somebody else faulted in this pte");
+			pr_info("somebody else faulted in this pte");
 			goto unlock;
 		}
 
@@ -4237,7 +4237,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		 */
 		if (unlikely(!folio_test_swapcache(folio) ||
 			     page_private(page) != entry.val)){
-			pr_err("folio[%p] holding bad private[%lx] entry[%lx] orientry[%lx]migentry[%lx]", 
+			pr_info("folio[%p] holding bad private[%lx] entry[%lx] orientry[%lx]migentry[%lx]", 
 						folio, page_private(page), entry.val, orientry.val, migentry.val);
 			goto out_page;
 		}

@@ -1542,7 +1542,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 		 */
 		if (!__swp_swapcount(entry) && swap_slot_cache_enabled){
 			if (!allow_null && !entry_get_migentry(entry).val){
-				pr_err("swap count entry[%lx][%d] not used exact[%d]", 
+				pr_info("swap count entry[%lx][%d] not used exact[%d]", 
 						entry.val, __swp_swapcount(entry), allow_null);
 				// BUG();
 			}
@@ -1566,7 +1566,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 		err = swapcache_prepare(entry);
 		if (!err)
 			break;
-		pr_err("swapcache_prepare fail[%d] addr[%lx] entry[%lx]",
+		pr_info("swapcache_prepare fail[%d] addr[%lx] entry[%lx]",
 					err, addr, entry.val);
 		folio_put(folio);
 		if (err != -EEXIST)
@@ -1712,7 +1712,7 @@ struct page *read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 	if (page_was_allocated)
 		swap_readpage(retpage, do_poll, plug);
 	else if (!retpage)
-		pr_err("read_swap_cache_async alloc fail entry[%lx]", entry.val);
+		pr_info("read_swap_cache_async alloc fail entry[%lx]", entry.val);
 	/*DJL ADD BEGIN*/
 	if (count && page_was_allocated){
 		si = get_swap_device(entry);
