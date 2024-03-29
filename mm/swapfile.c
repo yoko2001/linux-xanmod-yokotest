@@ -1332,7 +1332,7 @@ start_over:
 		spin_unlock(&si->lock);
 		if (n_ret || size == SWAPFILE_CLUSTER){
 			if (av_pg_before_assi){
-				*av_pg_before_assi = si->pages - si->inuse_pages;
+				*av_pg_before_assi = si->pages - si->inuse_pages + n_ret;
 			}
 			if (__si_can_version(si))	
 				check_swap_scan_active(si, si->pages - si->inuse_pages, si->pages);
