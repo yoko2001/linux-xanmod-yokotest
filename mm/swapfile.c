@@ -1090,10 +1090,10 @@ checks:
 	if (version > 0){
 		slots[n_ret++] = swp_entry_version(si->type, offset, version);
 		if (usage == SWAP_HAS_CACHE)
-			pr_err("version[%d]entry[%lx] offset[%lx] added to slots SWAP_HAS_CACHE", 
+			pr_info("version[%d]entry[%lx] offset[%lx] added to slots SWAP_HAS_CACHE", 
 				version, slots[n_ret-1].val, offset);
 		else
-			pr_err("version[%d]entry[%lx] offset[%lx] added to slots[%x]", 
+			pr_info("version[%d]entry[%lx] offset[%lx] added to slots[%x]", 
 				version, slots[n_ret-1].val, offset, usage);
 	} else {
 		slots[n_ret++] = swp_entry(si->type, offset);
@@ -1872,7 +1872,7 @@ bool folio_swapped(struct folio *folio)
 
 	if (!IS_ENABLED(CONFIG_THP_SWAP) || likely(!folio_test_large(folio)))
 		return swap_swapcount(si, entry) != 0;
-	pr_err("folio_swapped empty folio[%pK]", folio);
+	pr_err("folio_swapped empty folio[%p]", folio);
 	return swap_page_trans_huge_swapped(si, entry);
 }
 
@@ -1941,7 +1941,7 @@ int free_swap_and_cache(swp_entry_t entry)
 			pr_err("free_swap_and_cache entry[%lx]v[%lu]", entry.val, (unsigned long)swp_entry_test_special(entry));
 	}
 	// else {
-	// 	// pr_err("free_s&$ err swap_info[%pK], count[%d], entry[%lx]", p, count, entry.val);
+	// 	// pr_err("free_s&$ err swap_info[%p], count[%d], entry[%lx]", p, count, entry.val);
 	// }
 	return p != NULL;
 }
@@ -2325,10 +2325,10 @@ static int unuse_vma(struct vm_area_struct *vma, unsigned int type)
 		next = pgd_addr_end(addr, end);
 		if (pgd_none_or_clear_bad(pgd))
 			continue;
-		pr_err("unuse_vma vma[%pK] type[%d] start", vma, type);
+		pr_err("unuse_vma vma[%p] type[%d] start", vma, type);
 		ret = unuse_p4d_range(vma, pgd, addr, next, type);
 		if (ret){
-			pr_err("unuse_vma vma[%pK] type[%d]fail", vma, type);
+			pr_err("unuse_vma vma[%p] type[%d]fail", vma, type);
 			return ret;
 		}
 	} while (pgd++, addr = next, addr != end);
@@ -2460,10 +2460,10 @@ retry:
 		spin_unlock(&mmlist_lock);
 		mmput(prev_mm);
 		prev_mm = mm;
-		pr_err("try_to_unuse[%d] unuse_mm [%pK]", type, mm);
+		pr_err("try_to_unuse[%d] unuse_mm [%p]", type, mm);
 		retval = unuse_mm(mm, type);
 		if (retval) {
-			pr_err("try_to_unuse[%d] unuse_mm [%pK] fail", type, mm);
+			pr_err("try_to_unuse[%d] unuse_mm [%p] fail", type, mm);
 			mmput(prev_mm);
 			return retval;
 		}
@@ -2486,7 +2486,7 @@ retry:
 
 		entry = swp_entry(type, i);
 		folio = filemap_get_folio(swap_address_space(entry), i);
-		pr_err("try_to_unuse filemap_get_folio entry[%lx], folio[%pK]", entry.val, folio);
+		pr_err("try_to_unuse filemap_get_folio entry[%lx], folio[%p]", entry.val, folio);
 		if (!folio)
 			continue;
 
@@ -2496,7 +2496,7 @@ retry:
 		 * might even be back in swap cache on another swap area. But
 		 * that is okay, folio_free_swap() only removes stale folios.
 		 */
-		pr_err("try_to_unuse lock entry[%lx], folio[%pK]", entry.val, folio);
+		pr_err("try_to_unuse lock entry[%lx], folio[%p]", entry.val, folio);
 		folio_lock(folio);
 		folio_wait_writeback(folio);
 		folio_free_swap(folio);
@@ -3852,7 +3852,7 @@ pgoff_t __page_file_index(struct page *page)
 {
 	swp_entry_t swap = { .val = page_private(page) };
 	// if (swp_entry_test_special(swap))
-	// 	pr_err("__page_file_index page[%pK] ver[%d], entry[%lx]", 
+	// 	pr_err("__page_file_index page[%p] ver[%d], entry[%lx]", 
 	// 			page, swp_entry_test_special(swap), swap.val);
 	return swp_raw_offset(swap);
 }
@@ -3946,7 +3946,7 @@ int add_swap_count_continuation(swp_entry_t entry, gfp_t gfp_mask)
 		BUG_ON(count & COUNT_CONTINUED);
 		INIT_LIST_HEAD(&head->lru);
 		set_page_private_debug(head, SWP_CONTINUED, -1);
-		pr_err("page[%pK] was set SWP_CONTINUED", page);
+		pr_err("page[%p] was set SWP_CONTINUED", page);
 		si->flags |= SWP_CONTINUED;
 	}
 

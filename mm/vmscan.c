@@ -1321,7 +1321,7 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 
 	if (unlikely(folio_test_stalesaved(folio))){
 		if (unlikely(folio_test_dirty(folio))){
-			pr_err("stalesaved folio[%pK] got dirty again", folio);
+			pr_err("stalesaved folio[%p] got dirty again", folio);
 			BUG();
 		}
 	}
@@ -1360,11 +1360,11 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 int pageout_save(struct folio *folio, struct address_space *mapping, struct swap_iocb **plug){
 	struct swap_info_struct *sis = page_swap_info(folio_page(folio, 0));
 	if (sis->flags & SWP_SYNCHRONOUS_IO){
-		pr_err("folio[%pK] was backed by sync io bdev", folio);
+		pr_err("folio[%p] was backed by sync io bdev", folio);
 		return PAGE_KEEP;
 	}
 	if (!is_page_cache_freeable_save(folio)){
-		pr_err("pageout_save folio[%pK] ref err [%d]-[%d]<>1 + [%ld] ", 
+		pr_err("pageout_save folio[%p] ref err [%d]-[%d]<>1 + [%ld] ", 
 				folio, folio_ref_count(folio), 
 				folio_test_private(folio), folio_nr_pages(folio));
 		return PAGE_KEEP;
@@ -1455,7 +1455,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	if (folio_test_stalesaved(folio)){
 		mig_entry = folio_swap_entry(folio);//folio_get_migentry(folio, ori_swap);
 		if (!folio_test_active(folio)){
-			pr_err("__remove_mapping folio[%pK]ori[%lx]->mig[%lx]ref[%d]wb[%d]d[%d]$[%d]", 
+			pr_err("__remove_mapping folio[%p]ori[%lx]->mig[%lx]ref[%d]wb[%d]d[%d]$[%d]", 
 						folio, ori_swap.val, mig_entry.val,
 						folio_ref_count(folio), folio_test_writeback(folio),
 						folio_test_dirty(folio), folio_test_swapcache(folio));
@@ -1555,7 +1555,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		if (!folio_test_stalesaved(folio)){
 			if((page_private(folio_page(folio, 0)) != 0) || folio_test_swapcache(folio))
 			{
-				pr_err("ckpt folio[%pK] $[%d], priavte[%lx]", 
+				pr_err("ckpt folio[%p] $[%d], priavte[%lx]", 
 							folio, folio_test_swapcache(folio), page_private(folio_page(folio, 0)));
 				BUG();	
 			}
@@ -1588,12 +1588,12 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 					BUG();
 				}
 
-				pr_err("after clear folio[%pK]ref[%d] private[%lx]found mig_entry[%lx] count %d", 
+				pr_err("after clear folio[%p]ref[%d] private[%lx]found mig_entry[%lx] count %d", 
 							folio, folio_ref_count(folio), page_private(folio_page(folio, 0)), mig_entry_phy.val, __swp_swapcount(mig_entry_phy));
 				put_swap_folio(folio, mig_entry_phy);
 			}
 			else{
-				pr_err("folio[%pK] lost its mig_entry", folio);
+				pr_err("folio[%p] lost its mig_entry", folio);
 				BUG();
 			}
 		}
@@ -1635,7 +1635,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		    !mapping_exiting(mapping) && !dax_mapping(mapping))
 			shadow = workingset_eviction(folio, target_memcg, swap_level, -7, NULL, swap);
 		if (shadow && (!xa_is_value(shadow)) && (!entry_is_entry_ext(shadow))){
-			pr_err("1 shadow[%pK] BUG", shadow);
+			pr_err("1 shadow[%p] BUG", shadow);
 			BUG();
 			__filemap_remove_folio(folio, NULL);
 		}
@@ -1649,7 +1649,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 
 		if (free_folio){
 			if (folio->shadow_ext){
-				pr_err("__remove_mapping free folioshadow[%pK]->[%lx]", 
+				pr_err("__remove_mapping free folioshadow[%p]->[%lx]", 
 						folio, (unsigned long)folio->shadow_ext);
 				shadow_entry_free(folio->shadow_ext);
 				folio->shadow_ext = NULL;
@@ -1665,7 +1665,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	}
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 	if (folio->shadow_ext){
-		pr_err("unexpected folio[%pK] got shadow_ext stale[%d] ref[%d]", 
+		pr_err("unexpected folio[%p] got shadow_ext stale[%d] ref[%d]", 
 					folio, folio_test_stalesaved(folio), folio_ref_count(folio));
 		BUG();
 	}
@@ -1945,11 +1945,11 @@ collect_fail_lock_keep:
 	list_splice(&folio_list_fail_lock, saved_folios); //return back, check next time
 	spin_unlock_irq(&lruvec->lru_lock);
 	if (fail_locked)
-		pr_err("check_saved_folios_wb lruvec[%pK] fail_lock:%d", lruvec, fail_locked);
+		pr_err("check_saved_folios_wb lruvec[%p] fail_lock:%d", lruvec, fail_locked);
 
 	if (list_empty_careful(&folio_list)){
 		if (scanned > 0) 
-			pr_err("but is empty folio_list[%pK]{p[%pK]n[%pK]}", 
+			pr_err("but is empty folio_list[%p]{p[%p]n[%p]}", 
 					&folio_list, folio_list.prev, folio_list.next);
 		return 0;
 	}
@@ -1983,7 +1983,7 @@ collect_fail_lock_keep:
 		
 		if (folio_test_writeback(folio)) {
 			if (!folio_test_stalesaved(folio)){ //cancelled by do_swap
-				pr_err("folio[%pK] taken by do_swap, don't touch it", folio);
+				pr_err("folio[%p] taken by do_swap, don't touch it", folio);
 				folio_unlock(folio);
 				BUG();
 				continue;
@@ -2012,7 +2012,7 @@ keep_next_time:
 			VM_BUG_ON_FOLIO(folio_mapped(folio), folio);	
 			if (!folio_test_stalesaved(folio)){
 				//we're fucked up by do swap turn this page into safe state
-				pr_err("intercepted before enable remap folio[%pK]cnt[%d]$[%d]", 
+				pr_err("intercepted before enable remap folio[%p]cnt[%d]$[%d]", 
 						folio,	folio_ref_count(folio), folio_test_swapcache(folio));
 				//we need to handle the remap & mig cache clean up part
 
@@ -2020,7 +2020,7 @@ keep_next_time:
 				delete_from_swap_cache_mig(folio, migentry, true, false);
 				swap_free(migentry);
 				if (__swap_count(migentry) != 0){
-					pr_err("folio[%pK]$[%d]private[%lx]cnt[%d]map[%d] remap deleted add to lru, swap freed", 
+					pr_err("folio[%p]$[%d]private[%lx]cnt[%d]map[%d] remap deleted add to lru, swap freed", 
 						folio,	folio_test_swapcache(folio), 
 						page_private(folio_page(folio, 0)), folio_ref_count(folio), __swap_count(migentry));					
 					BUG();
@@ -2041,12 +2041,12 @@ keep_next_time:
 			} 
 
 			delete_from_swap_cache_mig(folio, entry, false, false); //delete from origin entry
-			pr_err("folio[%pK] delete_from_swap_cache_mig ref[%d] origin[%lx]cnt[%d]", 
+			pr_err("folio[%p] delete_from_swap_cache_mig ref[%d] origin[%lx]cnt[%d]", 
 						folio, folio_ref_count(folio), entry.val, __swp_swapcount(entry));
 
 			ret = enable_swp_entry_remap(folio, entry, &migentry);
 			if (ret){
-				pr_err("folio[%pK] enable_swp_entry_remap fail[%d]", folio, ret);
+				pr_err("folio[%p] enable_swp_entry_remap fail[%d]", folio, ret);
 				if (ret == 1){
 					folio_clear_stalesaved(folio); 
 					//we wait for it to get useless, when we get it, it'll be freed
@@ -2438,7 +2438,7 @@ retry:
 				goto stale_pass_release; 
 			}
 			else{
-				pr_err("shrink_list folio[%pK] unsafe wb[%d]d[%d]sb[%d]", folio,
+				pr_err("shrink_list folio[%p] unsafe wb[%d]d[%d]sb[%d]", folio,
 						folio_test_writeback(folio), folio_test_dirty(folio) ,folio_test_swapbacked(folio));
 				goto stale_pass_release; 
 			}
@@ -2546,7 +2546,7 @@ activate_locked_split:
 activate_locked:
 		if (folio_test_stalesaved(folio)){
 			if (!folio_test_swapcache(folio) || !folio_test_dirty(folio) || !folio_test_active(folio))
-				pr_err("unknown reason activate folio[%pK]", folio);
+				pr_err("unknown reason activate folio[%p]", folio);
 		}
 		/* Not a candidate for swapping, so reclaim swap space. */
 		if (folio_test_swapcache(folio) &&
@@ -5375,14 +5375,14 @@ static bool isolate_folio_save(struct lruvec *lruvec, struct folio *folio, struc
 	    (folio_test_dirty(folio) ||
 	     (folio_test_anon(folio) && !folio_test_swapcache(folio))))
 	{
-		pr_err("swapping inhibited lruvec[%pK] folio[%pK] dirty[%d] anon[%d] swapcache[%d]", 
+		pr_err("swapping inhibited lruvec[%p] folio[%p] dirty[%d] anon[%d] swapcache[%d]", 
 			lruvec, folio, 
 			folio_test_dirty(folio), folio_test_anon(folio), folio_test_swapcache(folio));
 		return false;
 	}
 	/* raced with release_pages() */
 	if (!folio_try_get(folio)){
-		pr_err("isolate_folio_save lruvec[%pK] folio[%pK] get fail", 
+		pr_err("isolate_folio_save lruvec[%p] folio[%p] get fail", 
 			lruvec, folio);
 		return false;
 	}
@@ -5390,7 +5390,7 @@ static bool isolate_folio_save(struct lruvec *lruvec, struct folio *folio, struc
 	/* raced with another isolation */
 	if (!folio_test_clear_lru(folio)) {
 		folio_put(folio);
-		pr_err("isolate_folio_save lruvec[%pK] folio[%pK] clear_lru fail", 
+		pr_err("isolate_folio_save lruvec[%p] folio[%p] clear_lru fail", 
 			lruvec, folio);
 		return false;
 	}
@@ -5665,7 +5665,7 @@ retry:
 				folio_set_referenced(folio);
 			
 			if (folio_test_stalesaved(folio))
-				pr_err("try evict folio[%pK] rclm[%d]d[%d]wb[%d]ac[%d]map[%d]lock[%d]", 
+				pr_err("try evict folio[%p] rclm[%d]d[%d]wb[%d]ac[%d]map[%d]lock[%d]", 
 					folio, folio_test_reclaim(folio), folio_test_dirty(folio), folio_test_writeback(folio),
 					folio_test_active(folio), folio_mapped(folio),  folio_test_locked(folio));
 			continue;
@@ -5683,7 +5683,7 @@ retry:
 		/* retry folios that may have missed folio_rotate_reclaimable() */
 		list_move(&folio->lru, &clean);
 		if (folio_test_stalesaved(folio))
-			pr_err("folio[%pK] add to clean", folio);
+			pr_err("folio[%p] add to clean", folio);
 		sc->nr_scanned -= folio_nr_pages(folio);
 	}
 	spin_lock_irq(&lruvec->lru_lock);

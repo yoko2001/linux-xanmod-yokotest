@@ -224,11 +224,11 @@ int entry_is_entry_ext(const void *entry){
 }
 int entry_is_entry_ext_debug(const void *entry){
 	if (!entry){
-		pr_err("entry_is_entry_ext_debug entry[%pK] NULL", entry);
+		pr_err("entry_is_entry_ext_debug entry[%p] NULL", entry);
 		return -2;	
 	}
 	if (xa_is_value(entry)) {
-		pr_err("entry_is_entry_ext_debug entry[%pK] xa_is_value", entry);
+		pr_err("entry_is_entry_ext_debug entry[%p] xa_is_value", entry);
 		return 0;
 	}
 	if (entry){
@@ -462,7 +462,7 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, long swap_spa
 				ret = pack_shadow_ext(mem_cgroup_id(memcg), pgdat, token, refs, se, min_seq, NULL, folio, entry);
 			}
 			else{ // == 0 broken
-				pr_err("folio[%pK]->has broken shadow_ext[%lx] %s:%d", 
+				pr_err("folio[%p]->has broken shadow_ext[%lx] %s:%d", 
 					folio, (unsigned long)folio->shadow_ext, __FILE__, __LINE__);
 				folio->shadow_ext = NULL;
 				ret = pack_shadow_ext(mem_cgroup_id(memcg), pgdat, token, refs, se, min_seq, NULL, folio, entry);
@@ -482,7 +482,7 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, long swap_spa
 		// }
 		if (ret){
 			if  (entry_is_entry_ext_debug(ret) < 1){
-				pr_err("bug in pack_shadow_ext ret[%pK] se[%pK]", ret, se);
+				pr_err("bug in pack_shadow_ext ret[%p] se[%p]", ret, se);
 				BUG();				
 			}
 		}
