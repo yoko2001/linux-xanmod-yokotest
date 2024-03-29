@@ -2191,11 +2191,15 @@ static int unuse_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 				.pmd = pmd,
 			};
 			migentry = entry_get_migentry(entry);
-			if (migentry.val && !swp_entry_test_ext(migentry)){
+			if (migentry.val && !(swp_entry_test_ext(migentry) & 0x1)){ //not locked / ready
 				page = swapin_readahead(migentry, GFP_HIGHUSER_MOVABLE,
 							&vmf, &try_free_entry);
 			}
 			else{
+				if (migentry.val) {
+					pr_err("entry_get_migentry entry[%lx]->migentry[%lx]", entry.val, migentry.val);
+					BUG();
+				}
 				page = swapin_readahead(entry, GFP_HIGHUSER_MOVABLE,
 							&vmf, &try_free_entry);				
 			}
@@ -2208,7 +2212,8 @@ static int unuse_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 						delete_from_swap_remap(folio, entry, migentry, false); //should come with no ref_sub
 					}
 					else{
-						pr_err("unuse_pte_range fail entry[%lx] mig[%lx]", entry.val, migentry.val);
+						pr_err("unuse_pte_range fail entry[%lx]cnt[%d] mig[%lx] cnt[%d]", 
+									entry.val, swp_swapcount(entry), migentry.val, swp_swapcount(migentry));
 						BUG();
 					}
 				}
@@ -2320,6 +2325,7 @@ static int unuse_vma(struct vm_area_struct *vma, unsigned int type)
 		next = pgd_addr_end(addr, end);
 		if (pgd_none_or_clear_bad(pgd))
 			continue;
+		pr_err("unuse_vma vma[%pK] type[%d] start", vma, type);
 		ret = unuse_p4d_range(vma, pgd, addr, next, type);
 		if (ret){
 			pr_err("unuse_vma vma[%pK] type[%d]fail", vma, type);
@@ -2405,7 +2411,7 @@ void swap_shadow_scan_next(struct swap_info_struct * si, struct lruvec * lruvec,
 	mapping = swap_address_space(entry);
 
 	*scanned = swap_scan_entries_savior(mapping, lruvec, start, end, type, threshold);
-	pr_err("swap_scan_entries_savior called scanned[%lu]", *scanned);
+	pr_info("swap_scan_entries_savior called scanned[%lu]", *scanned);
 	trace_swap_shadow_scan_next(start, end, *scanned, mem_cgroup_id(lruvec_memcg(lruvec)));
 
 	if (unlikely(si->max == end)){
@@ -2431,6 +2437,7 @@ static int try_to_unuse(unsigned int type)
 		return 0;
 
 retry:
+	pr_err("try_to_unuse[%d] shmem_unuse start", type);
 	retval = shmem_unuse(type);
 	if (retval){
 		pr_err("try_to_unuse[%d] shmem_unuse fail ret[%d]", type, retval);
@@ -2442,6 +2449,7 @@ retry:
 
 	spin_lock(&mmlist_lock);
 	p = &init_mm.mmlist;
+	pr_err("try_to_unuse[%d] before left unuse[%d]", type, si->inuse_pages);
 	while (READ_ONCE(si->inuse_pages) &&
 	       !signal_pending(current) &&
 	       (p = p->next) != &init_mm.mmlist) {
@@ -2452,8 +2460,10 @@ retry:
 		spin_unlock(&mmlist_lock);
 		mmput(prev_mm);
 		prev_mm = mm;
+		pr_err("try_to_unuse[%d] unuse_mm [%pK]", type, mm);
 		retval = unuse_mm(mm, type);
 		if (retval) {
+			pr_err("try_to_unuse[%d] unuse_mm [%pK] fail", type, mm);
 			mmput(prev_mm);
 			return retval;
 		}
@@ -2468,7 +2478,7 @@ retry:
 	spin_unlock(&mmlist_lock);
 
 	mmput(prev_mm);
-
+	pr_err("try_to_unuse[%d]2 before left unuse[%d]", type, si->inuse_pages);
 	i = 0;
 	while (READ_ONCE(si->inuse_pages) &&
 	       !signal_pending(current) &&
@@ -2476,6 +2486,7 @@ retry:
 
 		entry = swp_entry(type, i);
 		folio = filemap_get_folio(swap_address_space(entry), i);
+		pr_err("try_to_unuse filemap_get_folio entry[%lx], folio[%pK]", entry.val, folio);
 		if (!folio)
 			continue;
 
@@ -2485,12 +2496,14 @@ retry:
 		 * might even be back in swap cache on another swap area. But
 		 * that is okay, folio_free_swap() only removes stale folios.
 		 */
+		pr_err("try_to_unuse lock entry[%lx], folio[%pK]", entry.val, folio);
 		folio_lock(folio);
 		folio_wait_writeback(folio);
 		folio_free_swap(folio);
 		folio_unlock(folio);
 		folio_put(folio);
 	}
+	pr_err("try_to_unuse[%d]2 after left unuse[%d]", type, si->inuse_pages);
 
 	/*
 	 * Lets check again to see if there are still swap entries in the map.
@@ -2506,6 +2519,7 @@ retry:
 	 * and robust (though cpu-intensive) just to keep retrying.
 	 */
 	if (READ_ONCE(si->inuse_pages)) {
+		pr_err("try_to_unuse[%d] after left unuse[%d]", type, si->inuse_pages);
 		if (!signal_pending(current))
 			goto retry;
 		return -EINTR;
@@ -2778,6 +2792,7 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 	struct filename *pathname;
 	int err, found = 0;
 	unsigned int old_block_size;
+	pr_err("swapoff start");
 
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
@@ -2817,6 +2832,7 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 	}
 	spin_lock(&p->lock);
 	del_from_avail_list(p);
+	pr_err("swapoff prio[%d] start", p->prio);
 	if (p->prio < 0) {
 		struct swap_info_struct *si = p;
 		int nid;
@@ -2837,11 +2853,12 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 	p->flags &= ~SWP_WRITEOK;
 	spin_unlock(&p->lock);
 	spin_unlock(&swap_lock);
-
+	pr_err("swapoff disaple slots type[%d]", p->type);
 	disable_swap_slots_cache_lock();
 	disable_swap_scan_slot_lock();
 
 	set_current_oom_origin();
+	pr_err("swapoff try_to_unuse type[%d]", p->type);
 	err = try_to_unuse(p->type);
 	clear_current_oom_origin();
 

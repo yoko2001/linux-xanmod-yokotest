@@ -1453,12 +1453,6 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	BUG_ON(mapping != folio_mapping(folio));
 
 	if (folio_test_stalesaved(folio)){
-		//ori_swap = folio_swap_entry(folio);
-		// if (!ori_swap.val){
-		// 	//cleared by do_swap_page
-		// 	BUG();
-		// }
-
 		mig_entry = folio_swap_entry(folio);//folio_get_migentry(folio, ori_swap);
 		if (!folio_test_active(folio)){
 			pr_err("__remove_mapping folio[%pK]ori[%lx]->mig[%lx]ref[%d]wb[%d]d[%d]$[%d]", 
@@ -1466,6 +1460,8 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 						folio_ref_count(folio), folio_test_writeback(folio),
 						folio_test_dirty(folio), folio_test_swapcache(folio));
 		}
+		if (shadow_ext)
+			BUG();
 	}
 
 	if (!folio_test_swapcache(folio))
@@ -1527,21 +1523,31 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 				swap_level = 0;
 			}
 			if (folio_test_stalesaved(folio)){
+				//should skip eviction, because this is a memory pass-through
 			}
 			else{
 				shadow = workingset_eviction(folio, target_memcg, swap_level, swap_space_left, shadow_ext, swap);
-				if (shadow_ext && shadow != shadow_ext)
+				if (shadow_ext && shadow != shadow_ext){
 					pr_err("workingset_eviction fail give shadow_ext [%pKK]", shadow);				
+					BUG();
+				}
 			}
 		}
 		if (si)
 			put_swap_device(si);
 
 		if (!folio_test_stalesaved(folio)){
-			if (shadow_ext && shadow == shadow_ext)
+			if (shadow_ext && shadow == shadow_ext){
 				__delete_from_swap_cache(folio, swap, shadow_ext);
-			else
+				shadow_ext = NULL;				
+			}
+			else{
 				__delete_from_swap_cache(folio, swap, shadow);			
+				if (shadow_ext){
+					pr_err("shadow_ext no free");
+					BUG();
+				}
+			}
 			mem_cgroup_swapout(folio, swap);
 		}
 		
@@ -1579,6 +1585,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 				{
 					shadow_entry_free(folio->shadow_ext);
 					folio->shadow_ext = NULL;
+					BUG();
 				}
 
 				pr_err("after clear folio[%pK]ref[%d] private[%lx]found mig_entry[%lx] count %d", 
@@ -1600,6 +1607,10 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	} else {
 		swp_entry_t swap;
 		swap.val = -1;
+		if (shadow_ext){
+			pr_err("bug2");
+			BUG();
+		}
 		shadow_ext = NULL;
 		void (*free_folio)(struct folio *);
 
@@ -1666,12 +1677,14 @@ cannot_free:
 	xa_unlock_irq(&mapping->i_pages);
 	if (!folio_test_swapcache(folio))
 		spin_unlock(&mapping->host->i_lock);
-	// if (shadow_ext){
-	// 	pr_err("__remove_mapping free folio shadow[%pK]->[%lx]", 
-	// 			folio, (unsigned long)folio->shadow_ext);
-	// 	shadow_entry_free(shadow_ext);
-	// 	atomic_dec(&ext_count);
-	// }
+	if (shadow_ext){
+		// if (folio->shadow_ext){
+		// 	pr_err("__remove_mapping free folio shadow[%p]->[%lx]", 
+		// 			folio, (unsigned long)folio->shadow_ext);		
+		// }
+		shadow_entry_free(shadow_ext);
+		atomic_dec(&ext_count);
+	}
 	
 	return 0;
 }

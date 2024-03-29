@@ -356,7 +356,7 @@ static inline swp_entry_t folio_swap_entry(struct folio *folio)
 static inline void check_private_debug(struct folio *folio)
 {
 	swp_entry_t entry = { .val = page_private(&folio->page) };
-	if ((entry.val & 0xffffffff00000000) == 0xffffffff00000000){
+	if (unlikely((entry.val & 0xffffffff00000000) == 0xffffffff00000000)){
 		dump_stack();
 		BUG();
 	}
@@ -405,7 +405,9 @@ static inline struct shadow_entry* shadow_entry_alloc(void){
 	return entry_ext;
 }
 static inline void shadow_entry_free(struct shadow_entry* entry_ext){
-	if (get_shadow_entry_cache() && entry_ext){
+	if (unlikely(!entry_ext))
+		return;
+	if (get_shadow_entry_cache()){
 		if (entry_ext->magic == 0xFFFFFFFF){//freed already
 			pr_err("shadow_entry_free refreed[%lx]", (unsigned long)entry_ext);
 			return;

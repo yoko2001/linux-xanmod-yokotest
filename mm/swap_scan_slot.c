@@ -24,7 +24,7 @@ static void deactivate_swap_scan_slot(void)
 		return;
 	mutex_lock(&swap_scan_slot_mutex);
 	swap_scan_slot_active = false;
-	pr_err("deactivate_swap_scan_slot");
+	// pr_err("deactivate_swap_scan_slot");
 	mutex_unlock(&swap_scan_slot_mutex);
 }
 
@@ -33,8 +33,8 @@ static void reactivate_swap_scan_slot(void)
 	if (swap_scan_slot_active)
 		return;
 	mutex_lock(&swap_scan_slot_mutex);
-	swap_scan_slot_active = true;
-	pr_err("reactivate_swap_scan_slot");
+	swap_scan_slot_active = false;
+	// pr_err("reactivate_swap_scan_slot");
 	mutex_unlock(&swap_scan_slot_mutex);
 }
 
