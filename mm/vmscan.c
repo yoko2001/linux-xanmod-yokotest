@@ -2048,8 +2048,9 @@ keep_next_time:
 			if (ret){
 				pr_err("folio[%p] enable_swp_entry_remap fail[%d]", folio, ret);
 				if (ret == 1){
-					folio_clear_stalesaved(folio); 
+					// folio_clear_stalesaved(folio); 
 					//we wait for it to get useless, when we get it, it'll be freed
+					// swap_free(entry); //should free by do_swap
 					folio_unlock(folio);
 					continue;
 				} //locked by do_swap_page, it will unlock it

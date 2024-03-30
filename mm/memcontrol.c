@@ -7157,7 +7157,7 @@ static void uncharge_folio(struct folio *folio, struct uncharge_gather *ug)
 
 	if (!memcg){
 		if (folio_test_stalesaved(folio)){
-			pr_err("staled folio [%pK] nr[%ld] fail uncharged to memcg[%d]" ,
+			pr_err("staled folio [%p] nr[%ld] fail uncharged to memcg[%d]" ,
 							folio, nr_pages, mem_cgroup_id(memcg));
 			BUG();
 		}
@@ -7189,7 +7189,7 @@ static void uncharge_folio(struct folio *folio, struct uncharge_gather *ug)
 		if (!mem_cgroup_is_root(memcg)){
 			ug->nr_memory += nr_pages;
 			if (unlikely(folio_test_stalesaved(folio))){
-				pr_err("staled folio [%pK] nr[%ld] uncharged to memcg[%pK]" ,
+				pr_err("staled folio [%p] nr[%ld] uncharged to memcg[%p]" ,
 							folio, nr_pages, memcg);
 				folio_clear_stalesaved(folio);
 				count_memcg_folio_events(folio, SWAP_STALE_SAVE, folio_nr_pages(folio));

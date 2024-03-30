@@ -195,12 +195,12 @@ int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 				}
 				else{
 					entry_state = entry_is_entry_ext_debug(old);
-					if (entry_state > 0){ //swap
+					if (entry_state == 1){ //swap
 						if (shadowp){
 							*shadowp = old;
 						}else{ //
-							pr_err("folio[%p] add to swcache but not freed entry[%lx] ext[%lx]", 
-										folio, entry.val, (unsigned long)old);
+							pr_err("folio[%p] add to sw$ , not freed entry[%lx] ext[%p] addr_spc[%p]idx[%ld]", 
+										folio, entry.val, old, address_space, idx);
 							shadow_entry_free(old);
 							atomic_dec(&ext_count);
 						}
@@ -212,6 +212,9 @@ int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 					else if (-1 == entry_state){
 						pr_err("add_to_swap_cache invalid entry[%lx]->shadow[%p], folio[%p] failed add $", entry.val, old, folio);
 						BUG();
+					}
+					else{
+						; // NULL
 					}
 				}
 			}
@@ -305,7 +308,8 @@ int enable_swp_entry_remap(struct folio* folio, swp_entry_t from_entry, swp_entr
 			VM_BUG_ON_FOLIO(xas.xa_index != idx + i, folio);
 			entry = xas_load(&xas);
 			if (!entry || !folio_test_stalesaved(folio)){
-				pr_err("enable_swp_entry_remap fail [%p] entry[%lx]", folio, from_entry.val);
+				pr_err("enable_swp_entry_remap fail [%p] entry[%lx]stalesaved[%d]", 
+							folio, from_entry.val ,folio_test_stalesaved(folio));
 				goto unlock;
 			}
 			to_entry.val = xa_to_value(entry);
@@ -317,11 +321,18 @@ int enable_swp_entry_remap(struct folio* folio, swp_entry_t from_entry, swp_entr
 				}
 				to_entry_enabled.val = to_entry.val;
 				swp_entry_clear_ext(&to_entry_enabled, 0x1); //we cannot use 0x3 to test if locked
-				if (swp_entry_test_ext(to_entry_enabled)){
+				if (swp_entry_test_ext(to_entry_enabled) & 0x2){ // 0x2 locket this should be returned
 					pr_err("enable_swp_entry_remap fail locked [%p] $[%d] entry[%lx]->entry[%lx]", 
 							folio, folio_test_swapcache(folio), 
 							from_entry.val, to_entry_enabled.val);
-					locked = true;
+					locked = true; 
+					//message has been passed to this place
+					//we should unlock it here, and let do_swap_page do the rest			
+					swp_entry_clear_ext(&to_entry_enabled, 0x2); //we cannot use 0x3 to test if locked
+					pr_err("enable_swp_entry_remap clear locked [%p]ref[%d] $[%d] entry[%lx]->entry[%lx] ", 
+							folio, folio_ref_count(folio), folio_test_swapcache(folio), 
+							from_entry.val, to_entry_enabled.val);	
+					xas_store(&xas, xa_mk_value(to_entry_enabled.val + i));
 					goto unlock;
 				}
 				else{
@@ -859,8 +870,8 @@ void __delete_from_swap_cache_mig(struct folio *folio,
 		xas_next(&xas);
 	}
 	address_space->nrpages -= nr;
-	pr_err("delete mig $ entry[%lx]->folio[%p] shadow[%lx]", 
-				entry.val, folio, (unsigned long)shadow);
+	pr_err("delete mig $ entry[%lx]->folio[%p] shadow[%lx] ref[%d]", 
+				entry.val, folio, (unsigned long)shadow, folio_ref_count(folio));
 
 	__node_stat_mod_folio(folio, NR_FILE_PAGES, -nr);
 	__lruvec_stat_mod_folio(folio, NR_SWAPCACHE, -nr);
@@ -1110,8 +1121,8 @@ void delete_from_swap_cache_mig(struct folio* folio, swp_entry_t entry, bool dec
 	if (dec_count)
 		put_swap_folio(folio, entry_);
 	if (!dec_count && __swap_count(entry_) != 1){
-		pr_err("folio[%p] entry get out of cache mig[%lx]cnt[%d]", 
-				folio, entry_.val, __swap_count(entry_));	
+		pr_err("folio[%p] ref[%d]entry get out of cache mig[%lx]cnt[%d]", 
+				folio, folio_ref_count(folio), entry_.val, __swap_count(entry_));	
 		BUG();	
 	}
 	folio_ref_sub(folio, folio_nr_pages(folio));
@@ -2149,6 +2160,8 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 	// pr_err("swap_vma_readahead fentry[%lx]", fentry.val);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
 	//try do serveral stale entry save here
+	if (!lruvec || !lrugen)
+		goto skip;
 	save_slot_finish = true;
 	entry_saved = 0;
 	saved_entry = get_next_saved_entry(&save_slot_finish);
@@ -2415,9 +2428,8 @@ skip_this_save:
 				}
 				folio = folio_list_wb[i];//lru_to_folio_next(&folio_list_wb);
 				VM_BUG_ON_FOLIO(!folio_test_writeback(folio), folio);
-				
+				pr_err("folio[%p] => saved_folios", folio);
 				list_add(&folio->lru, &lrugen->saved_folios);
-				// pr_err("folio[%p] => saved_folios", folio);
 				trace_add_to_lruvec_saved_folios(lruvec, folio, num_moved);	
 			}
 			spin_unlock_irq(&lruvec->lru_lock);
@@ -2425,6 +2437,7 @@ skip_this_save:
 		else{
 			struct folio* folio = NULL;
 			pr_err("there's no lruvec[%p], unlock all folio in list", lruvec);
+			BUG();
 			for (int i = 0; i < num_folio_list_wb; i++){
 				folio = folio_list_wb[i];
 				folio_unlock(folio);
