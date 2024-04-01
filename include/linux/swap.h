@@ -505,7 +505,6 @@ extern int sysctl_min_slab_ratio;
 #else
 #define node_reclaim_mode 0
 #endif
-
 extern signed short get_fastest_swap_prio(void);
 extern signed short get_slowest_swap_prio(void);
 extern struct swap_info_struct * global_fastest_swap_si(void);
@@ -513,6 +512,12 @@ int add_to_scan_slot(swp_entry_t entry);
 unsigned swap_scan_entries_savior(struct address_space *mapping, 
          struct lruvec * lruvec, pgoff_t start, pgoff_t end, 
 		 int type, int threshold);
+static inline int swap_info_is_fastest(struct swap_info_struct *si){
+	return si->prio == get_fastest_swap_prio();
+}
+static inline int swap_info_is_slowest(struct swap_info_struct *si){
+	return si->prio == get_slowest_swap_prio();
+}
 #ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
 static inline int folio_swapprio_demote(struct folio* folio){
 	if (folio_test_swappriohigh(folio)){

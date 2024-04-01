@@ -3515,6 +3515,7 @@ void free_unref_page(struct page *page, unsigned int order)
 		}	
 	}
 	folio->shadow_ext = NULL;
+	folio_clear_stalesaved(folio);
 #endif
 	/*
 	 * We only track unmovable, reclaimable and movable on pcp lists.
@@ -3583,6 +3584,7 @@ void free_unref_page_list(struct list_head *list)
 			}	
 		}
 		folio->shadow_ext = NULL;
+		folio_clear_stalesaved(folio);
 		// spin_unlock_irq(&shadow_ext_lock);
 #endif
 		/*

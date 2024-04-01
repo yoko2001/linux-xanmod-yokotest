@@ -337,7 +337,7 @@ int enable_swp_entry_remap(struct folio* folio, swp_entry_t from_entry, swp_entr
 				}
 				else{
 					xas_store(&xas, xa_mk_value(to_entry_enabled.val + i));
-					pr_err("enable_swp_entry_remap success [%p]ref[%d] $[%d] entry[%lx]->entry[%lx] ", 
+					pr_err("enable_swp_entry_remap success folio[%p]ref[%d] $[%d] entry[%lx]->entry[%lx] ", 
 							folio, folio_ref_count(folio), folio_test_swapcache(folio), 
 							from_entry.val, to_entry_enabled.val);					
 				}
@@ -1149,7 +1149,7 @@ void clear_shadow_from_swap_cache(int type, unsigned long begin,
 				// pr_err("clear_shadow_from_s [%lx]", old);
 				// spin_lock_irq(&shadow_ext_lock);
 				xas_store(&xas, NULL);
-				shadow_entry_free(old);
+				// shadow_entry_free(old);
 				// spin_unlock_irq(&shadow_ext_lock);
 				continue;
 			}
@@ -1570,7 +1570,10 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 			pr_err("__read_swap_cache_async alloc fail addr[%lx] entry[%lx]", addr, entry.val);
 			return NULL;
 		}
-
+		if (folio->shadow_ext){
+			pr_err("__read_swap_cache_async alloc folio[%p] has shadow[%lx]", folio, folio->shadow_ext);
+			BUG();
+		}
 		/*
 		 * Swap entry may have been freed since our caller observed it.
 		 */
@@ -2259,7 +2262,6 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 			mig_entry = folio_alloc_swap(folio, &tmp);
 			if (!mig_entry.val || (mig_entry.val > LONG_MAX) 
 					|| !data_race(p->flags & SWP_SYNCHRONOUS_IO)){ //have to xa_mk_value
-				ClearPageStaleSaved(page);
 				pr_err("invalide mig_entry[%lx] alloc swap", mig_entry.val);
 				goto fail_page_out;
 			}

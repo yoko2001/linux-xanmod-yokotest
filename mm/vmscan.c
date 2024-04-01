@@ -1524,6 +1524,10 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 			}
 			if (folio_test_stalesaved(folio)){
 				//should skip eviction, because this is a memory pass-through
+				if (!folio->shadow_ext || entry_is_entry_ext(folio->shadow_ext) < 0){
+					pr_err("workingset_eviction folio[%p]->shadow[%p] failing", folio, folio->shadow_ext);
+					BUG();			
+				}
 			}
 			else{
 				shadow = workingset_eviction(folio, target_memcg, swap_level, swap_space_left, shadow_ext, swap);
@@ -1678,10 +1682,9 @@ cannot_free:
 	if (!folio_test_swapcache(folio))
 		spin_unlock(&mapping->host->i_lock);
 	if (shadow_ext){
-		// if (folio->shadow_ext){
-		// 	pr_err("__remove_mapping free folio shadow[%p]->[%lx]", 
-		// 			folio, (unsigned long)folio->shadow_ext);		
-		// }
+		pr_err("__remove_mapping free folio shadow[%p]->[%lx]", 
+					folio, (unsigned long)folio->shadow_ext);		
+
 		shadow_entry_free(shadow_ext);
 		atomic_dec(&ext_count);
 	}
