@@ -95,10 +95,15 @@ void *get_shadow_from_swap_cache(swp_entry_t entry)
 	struct page *page;
 
 	page = xa_load(&address_space->i_pages, idx);
+	if (!page)
+		return page;
 	if (xa_is_value(page))
 		return page;
-	else if (entry_is_entry_ext(page) > 0)
-		return page;		
+	else if (entry_is_entry_ext(page)== 1)
+		return page;
+	else if (entry_is_entry_ext(page) == -1){
+		pr_err("get_shadow_from_swap_cache entry[%lx] a freed page[%p]", entry.val, page);
+	}
 	return NULL;
 }
 
@@ -176,7 +181,7 @@ int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 
 	folio_ref_add(folio, nr);
 	folio_set_swapcache(folio);
-	if (entry_is_entry_ext(folio)){
+	if (entry_is_entry_ext(folio) != 0){
 		pr_err("add_to_swap_cache bad folio[%p]", folio);
 		BUG();
 	}
@@ -199,10 +204,11 @@ int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 						if (shadowp){
 							*shadowp = old;
 						}else{ //
-							pr_err("folio[%p] add to sw$ , not freed entry[%lx] ext[%p] addr_spc[%p]idx[%ld]", 
+							pr_info("[FREE]folio[%p] add to sw$ , not freed entry[%lx] ext[%p] addr_spc[%p]idx[%ld]", 
 										folio, entry.val, old, address_space, idx);
 							shadow_entry_free(old);
 							atomic_dec(&ext_count);
+							// BUG();
 						}
 					}
 					else if (old && 0 == entry_state){
@@ -214,7 +220,8 @@ int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 						BUG();
 					}
 					else{
-						; // NULL
+						pr_err("add_to_swap_cache NULL ext entry[%lx]->shadow[%p], folio[%p] failed add $", entry.val, old, folio);
+						BUG(); // NULL
 					}
 				}
 			}
@@ -551,7 +558,6 @@ unlock:
 	return xas_error(&xas);
 }
 
-extern spinlock_t shadow_ext_lock;
 
 swp_entry_t entry_get_migentry_lock(swp_entry_t ori_swap)
 {
@@ -782,15 +788,15 @@ void __delete_from_swap_cache(struct folio *folio,
 		pr_err("folio[%p] entry[%lx] cnt:%d origin swapcache clearing", 
 					folio, entry.val, __swp_swapcount(entry));
 	}
-	if (unlikely(shadow && !xa_is_value(shadow) && !entry_is_entry_ext(shadow))){
+	if (unlikely(shadow && !xa_is_value(shadow) && entry_is_entry_ext(shadow)!=1)){
 		pr_err("bad shadow $ folio[%p] entry[%lx] shadow[%lx]", folio, entry, shadow);
 		shadow = NULL;
 		BUG();
 	}
 	for (i = 0; i < nr; i++) {
 		void *entry_ = xas_store(&xas, shadow);
-		// if (shadow)
-		// 	pr_err("__delete_s$ folio[%p] entry[%lx] shadow[%lx]", folio, entry, shadow);
+		if (shadow)
+			pr_info("[TRANSFER]__delete_s$ folio[%p]->entry[%lx] shadow[%p]", folio, entry, shadow);
 		VM_BUG_ON_PAGE(entry_ != folio, entry_);
 
 		if (unlikely(entry_ != folio)) {
@@ -856,7 +862,8 @@ void __delete_from_swap_cache_mig(struct folio *folio,
 					xas_store(&xas, shadow);
 					xas_next(&xas);
 					folio->shadow_ext = NULL;
-
+					pr_info("[TRANSFER]__delete_sc_mig folio[%p]->entry[%lx] ext[%lx]", 
+								folio, entry.val, (unsigned long)folio->shadow_ext);
 					continue;
 				}
 				else{
@@ -1133,7 +1140,7 @@ void clear_shadow_from_swap_cache(int type, unsigned long begin,
 				unsigned long end, int free)
 {
 	unsigned long curr = begin;
-	void *old;
+	void *old, *_entry;
 	for (;;) {
 		swp_entry_t entry = swp_entry(type, curr);
 		struct address_space *address_space = swap_address_space(entry);
@@ -1146,14 +1153,16 @@ void clear_shadow_from_swap_cache(int type, unsigned long begin,
 			if (!xa_is_value(old) && entry_is_entry_ext(old) < 1)
 				continue;
 			if (free && old && entry_is_entry_ext(old) == 1){
-				// pr_err("clear_shadow_from_s [%lx]", old);
-				// spin_lock_irq(&shadow_ext_lock);
-				xas_store(&xas, NULL);
-				// shadow_entry_free(old);
-				// spin_unlock_irq(&shadow_ext_lock);
+				pr_info("clear_shadow_from_s [%p] skipped", old);
+				_entry = xas_store(&xas, NULL);
+				if (old != _entry)
+					BUG();
+				shadow_entry_free(old);
 				continue;
 			}
-			xas_store(&xas, NULL);
+			else if (entry_is_entry_ext(old) == 1){
+				pr_info("entry[%lx]clear_shadow_from_s [%p] lost control", entry.val, old);
+			}
 		}
 		xa_unlock_irq(&address_space->i_pages);
 
@@ -1476,15 +1485,18 @@ struct page*__read_swap_cache_async_save(swp_entry_t entry,
 	//now shadow has been used
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 	if(folio && folio->shadow_ext){
-		pr_err("shouldn't have folio[]->shadow_ext", folio);
+		pr_err("shouldn't have folio[%p]->shadow_ext", folio);
 		folio->shadow_ext = NULL;
+		BUG();
 	}
-	if (entry_is_entry_ext(shadow) > 0){
+	if (entry_is_entry_ext(shadow) == 1){
 		folio->shadow_ext = shadow;
+		pr_info("[TRANSFER]read_save entry[%lx]=>folio[%p] ext[%p]", 
+					entry.val, folio, folio->shadow_ext);
 	}
 #else
 	if (entry_is_entry_ext(shadow) > 0){
-		pr_err("__read_swap_cache_async_save free entry[%lx]", (unsigned long)shadow);
+		pr_err("[FREE]__read_swap_cache_async_save free entry[%p]", shadow);
 		shadow_entry_free(shadow);
 		atomic_dec(&ext_count);
 	}
@@ -1571,7 +1583,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 			return NULL;
 		}
 		if (folio->shadow_ext){
-			pr_err("__read_swap_cache_async alloc folio[%p] has shadow[%lx]", folio, folio->shadow_ext);
+			pr_err("__read_swap_cache_async alloc folio[%p] has shadow[%p]", folio, folio->shadow_ext);
 			BUG();
 		}
 		/*
@@ -1652,27 +1664,25 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 
 	//now shadow has been used
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
-	// spin_lock_irq(&shadow_ext_lock);
 	if (folio->shadow_ext){
-		pr_err("folio[%p]->shadowext[%p] shadow[%p]", 
-			folio, folio->shadow_ext, shadow);
 		if (folio->shadow_ext != shadow){
+			pr_err("[FREE]folio[%p]->shadowext[%p] shadow[%p]", 
+			folio, folio->shadow_ext, shadow);
 			shadow_entry_free(folio->shadow_ext);
 		}
 	}
 	folio->shadow_ext = NULL;
-	if (entry_is_entry_ext(shadow) > 0){
+	if (entry_is_entry_ext(shadow) == 1){
 		folio->shadow_ext = shadow;
+		pr_info("[TRANSFER]read_cache entry[%lx]=>folio[%p] ext[%p]", 
+					entry.val, folio, folio->shadow_ext);
 	}
-	// spin_unlock_irq(&shadow_ext_lock);
 #else
-	// spin_lock_irq(&shadow_ext_lock);
 	if (entry_is_entry_ext(shadow) > 0){
-		pr_err("__read_swap_cache_async free entry[%lx]", (unsigned long)shadow);
+		pr_err("[FREE]__read_swap_cache_async free entry[%p]", shadow);
 		shadow_entry_free(shadow);
 		atomic_dec(&ext_count);
 	}
-	// spin_unlock_irq(&shadow_ext_lock);
 #endif
 	/*DJL ADD END*/
 	/* Caller will initiate read into locked folio */

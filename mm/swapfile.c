@@ -1252,6 +1252,7 @@ static void swap_free_cluster(struct swap_info_struct *si, unsigned long idx)
 	free_cluster(si, idx);
 	unlock_cluster(ci);
 	swap_range_free(si, offset, SWAPFILE_CLUSTER, 1);
+	BUG();
 }
 
 int get_swap_pages(int n_goal, swp_entry_t swp_entries[], int entry_size , 
@@ -1930,7 +1931,7 @@ int free_swap_and_cache(swp_entry_t entry)
 	if (non_swap_entry(entry))
 		return 1;
 
-	p = _swap_info_get(entry, true);
+	p = _swap_info_get(entry, false);
 	if (p) {
 		count = __swap_entry_free(p, entry);
 		if (count == SWAP_HAS_CACHE &&
@@ -2143,6 +2144,11 @@ static int unuse_pte(struct vm_area_struct *vma, pmd_t *pmd,
 setpte:
 	set_pte_at(vma->vm_mm, addr, pte, new_pte);
 	swap_free(entry);
+	if (!__swap_count(entry)){
+		pr_err("unuse clear_shadow_from_swap_cache entry[%lx]", entry.val);
+		BUG();
+		clear_shadow_from_swap_cache(swp_swap_info(entry), swp_offset(entry),swp_offset(entry)+1, 1);
+	}
 out:
 	pte_unmap_unlock(pte, ptl);
 	if (page != swapcache) {

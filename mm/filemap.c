@@ -130,7 +130,7 @@ static void page_cache_delete(struct address_space *mapping,
 {
 	XA_STATE(xas, &mapping->i_pages, folio->index);
 	long nr = 1;
-
+	void*entry_;
 	mapping_set_update(&xas, mapping);
 
 	/* hugetlb pages are represented by a single entry in the xarray */
@@ -141,7 +141,10 @@ static void page_cache_delete(struct address_space *mapping,
 
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 
-	xas_store(&xas, shadow);
+	entry_ = xas_store(&xas, shadow);
+	if (entry_is_entry_ext(entry_) == 1){
+		pr_err("page_cache_delete miss bug[%p]", entry_);
+	}
 	xas_init_marks(&xas);
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 	VM_BUG_ON_FOLIO(folio->shadow_ext, folio);
@@ -287,7 +290,7 @@ static void page_cache_delete_batch(struct address_space *mapping,
 	long total_pages = 0;
 	int i = 0;
 	struct folio *folio;
-
+	void* entry_;
 	mapping_set_update(&xas, mapping);
 	xas_for_each(&xas, folio, ULONG_MAX) {
 		if (i >= folio_batch_count(fbatch))
@@ -315,7 +318,10 @@ static void page_cache_delete_batch(struct address_space *mapping,
 		/* Leave folio->index set: truncation lookup relies on it */
 
 		i++;
-		xas_store(&xas, NULL);
+		entry_ = xas_store(&xas, NULL);
+		if (entry_is_entry_ext(entry_) == 1){
+			pr_err("page_cache_delete miss bug[%p]", entry_);
+		}
 		total_pages += folio_nr_pages(folio);
 	}
 	mapping->nrpages -= total_pages;
@@ -860,7 +866,7 @@ noinline int __filemap_add_folio(struct address_space *mapping,
 	int huge = folio_test_hugetlb(folio);
 	bool charged = false;
 	long nr = 1;
-
+	void* entry_;
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 	VM_BUG_ON_FOLIO(folio_test_swapbacked(folio), folio);
 	mapping_set_update(&xas, mapping);
@@ -919,7 +925,10 @@ noinline int __filemap_add_folio(struct address_space *mapping,
 			}
 		}
 
-		xas_store(&xas, folio);
+		entry_ = xas_store(&xas, folio);
+		if (entry_is_entry_ext(entry_) == 1){
+			pr_err("page_cache_delete miss bug[%p]", entry_);
+		}
 		if (xas_error(&xas))
 			goto unlock;
 
@@ -975,6 +984,10 @@ int filemap_add_folio(struct address_space *mapping, struct folio *folio,
 		WARN_ON_ONCE(folio_test_active(folio));
 		if (!(gfp & __GFP_WRITE) && shadow)
 			workingset_refault(folio, shadow, &temp, 0, -2, entry);
+		if (entry_is_entry_ext(shadow) == 1){
+			pr_err("[FREE]__filemap_add_folio shadow[%p]", shadow);
+			shadow_entry_free(shadow);
+		}
 		folio_add_lru(folio);
 	}
 	return ret;
@@ -2081,7 +2094,7 @@ struct folio *__syncio_swapcache_get_folio(struct address_space *mapping, pgoff_
 		if (folio_test_stalesaved(folio) && is_stale_saved_folio)
 			*is_stale_saved_folio = true;
 		if (!pfn_valid(folio_pfn(folio))){
-			pr_err("__syncio_swapcache_get_folio got invalid entry[%lx]", entry.val);
+			pr_err("__syncio_swapcache_get_folio got invalid entry[%lx], folio[%p]", entry.val, folio);
 			BUG();
 		}
 		// pr_err("__syncio_swapcache_get_folio valid folio[%lx]", folio);

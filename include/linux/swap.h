@@ -393,7 +393,7 @@ static inline struct shadow_entry* shadow_entry_alloc(void){
 	}
 	entry_ext = kmem_cache_alloc(get_shadow_entry_cache(), GFP_NOWAIT);// GFP_ATOMIC);
 	if (entry_ext){
-		entry_ext->magic = (unsigned long)entry_ext & 0xFFFFFFFF;
+		WRITE_ONCE(entry_ext->magic, (unsigned long)READ_ONCE(entry_ext) & 0xFFFFFFFF);
 		entry_ext->shadow = NULL;
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 		for (int i = 0; i < SE_HIST_SIZE; i++){
@@ -408,11 +408,11 @@ static inline void shadow_entry_free(struct shadow_entry* entry_ext){
 	if (unlikely(!entry_ext))
 		return;
 	if (get_shadow_entry_cache()){
-		if (entry_ext->magic == 0xFFFFFFFF){//freed already
+		if (READ_ONCE(entry_ext->magic) == 0xFFFFFFFF){//freed already
 			pr_err("shadow_entry_free refreed[%lx]", (unsigned long)entry_ext);
 			return;
 		}
-		entry_ext->magic = 0xFFFFFFFF;
+		WRITE_ONCE(entry_ext->magic, 0xFFFFFFFF);
 		if (((unsigned long)entry_ext & 0xFFFFFFFF) == 0xFFFFFFFF){
 			pr_err("bad shadow entry addr");
 			BUG();

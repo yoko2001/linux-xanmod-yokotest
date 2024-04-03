@@ -3809,13 +3809,13 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
  		page = folio_file_page(folio, swp_offset(entry));
 		count_memcg_event_mm(vma->vm_mm, SWAPIN_FROM_SWAPCACHE);
 		if (page_private(page) != entry.val){
-			// BUG();
 			pr_info("folio[%p]stale[%d] private[%lx] entry[%lx]swapcache hit $[%d] private mismatch", 
 					folio, folio_test_stalesaved(folio),  
 					page_private(page), entry.val, folio_test_swapcache(folio));
-			if (!folio_test_stalesaved(folio)){
-				BUG();
-			}
+			// BUG();
+			// if (!folio_test_stalesaved(folio)){
+			// 	BUG();
+			// }
 			// // BUG();
 			// if (entry_is_entry_ext(folio) == 0){
 			// 	folio = NULL;
@@ -3917,8 +3917,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				mem_cgroup_swapin_uncharge_swap(entry);
 
 				//erase it or not?
-				shadow = get_shadow_from_swap_cache(entry); 
-				//get_shadow_from_swap_cache_erase(entry);//get_shadow_from_swap_cache(entry);
+				shadow = get_shadow_from_swap_cache_erase(entry);//get_shadow_from_swap_cache(entry);
 				/*DJL ADD BEGIN*/
 				if (swap_info_is_fastest(si))
 					swap_level = 1;
@@ -3948,11 +3947,10 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 						rf_dist_ts >= MAX_NR_GENS ? rf_dist_ts - 4 : rf_dist_ts, 
 						swap_level, rf_dist_ts >= MAX_NR_GENS ? 0 : 1);
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
-					// spin_lock_irq(&shadow_ext_lock);
 					if (entry_is_entry_ext(shadow) == 1){
 						folio->shadow_ext = shadow;
+						pr_info("[TRANSFER]do_swap_page  entry[%lx]->folio[%p] ext[%p]", entry.val, folio, shadow);
 					}
-					// spin_unlock_irq(&shadow_ext_lock);
 #endif				
 				}
 				/*DJL ADD END*/
@@ -4239,7 +4237,10 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 					folio_test_stalesaved(folio), folio_ref_count(folio));	
 			}
 			else{ //read from sync IO
-				pr_err("read from sync IO, impossible");
+				pr_err("read from sync IO, impossible entry[%lx]->folio[%p] stale wb[%d]sw$[%d] stale[%d] refcount[%d]", 
+							orientry.val, folio,  folio_test_stalesaved(folio), 
+							folio_test_writeback(folio), folio_test_swapcache(folio), 
+							folio_test_stalesaved(folio), folio_ref_count(folio));
 				BUG();
 			}
 		}

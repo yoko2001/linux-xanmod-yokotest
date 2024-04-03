@@ -118,7 +118,7 @@ static int invalidate_exceptional_entry(struct address_space *mapping,
 		return 1;
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 	if (entry_is_entry_ext(entry) > 0){
-		pr_err("invalidate_exceptional_entry");
+		pr_err("[FREE]invalidate_exceptional_entry [%p]", entry);
 		shadow_entry_free(entry);
 	}
 #endif
