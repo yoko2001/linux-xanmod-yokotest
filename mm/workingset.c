@@ -556,27 +556,47 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 		dist = ((min_seq % 65535) - lasthist);
 		dist_ret = dist + MAX_NR_GENS;
 	}
+	swp_entry_t temp_entry;
+	temp_entry.val = entry;
+	struct swap_info_struct* info = swp_swap_info(temp_entry);
+	if(!memcg){goto skip_count;}
 	switch(dist){
 		case 0: 
 			count_memcg_events(memcg, WORKINGSET_REFAULT_DIST0, 1);
+			if (info->prio >= 100){ // -2 1005
+				count_memcg_events(memcg ,WORKINGSET_REFAULT_FAST_DIST0, 1);
+			}
 			break;
 		case 1: 
 			count_memcg_events(memcg, WORKINGSET_REFAULT_DIST1, 1);
+			if (info->prio >= 100){ // -2 1005
+				count_memcg_events(memcg ,WORKINGSET_REFAULT_FAST_DIST1, 1);
+			}
 			break;
 		case 2: 
 		case 3: 
 			count_memcg_events(memcg, WORKINGSET_REFAULT_DIST2, 1);
+			if (info->prio >= 100){ // -2 1005
+				count_memcg_events(memcg ,WORKINGSET_REFAULT_FAST_DIST2, 1);
+			}
 			break;
 		case 4: 
 		case 5: 
 		case 6: 
 		case 7: 
 			count_memcg_events(memcg, WORKINGSET_REFAULT_DIST3, 1);
+			if (info->prio >= 100){ // -2 1005
+				count_memcg_events(memcg ,WORKINGSET_REFAULT_FAST_DIST3, 1);
+			}
 			break;
 		default:
 			count_memcg_events(memcg, WORKINGSET_REFAULT_DIST4, 1);
+			if (info->prio >= 100){ // -2 1005
+				count_memcg_events(memcg ,WORKINGSET_REFAULT_FAST_DIST4, 1);
+			}
 			break;
 	};
+skip_count:
 	/*DJL ADD END*/
 	/*DJL ADD BEGIN*/
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY

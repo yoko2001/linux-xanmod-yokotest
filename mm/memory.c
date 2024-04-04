@@ -3808,6 +3808,9 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	if (folio){
  		page = folio_file_page(folio, swp_offset(entry));
 		count_memcg_event_mm(vma->vm_mm, SWAPIN_FROM_SWAPCACHE);
+		if (!(si->flags & SWP_SYNCHRONOUS_IO)){
+			count_memcg_event_mm(vma->vm_mm, SWAPIN_FROM_SWAPCACHE_SLOW);
+		}
 		if (page_private(page) != entry.val){
 			pr_info("folio[%p]stale[%d] private[%lx] entry[%lx]swapcache hit $[%d] private mismatch", 
 					folio, folio_test_stalesaved(folio),  
@@ -4006,6 +4009,12 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 							folio_swapped(folio), migentry.val);
 				}
 				swap_readpage(page, true, NULL);
+				struct swap_info_struct* info = page_swap_info((folio_page(folio, 0)));
+				if (info->prio >= 100){ // -2 1005
+					count_memcg_folio_events(folio ,SWAP_FREE_FAST, folio_nr_pages(folio));
+				}else{
+					count_memcg_folio_events(folio ,SWAP_FREE_SLOW, folio_nr_pages(folio));
+				}
 				if (migentry.val){
 					pr_err("pf4 swap_readpage entry[%lx]->folio[%p]wb[%d]$[%d]swped[%d] migentry[%lx]", 
 							entry.val, page, folio_test_writeback(folio), folio_test_swapcache(folio), 
@@ -4118,6 +4127,14 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		ret = VM_FAULT_MAJOR;
 		count_vm_event(PGMAJFAULT);
 		count_memcg_event_mm(vma->vm_mm, PGMAJFAULT);
+		struct swap_info_struct* info = swp_swap_info(entry);
+		if (info->prio >= 100){ // -2 1005
+			// pr_err("PG_FAST");
+			// BUG();
+			count_vm_event(PGMAJFAULT_FAST);
+			count_memcg_event_mm(vma->vm_mm, PGMAJFAULT_FAST);
+		}
+		// TODO
 	} else if (PageHWPoison(page)) {
 		/*
 		 * hwpoisoned dirty swapcache pages are kept for killing

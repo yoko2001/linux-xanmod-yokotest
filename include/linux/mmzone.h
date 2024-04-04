@@ -612,6 +612,42 @@ static inline void lru_gen_soft_reclaim(struct lruvec *lruvec)
 
 #endif /* CONFIG_LRU_GEN */
 
+#ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP
+
+struct dec_node
+{
+    short threshold_value;
+    char* left;
+    char* right;
+    int label;
+    int which_feature;
+	int name;
+} ;
+struct dec_tree
+{
+    char* root;
+    int deep;
+};
+
+
+#pragma pack(1)
+struct dec_feature
+{
+    short pid;
+    short space_left;
+    short swapprio_b;
+    short readahead_b;
+    short seq0;
+    short seq1;
+    short seq2;
+    short seq3;
+    short tier;
+};
+#pragma pack()	
+
+#endif
+
+
 struct lruvec {
 	struct list_head		lists[NR_LRU_LISTS];
 	/* per lruvec lru_lock for memcg */
@@ -638,6 +674,10 @@ struct lruvec {
 #endif
 #ifdef CONFIG_MEMCG
 	struct pglist_data *pgdat;
+#endif
+#ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP
+	struct dec_tree* lru_dec_tree;
+	int (*predict)(struct dec_tree*, short*, struct folio*);
 #endif
 };
 

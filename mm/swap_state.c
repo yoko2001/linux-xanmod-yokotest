@@ -50,7 +50,7 @@ static unsigned int nr_swapper_spaces_remap[MAX_SWAPFILES] __read_mostly;
 
 static bool enable_vma_readahead __read_mostly = true;
 /*DJL ADD BEGIN*/
-static bool enable_vma_readahead_boost __read_mostly = true;//controller of boost
+static bool enable_vma_readahead_boost __read_mostly = false;//controller of boost
 static bool enable_ra_fast_evict __read_mostly = false;//controller of boost
 bool swap_scan_enabled_sysfs __read_mostly = true;
 /*DJL ADD END*/
@@ -1741,6 +1741,7 @@ struct page *read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 		si = get_swap_device(entry);
 		if (get_fastest_swap_prio() == si->prio){
 			count_memcg_event_mm(vma->vm_mm, SWAPIN_FAST);
+			pr_err("read_swap_cache_async entry[%lx]", entry.val);
 		} else if (get_slowest_swap_prio() == si->prio){
 			count_memcg_event_mm(vma->vm_mm, SWAPIN_SLOW);
 		} else{
@@ -1885,6 +1886,8 @@ struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t gfp_mask,
 	struct vm_area_struct *vma = vmf->vma;
 	unsigned long addr = vmf->address;
 	int try_free;
+	pr_err("swap_cluster_readahead");
+	BUG();
 
 	mask = swapin_nr_pages(offset) - 1;
 	if (!mask)
@@ -1995,7 +1998,7 @@ static void swap_ra_info(struct vm_fault *vmf,
 	/*DJL ADD BEGIN*/
 	// max_win = 1 << min_t(unsigned int, READ_ONCE(page_cluster),
 	// 		     SWAP_RA_ORDER_CEILING);
-	max_win = 1 << min_t(unsigned int, READ_ONCE(page_cluster) + READ_ONCE(ra_boost_order),
+	max_win = 1 << min_t(unsigned int, READ_ONCE(page_cluster),// + READ_ONCE(ra_boost_order),
 			     SWAP_RA_ORDER_CEILING + SWAP_RA_ORDER_CEILING_BOOST);
 	/*DJL ADD END*/
 
@@ -2125,7 +2128,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 		if (unlikely(non_swap_entry(entry)))
 			continue;
 		si = swp_swap_info(entry);
-		if (si->flags & SWP_SYNCHRONOUS_IO){ // block all IOs
+		if (data_race(si->flags & SWP_SYNCHRONOUS_IO)){ // block all IOs
 			continue;
 		}
 		/*DJL ADD BEGIN*/

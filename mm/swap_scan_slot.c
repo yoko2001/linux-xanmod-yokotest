@@ -46,7 +46,7 @@ void check_swap_scan_active(struct swap_info_struct *si, long left, long total)
 		return;
 	//check if fast swap low, use scan
 	if (left * THRESHOLD_ACTIVATE_SWAP_SCAN_SLOT < total){
-		reactivate_swap_scan_slot();
+		deactivate_swap_scan_slot();
 		trace_swap_scan_change_state(1, left, total);
 	}
 	//check if slow swap high, cancel scan
