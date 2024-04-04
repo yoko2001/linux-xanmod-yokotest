@@ -461,77 +461,77 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space)
 	// 	is_first = 0;
 	// 	printk(KERN_INFO "CHANGE IS FIRST\n");
 	// }
-	// struct dec_feature features;
-	// if (entry_is_entry_ext(folio->shadow_ext)){
+	struct dec_feature features;
+	if (entry_is_entry_ext(folio->shadow_ext) == 1){
 		
-	// 	features.pid = 0;
-	// 	features.space_left = cache->fast_left;
-	// 	features.swapprio_b = cache->prio_fast;
-	// 	features.readahead_b = folio_test_readahead(folio);
-	// 	features.seq0 = ((struct shadow_entry*)(folio->shadow_ext))->hist_ts[0];
-	// 	features.seq1 = ((struct shadow_entry*)(folio->shadow_ext))->hist_ts[1];
-	// 	features.seq2 = ((struct shadow_entry*)(folio->shadow_ext))->hist_ts[2];
-	// 	if(features.seq0 != 0 && features.seq1 == 0){
-	// 		count_memcg_folio_events(folio, HIS_NUM_1, 1);
-	// 	}
-	// 	if(features.seq0 != 0 && features.seq1 != 0 && features.seq2 == 0){
-	// 		count_memcg_folio_events(folio, HIS_NUM_2, 1);
-	// 	}
-	// 	if(features.seq0 != 0 && features.seq1 != 0 && features.seq2 != 0){
-	// 		count_memcg_folio_events(folio, HIS_NUM_3, 1);
-	// 	}
-	// 	features.seq3 = 0;
-	// 	features.tier = 0;
-	// 	if(features.seq2 == 0 && features.seq1 == 0){
-	// 		features.seq0 = 65535;
-	// 		features.seq1 = 65535;
-	// 	}
-	// 	else if(features.seq1 != 0 && features.seq2 == 0){
-	// 		features.seq0 = features.seq0 - features.seq1;
-	// 		features.seq1 = 65535;
-	// 	}else{
-	// 		features.seq0 = features.seq0 - features.seq1;
-	// 		features.seq1 = features.seq1 - features.seq2;
-	// 	}
-	// 	struct lruvec* temp_lruvec;
-	// 	temp_lruvec = folio_lruvec(folio);
-	// 	dec_tree_result = temp_lruvec->predict(temp_lruvec->lru_dec_tree, (short*)(&features), folio);
-	// 	if(dec_tree_result == 1){
-	// 		count_memcg_folio_events(folio, PREDICT_FAST, 1);
-	// 	}else if(dec_tree_result == 0){
-	// 		count_memcg_folio_events(folio, PREDICT_SLOW, 1);
-	// 	}
-	// 	count_memcg_folio_events(folio, WI_TREE, 1);
-	// 	// if (features.seq0 <= 15){
-	// 	// 	dec_tree_result = 1;
-	// 	// }else{
-	// 	// 	dec_tree_result = 0;
-	// 	// }
-	// 	// int i;
-	// 	// if (cache->fast_left != 0){
-	// 	// 	printk(KERN_INFO "space_left:%hd \n", features.space_left);
-	// 	// 	printk(KERN_INFO "space_left:%hd \n", cache->fast_left);
-	// 	// 	printk(KERN_INFO "seq0:%hd \n", features.seq0);
-	// 	// 	printk(KERN_INFO "seq1:%hd \n", features.seq1);
-	// 	// 	printk(KERN_INFO "seq2:%hd \n", features.seq2);
-	// 	// 	printk(KERN_INFO "Tree predict ok in kernel 2024-3-15, result:%d\n",dec_tree_result);
-	// 	// 	printk(KERN_INFO "\n");
-	// 	// }
+		features.pid = 0;
+		features.space_left = cache->fast_left;
+		features.swapprio_b = cache->prio_fast;
+		features.readahead_b = folio_test_readahead(folio);
+		features.seq0 = ((struct shadow_entry*)(folio->shadow_ext))->hist_ts[0];
+		features.seq1 = ((struct shadow_entry*)(folio->shadow_ext))->hist_ts[1];
+		features.seq2 = ((struct shadow_entry*)(folio->shadow_ext))->hist_ts[2];
+		if(features.seq0 != 0 && features.seq1 == 0){
+			count_memcg_folio_events(folio, HIS_NUM_1, 1);
+		}
+		if(features.seq0 != 0 && features.seq1 != 0 && features.seq2 == 0){
+			count_memcg_folio_events(folio, HIS_NUM_2, 1);
+		}
+		if(features.seq0 != 0 && features.seq1 != 0 && features.seq2 != 0){
+			count_memcg_folio_events(folio, HIS_NUM_3, 1);
+		}
+		features.seq3 = 0;
+		features.tier = 0;
+		if(features.seq2 == 0 && features.seq1 == 0){
+			features.seq0 = 65535;
+			features.seq1 = 65535;
+		}
+		else if(features.seq1 != 0 && features.seq2 == 0){
+			features.seq0 = features.seq0 - features.seq1;
+			features.seq1 = 65535;
+		}else{
+			features.seq0 = features.seq0 - features.seq1;
+			features.seq1 = features.seq1 - features.seq2;
+		}
+		struct lruvec* temp_lruvec;
+		temp_lruvec = folio_lruvec(folio);
+		dec_tree_result = temp_lruvec->predict(temp_lruvec->lru_dec_tree, (short*)(&features), folio);
+		if(dec_tree_result == 1){
+			count_memcg_folio_events(folio, PREDICT_FAST, 1);
+		}else if(dec_tree_result == 0){
+			count_memcg_folio_events(folio, PREDICT_SLOW, 1);
+		}
+		count_memcg_folio_events(folio, WI_TREE, 1);
+		// if (features.seq0 <= 10){
+		// 	dec_tree_result = 1;
+		// }else{
+		// 	dec_tree_result = 0;
+		// }
+		// int i;
+		// if (cache->fast_left != 0){
+		// 	printk(KERN_INFO "space_left:%hd \n", features.space_left);
+		// 	printk(KERN_INFO "space_left:%hd \n", cache->fast_left);
+		// 	printk(KERN_INFO "seq0:%hd \n", features.seq0);
+		// 	printk(KERN_INFO "seq1:%hd \n", features.seq1);
+		// 	printk(KERN_INFO "seq2:%hd \n", features.seq2);
+		// 	printk(KERN_INFO "Tree predict ok in kernel 2024-3-15, result:%d\n",dec_tree_result);
+		// 	printk(KERN_INFO "\n");
+		// }
 		
-	// }else{
-	// 	// default swap out to fast dev
-	// 	count_memcg_folio_events(folio, WO_TREE, 1);
-	// 	if (cache->fast_left >= 1638*4){
-	// 		dec_tree_result = 1;
-	// 	}else{
-	// 		dec_tree_result = 0;
-	// 	}
-	// 	if(is_first == 1){
-	// 		dec_tree_result = 1;
-	// 		is_first = 0;
-	// 	}
-	// 	// dec_tree_result = 1;
-	// }
+	}else{
+		// default swap out to fast dev
+		count_memcg_folio_events(folio, WO_TREE, 1);
+		if (cache->fast_left >= 819*6){
+			dec_tree_result = 1;
+		}else{
+			dec_tree_result = 0;
+		}
+		if(is_first == 1){
+			dec_tree_result = 1;
+			is_first = 0;
+		}
+		dec_tree_result = 0;
+	}
 #endif
 #ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP
 	dec_tree_result = 1;

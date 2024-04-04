@@ -5329,6 +5329,7 @@ int search_tree(struct dec_node* root, short* features, struct folio* folio){
 
 int predict(struct dec_tree* lru_dec_tree, short* features, struct folio* folio){
     // printk(KERN_INFO "predicting\n");
+	// pr_err("in predict !\n");
     return search_tree((struct dec_node*)lru_dec_tree->root, features, folio);
 }
 
@@ -5339,7 +5340,7 @@ struct dec_tree* tree_init(struct dec_tree* lru_dec_tree){
     lru_dec_tree->root = (char*)root;
     lru_dec_tree->deep = 5;
 	// 10% of fast_dev
-    root->threshold_value = 1638*4;
+    root->threshold_value = 819*9;
     root->label = 0;
     root->which_feature = space_left;
 
@@ -5372,7 +5373,7 @@ struct dec_tree* tree_init(struct dec_tree* lru_dec_tree){
 
     // right2
     struct dec_node* right2 = creat_node();
-    right2->threshold_value = 15;
+    right2->threshold_value = 10;
     right2->label = 0;
     right2->which_feature = seq0;
     set_right(left1, right2);
@@ -5389,7 +5390,7 @@ struct dec_tree* tree_init(struct dec_tree* lru_dec_tree){
 
     // right3
     struct dec_node* right3 = creat_node();
-    right3->threshold_value = 40;
+    right3->threshold_value = 30;
     right3->label = 1;
     right3->which_feature = seq1;
     set_right(right1, right3);
@@ -5414,7 +5415,7 @@ struct dec_tree* tree_init(struct dec_tree* lru_dec_tree){
 
     // left5 
     struct dec_node* left5 = creat_node();
-    left5->threshold_value = 25;
+    left5->threshold_value = 15;
     left5->label = 1;
     left5->which_feature = seq1;
     set_left(right2, left5);
