@@ -795,8 +795,8 @@ void __delete_from_swap_cache(struct folio *folio,
 	}
 	for (i = 0; i < nr; i++) {
 		void *entry_ = xas_store(&xas, shadow);
-		if (shadow)
-			pr_info("[TRANSFER]__delete_s$ folio[%p]->entry[%lx] shadow[%p]", folio, entry, shadow);
+		// if (shadow)
+		// 	pr_info("[TRANSFER]__delete_s$ folio[%p]->entry[%lx] shadow[%p]", folio, entry, shadow);
 		VM_BUG_ON_PAGE(entry_ != folio, entry_);
 
 		if (unlikely(entry_ != folio)) {
@@ -1153,7 +1153,7 @@ void clear_shadow_from_swap_cache(int type, unsigned long begin,
 			if (!xa_is_value(old) && entry_is_entry_ext(old) < 1)
 				continue;
 			if (free && old && entry_is_entry_ext(old) == 1){
-				pr_info("clear_shadow_from_s [%p] skipped", old);
+				// pr_info("clear_shadow_from_s [%p] skipped", old);
 				_entry = xas_store(&xas, NULL);
 				if (old != _entry)
 					BUG();
@@ -1491,8 +1491,8 @@ struct page*__read_swap_cache_async_save(swp_entry_t entry,
 	}
 	if (entry_is_entry_ext(shadow) == 1){
 		folio->shadow_ext = shadow;
-		pr_info("[TRANSFER]read_save entry[%lx]=>folio[%p] ext[%p]", 
-					entry.val, folio, folio->shadow_ext);
+		// pr_info("[TRANSFER]read_save entry[%lx]=>folio[%p] ext[%p]", 
+		// 			entry.val, folio, folio->shadow_ext);
 	}
 #else
 	if (entry_is_entry_ext(shadow) > 0){
@@ -1674,8 +1674,8 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 	folio->shadow_ext = NULL;
 	if (entry_is_entry_ext(shadow) == 1){
 		folio->shadow_ext = shadow;
-		pr_info("[TRANSFER]read_cache entry[%lx]=>folio[%p] ext[%p]", 
-					entry.val, folio, folio->shadow_ext);
+		// pr_info("[TRANSFER]read_cache entry[%lx]=>folio[%p] ext[%p]", 
+		// 			entry.val, folio, folio->shadow_ext);
 	}
 #else
 	if (entry_is_entry_ext(shadow) > 0){

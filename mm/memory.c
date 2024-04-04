@@ -3949,7 +3949,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 					if (entry_is_entry_ext(shadow) == 1){
 						folio->shadow_ext = shadow;
-						pr_info("[TRANSFER]do_swap_page  entry[%lx]->folio[%p] ext[%p]", entry.val, folio, shadow);
+						// pr_info("[TRANSFER]do_swap_page  entry[%lx]->folio[%p] ext[%p]", entry.val, folio, shadow);
 					}
 #endif				
 				}
