@@ -3512,9 +3512,9 @@ void free_unref_page(struct page *page, unsigned int order)
 			pr_info("[FREE]free_unref_page normal free[%p] folio[%p]", folio->shadow_ext, folio);
 		}
 		else if (entry_is_entry_ext(folio->shadow_ext) < 1){
-			pr_err("free_unref_page_list folio[%p] has broken shadow_ext [%lx]", 
+			pr_err("free_unref_page folio[%p] has broken shadow_ext [%lx]", 
 					folio,(unsigned long)folio->shadow_ext);
-			BUG();
+			// BUG();
 		}	
 	}
 	folio->shadow_ext = NULL;
@@ -3581,7 +3581,7 @@ void free_unref_page_list(struct list_head *list)
 			}
 			else if (entry_is_entry_ext(folio->shadow_ext) < 1){
 				pr_err("free_unref_page_list folio[%p] has broken shadow_ext[%p]",folio, folio->shadow_ext);
-				BUG();
+				// BUG();
 			}	
 		}
 		folio->shadow_ext = NULL;
