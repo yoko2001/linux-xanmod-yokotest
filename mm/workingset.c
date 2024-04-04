@@ -559,7 +559,13 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 	swp_entry_t temp_entry;
 	temp_entry.val = entry;
 	struct swap_info_struct* info = swp_swap_info(temp_entry);
-	if(!memcg){goto skip_count;}
+	if(!memcg || entry==(unsigned long)-1)
+		goto skip_count;
+	if (!info){
+		pr_err("entry[%lx] err folio[%p]", temp_entry.val, folio);
+		goto skip_count;
+	}
+
 	switch(dist){
 		case 0: 
 			count_memcg_events(memcg, WORKINGSET_REFAULT_DIST0, 1);
@@ -600,19 +606,19 @@ skip_count:
 	/*DJL ADD END*/
 	/*DJL ADD BEGIN*/
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
-	if (shadow && (entry_is_entry_ext(shadow) > 0))
+	if (shadow && (entry_is_entry_ext(shadow) == 1))
 		trace_folio_ws_chg_se(folio, va, (unsigned short)memcg_id, token, refs, 1, swap_level, -2, shadow, entry);
 	else
 		trace_folio_ws_chg(folio, va,  pgdat, (unsigned short)memcg_id, token, refs, 1, swap_level, -2, entry);
 #else
 	trace_folio_ws_chg(folio, va,  pgdat, (unsigned short)memcg_id, token, refs, 1, swap_level, -2, entry);
-#endif
+#endif /*CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY*/
 	/*DJL ADD END*/
 #ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
 	// folio_set_swappriohigh(folio);
 	
 	*try_free_entry = dist_ret;
-#endif
+#endif /*CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC*/
 	if (dist <= 3){
 		folio_swapprio_promote(folio);
 		if (folio_test_swappriolow(folio))

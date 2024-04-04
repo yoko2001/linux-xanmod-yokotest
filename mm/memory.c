@@ -4387,7 +4387,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	if (invalid_remap || valid_remap)	
 		try_free_entry = 1;//force free, no excuse
 	else
-		try_free_entry = 0;/
+		try_free_entry = 0;
 #endif
 	//first is valid_remap && try_to_free
 	if (valid_remap || invalid_remap){
