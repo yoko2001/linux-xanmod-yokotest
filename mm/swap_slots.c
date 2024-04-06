@@ -404,7 +404,7 @@ direct_free:
 
 int is_first = 1;
 
-swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space)
+swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_slow)
 {
 	swp_entry_t entry;
 	struct swap_slots_cache *cache;
@@ -534,7 +534,10 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space)
 	}
 #endif
 #ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP
-	dec_tree_result = 1;
+	if (force_slow)
+		dec_tree_result = 0;
+	else	
+		dec_tree_result = 1;
 	if (dec_tree_result == 0){
 #else
 	if (folio_test_swappriolow(folio)){

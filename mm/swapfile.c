@@ -2417,7 +2417,8 @@ void swap_shadow_scan_next(struct swap_info_struct * si, struct lruvec * lruvec,
 	mapping = swap_address_space(entry);
 
 	*scanned = swap_scan_entries_savior(mapping, lruvec, start, end, type, threshold);
-	pr_info("swap_scan_entries_savior called scanned[%lu]", *scanned);
+	pr_err("swap_scan_entries_savior called scanned[%lu]->memcg[%d]", 
+			*scanned, mem_cgroup_id(lruvec_memcg(lruvec)));
 	trace_swap_shadow_scan_next(start, end, *scanned, mem_cgroup_id(lruvec_memcg(lruvec)));
 
 	if (unlikely(si->max == end)){

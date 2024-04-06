@@ -1524,10 +1524,10 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 			}
 			if (folio_test_stalesaved(folio)){
 				//should skip eviction, because this is a memory pass-through
-				if (!folio->shadow_ext || entry_is_entry_ext(folio->shadow_ext) < 0){
-					pr_err("workingset_eviction folio[%p]->shadow[%p] failing", folio, folio->shadow_ext);
-					BUG();			
-				}
+				// if (entry_is_entry_ext(folio->shadow_ext) < 0){
+				// 	pr_err("workingset_eviction folio[%p]->shadow[%p] failing", folio, folio->shadow_ext);
+				// 	BUG();			
+				// }
 			}
 			else{
 				shadow = workingset_eviction(folio, target_memcg, swap_level, swap_space_left, shadow_ext, swap);
@@ -6115,10 +6115,10 @@ static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *
 
 	blk_finish_plug(&plug);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
-	if (current_is_kswapd()){
-		if (pgdat->prio_lruvec)
-			swap_scan_savior(sc, pgdat->prio_lruvec);
-	}
+	// if (current_is_kswapd()){
+	// 	if (pgdat->prio_lruvec)
+	// 		swap_scan_savior(sc, pgdat->prio_lruvec);
+	// }
 #endif
 done:
 	/* kswapd should never fail */

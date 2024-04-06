@@ -46,7 +46,7 @@ void check_swap_scan_active(struct swap_info_struct *si, long left, long total)
 		return;
 	//check if fast swap low, use scan
 	if (left * THRESHOLD_ACTIVATE_SWAP_SCAN_SLOT < total){
-		deactivate_swap_scan_slot();
+		reactivate_swap_scan_slot();
 		trace_swap_scan_change_state(1, left, total);
 	}
 	//check if slow swap high, cancel scan
@@ -194,6 +194,8 @@ swp_entry_t get_next_saved_entry(bool* finished){
 	if (non_swap_entry(entry)){
 		pr_err("returning bad entry [%d/%d]", cache->cur, cache->nr);
 		BUG();
+	}else{
+		pr_err("get_next_saved_entry return entry[%lx]", entry.val);
 	}
 	return entry;
 } 
@@ -210,6 +212,9 @@ int add_to_scan_slot(swp_entry_t entry)
 		spin_lock_irq(&cache->scan_lock);
 		if (!use_swap_scan_slot || !cache->slots){
 			spin_unlock_irq(&cache->scan_lock);
+			if (cache->slots)
+				pr_err("add_to_scan_slot stopped by use_swap_scan_slot[%d]enable[%d]sysfs[%d]", 
+							use_swap_scan_slot, swap_scan_slot_enabled, swap_scan_enabled_sysfs);
 			goto fail_add;
 		}
 		if (unlikely(non_swap_entry(entry))){
@@ -227,6 +232,7 @@ int add_to_scan_slot(swp_entry_t entry)
 
 			cache->cur = 0; //read from start
 			cache->scan_stop = true;
+			pr_err("scan_slot cache full [%d]", cache->nr);
 			//this will block  use_swap_scan_slot
 			spin_unlock_irq(&cache->scan_lock);
 			return -2;

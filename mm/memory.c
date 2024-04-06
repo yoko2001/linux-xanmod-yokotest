@@ -3833,7 +3833,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	swapcache = folio;
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
 	orientry.val = entry.val; //save origin
-	migentry = entry_get_migentry_lock(entry); //this will only lock on existed migentry
+	migentry.val = 0;//= entry_get_migentry_lock(entry); //this will only lock on existed migentry
 
 	//this avoid multiple do_swap_page enter critical section
 	if (unlikely(migentry.val && (swp_entry_test_ext(migentry) & 0x2))) //locked, wait for the other to finish
@@ -4398,7 +4398,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				if (migentry.val){ //still ok
 					delete_from_swap_remap(folio, orientry, migentry, false);
 				}
-				pr_err("do_swap val after folio_free_swap[%p]->pri[%lx]ref[%d]entry[%lx]migentry[%lx] $[%d]", 
+				pr_err("do_swap valid after folio_free_swap[%p]->pri[%lx]ref[%d]entry[%lx]migentry[%lx] $[%d]", 
 						folio, page_private(folio_page(folio,0)), folio_ref_count(folio),
 						orientry.val, migentry.val, folio_test_swapcache(folio));			
 				migentry.val = 0;

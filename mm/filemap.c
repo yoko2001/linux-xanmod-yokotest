@@ -2185,7 +2185,10 @@ unsigned swap_scan_entries_savior(struct address_space *mapping,
 					if (__swap_count(entry) != 1){
 						continue;
 					}
-					add_to_scan_slot(entry);
+					if (add_to_scan_slot(entry) == -2){
+						pr_err("add_to_scan_slot stoped");
+						break;
+					}
 					count_choosed ++;
 				}
 			}

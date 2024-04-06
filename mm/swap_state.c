@@ -964,11 +964,11 @@ bool add_to_swap(struct folio *folio, long* left_space)
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 	VM_BUG_ON_FOLIO(!folio_test_uptodate(folio), folio);
 
-	entry = folio_alloc_swap(folio, left_space);
+	entry = folio_alloc_swap(folio, left_space, false);
 	if (!entry.val)
 		return false;
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
-	if (swp_entry_test_special(entry) > 1){
+	if (swp_entry_test_special(entry) > 0){
 		count_memcg_folio_events(folio, SWAP_STALE_SAVE_REUSE, folio_nr_pages(folio));
 		pr_info("folio_alloc_swap normal entry[%lx] v[%d] for folio[%p] cnt:%d",
 				 entry.val, swp_entry_test_special(entry), folio, __swap_count(entry));		
@@ -2272,7 +2272,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				BUG();
 			}
 
-			mig_entry = folio_alloc_swap(folio, &tmp);
+			mig_entry = folio_alloc_swap(folio, &tmp, true);
 			if (!mig_entry.val || (mig_entry.val > LONG_MAX) 
 					|| !data_race(p->flags & SWP_SYNCHRONOUS_IO)){ //have to xa_mk_value
 				pr_err("invalide mig_entry[%lx] alloc swap", mig_entry.val);

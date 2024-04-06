@@ -596,7 +596,7 @@ static inline long get_nr_swap_pages(void)
 }
 
 extern void si_swapinfo(struct sysinfo *);
-swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space);
+swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_slow);
 void check_swap_scan_active(struct swap_info_struct *si, long left, long total);
 bool folio_free_swap(struct folio *folio);
 void put_swap_folio(struct folio *folio, swp_entry_t entry);
@@ -709,7 +709,7 @@ static inline int swp_swapcount(swp_entry_t entry)
 	return 0;
 }
 
-static inline swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space)
+static inline swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_slow)
 {
 	swp_entry_t entry;
 	entry.val = 0;
