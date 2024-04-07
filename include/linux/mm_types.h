@@ -1028,13 +1028,13 @@ typedef struct {
 #define SE_HIST_SIZE	3
 #define SHADOW_EXT_FLAG_STALE_SAVED 0x1	
 typedef struct shadow_entry{
-	unsigned int magic;
+	unsigned short magic;
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 	unsigned short hist_ts[SE_HIST_SIZE]; 
-	unsigned short flag;
+	// unsigned short flag;
 #endif
 	void* shadow;//original shadow
-}__aligned(sizeof(unsigned long)) shadow_entry_t;
+}__aligned(sizeof(unsigned int)) shadow_entry_t;
 
 /**
  * enum fault_flag - Fault flag definitions.

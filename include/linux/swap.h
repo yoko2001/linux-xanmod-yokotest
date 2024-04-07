@@ -388,18 +388,18 @@ extern const unsigned int shadow_entry_magic;
 extern const unsigned int shadow_entry_invalidmagic; 
 static inline struct shadow_entry* shadow_entry_alloc(void){
 	struct shadow_entry* entry_ext = NULL;
-	if (!get_shadow_entry_cache()){
+	if (unlikely(!get_shadow_entry_cache())){
 		return entry_ext;
 	}
 	entry_ext = kmem_cache_alloc(get_shadow_entry_cache(), GFP_NOWAIT);// GFP_ATOMIC);
 	if (entry_ext){
-		WRITE_ONCE(entry_ext->magic, (unsigned long)READ_ONCE(entry_ext) & 0xFFFFFFFF);
+		entry_ext->magic = (unsigned short)((unsigned long)(entry_ext) & 0xFFFF);
 		entry_ext->shadow = NULL;
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 		for (int i = 0; i < SE_HIST_SIZE; i++){
 			entry_ext->hist_ts[i] = 0;
 		}
-		entry_ext->flag = 0;
+		// entry_ext->flag = 0;
 #endif
 	}
 	return entry_ext;
@@ -408,16 +408,16 @@ static inline void shadow_entry_free(struct shadow_entry* entry_ext){
 	if (unlikely(!entry_ext))
 		return;
 	if (get_shadow_entry_cache()){
-		if (READ_ONCE(entry_ext->magic) == 0xFFFFFFFF){//freed already
+		if (READ_ONCE(entry_ext->magic) == 0xFFFF){//freed already
 			pr_err("shadow_entry_free refreed[%lx]", (unsigned long)entry_ext);
 			return;
 		}
-		WRITE_ONCE(entry_ext->magic, 0xFFFFFFFF);
-		if (((unsigned long)entry_ext & 0xFFFFFFFF) == 0xFFFFFFFF){
+		WRITE_ONCE(entry_ext->magic, 0xFFFF);
+		if (((unsigned long)entry_ext & 0xFFFF) == 0xFFFF){
 			pr_err("bad shadow entry addr");
 			BUG();
 		}
-		entry_ext->flag = 0;
+		// entry_ext->flag = 0;
 		entry_ext->shadow = NULL;
 		for (int i = 0; i < SE_HIST_SIZE; i++){
 			entry_ext->hist_ts[i] = 0;

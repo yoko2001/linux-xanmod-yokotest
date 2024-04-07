@@ -48,9 +48,6 @@
 
 /* How many pages do we try to swap or page in/out together? As a power of 2 */
 int page_cluster;
-/*DJL ADD BEGIN*/
-int ra_boost_order;
-/*DJL ADD END*/
 const int page_cluster_max = 31;
 
 /* Protecting only lru_rotate.fbatch which requires disabling interrupts */
@@ -1147,9 +1144,6 @@ void __init swap_setup(void)
 		page_cluster = 2;
 	else
 		page_cluster = 3;
-	/*DJL ADD BEGIN*/
-	ra_boost_order = 0;
-	/*DJL ADD END*/
 	/*
 	 * Right now other parts of the system means that we
 	 * _really_ don't want to cluster much more

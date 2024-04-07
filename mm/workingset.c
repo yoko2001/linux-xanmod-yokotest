@@ -192,22 +192,22 @@ static unsigned int bucket_order __read_mostly;
 static struct kmem_cache *shadow_entry_cache;
 struct kmem_cache * get_shadow_entry_cache(void){return shadow_entry_cache;}
 
-const unsigned int shadow_entry_magic = 0xABCD4321; 
-const unsigned int shadow_entry_invalidmagic = 0xDCBA8765; 
+const unsigned int shadow_entry_magic = 0x4321; 
+const unsigned int shadow_entry_invalidmagic = 0x8765; 
 
 int entry_is_entry_ext(const void *entry){
 	if (!entry)
 		return -2;
 	if (xa_is_value(entry)) return 0;
 	if (entry){
-		if (((struct shadow_entry*)entry)->magic != ((shadow_entry_magic) ^ ((unsigned long)entry & 0xFFFFFFFF))){
+		if (((struct shadow_entry*)entry)->magic != (unsigned short)((shadow_entry_magic) ^ ((unsigned long)entry & 0xFFFF))){
 			// if (((struct shadow_entry*)entry)->magic == shadow_entry_invalidmagic)
 			// 	pr_err("entry was invalied ext[%lx]",entry);
-			if (((struct shadow_entry*)entry)->magic == 0xFFFFFFFF){
+			if (((struct shadow_entry*)entry)->magic == 0xFFFF){
 				// pr_err("entry_is_entry_ext ext[%lx] has been freed", entry);
 				return -1;
 			}
-			else if (((struct shadow_entry*)entry)->magic != (unsigned long)entry & 0xFFFFFFFF){
+			else if (((struct shadow_entry*)entry)->magic != (unsigned short)((unsigned long)entry & 0xFFFF)){
 				return 0;
 			} else {
 				pr_err("entry was poisoned ext[%lx] magic[%lx]",entry, ((struct shadow_entry*)entry)->magic);
@@ -232,12 +232,12 @@ int entry_is_entry_ext_debug(const void *entry){
 		return 0;
 	}
 	if (entry){
-		if (((struct shadow_entry*)entry)->magic != ((shadow_entry_magic) ^ ((unsigned long)entry & 0xFFFFFFFF))){
+		if (((struct shadow_entry*)entry)->magic != (unsigned short)((shadow_entry_magic) ^ ((unsigned long)entry & 0xFFFF))){
 			
-			if (((struct shadow_entry*)entry)->magic == 0xFFFFFFFF){
+			if (((struct shadow_entry*)entry)->magic == 0xFFFF){
 				pr_err("entry_is_entry_ext_debug ext[%lx] has been freed", entry);
 				return -1;
-			}else if (((struct shadow_entry*)entry)->magic != (unsigned long)entry & 0xFFFFFFFF) { // other stuff
+			}else if (((struct shadow_entry*)entry)->magic != (unsigned short)((unsigned long)entry & 0xFFFF)) { // other stuff
 				pr_err("entry was magic invalid ext[%lx] magic[%lx]",entry, ((struct shadow_entry*)entry)->magic);
 				return 0;
 			}else {
@@ -288,7 +288,7 @@ static void *pack_shadow_ext(int memcgid, pg_data_t *pgdat, unsigned long evicti
 	eviction = (eviction << WORKINGSET_SHIFT) | workingset;
 	if (entry_ext){
 		entry_ext->shadow = xa_mk_value(eviction);
-		entry_ext->magic = shadow_entry_magic ^ ((unsigned long)entry_ext & 0xFFFFFFFF); //valid
+		entry_ext->magic = shadow_entry_magic ^ (unsigned short)((unsigned long)entry_ext & 0xFFFF); //valid
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 		if (old_entry_ext){
 			_entry = xa_to_value(old_entry_ext->shadow);

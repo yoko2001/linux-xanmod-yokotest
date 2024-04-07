@@ -3833,7 +3833,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	swapcache = folio;
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
 	orientry.val = entry.val; //save origin
-	migentry.val = 0;//= entry_get_migentry_lock(entry); //this will only lock on existed migentry
+	migentry = entry_get_migentry_lock(entry); //this will only lock on existed migentry
 
 	//this avoid multiple do_swap_page enter critical section
 	if (unlikely(migentry.val && (swp_entry_test_ext(migentry) & 0x2))) //locked, wait for the other to finish
@@ -3846,7 +3846,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 
 	//at most one do_swap_page and one stale save process enter this place
 	if (swapcache){ //we do nothing in this case
-		if (migentry.val && !non_swap_entry(migentry)){ //got a migentry, test if its valid
+		if (unlikely(migentry.val && !non_swap_entry(migentry))){ //got a migentry, test if its valid
 			pr_err("swapcache caught, used orientry[%lx], not migentry[%lx]", 
 						orientry.val, migentry.val);
 			if (swp_entry_test_ext(migentry)){
@@ -3960,7 +3960,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 // #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 // 				// xa_unlock_irq(&address_space->i_pages);
 // #endif
-				if (invalid_remap){ //safe checks
+				if (unlikely(invalid_remap)){ //safe checks
 					/**
 					 * recheck the remap, if remapped enabled
 					 * we should re-run this fault. 
@@ -4003,7 +4003,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 					count_memcg_event_mm(vma->vm_mm, SWAPIN_MID);
 				}
 				/*DJL ADD END*/
-				if (migentry.val){
+				if (unlikely(migentry.val)){
 					pr_err("pf3 try swap_readpage entry[%lx]->folio[%p]wb[%d]$[%d]swped[%d] migentry[%lx]", 
 							entry.val, page, folio_test_writeback(folio), folio_test_swapcache(folio), 
 							folio_swapped(folio), migentry.val);
@@ -4026,12 +4026,12 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				/*DJL ADD END*/
 			}
 		} else {
-			if (data_race(si->flags & SWP_SYNCHRONOUS_IO)){
+			if (unlikely(data_race(si->flags & SWP_SYNCHRONOUS_IO))){
 				pr_info("ASYNC_IO si[%d] on sync entry[%lx] cnt[%d]", 
 							si->prio,  entry.val, __swap_count(entry));
 			}
 			//if migentry is the page read in it
-			if (migentry.val) { //use remap
+			if (unlikely(migentry.val)) { //use remap
 				bool page_allocated;
 				struct swap_iocb **plug;
 				// pr_err("__read_swap_cache_async_save try read_$_async entry[%lx]", 
@@ -4060,12 +4060,12 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				page = swapin_readahead(entry, GFP_HIGHUSER_MOVABLE,
 						vmf, &try_free_entry);
 			}
-			if (migentry.val && migentry.val != entry.val){
+			if (unlikely(migentry.val && migentry.val != entry.val)){
 				pr_err("pf inner err entry[%lx]<>migentry[%lx]", entry.val, migentry.val);
 				BUG();
 			}
 			//we don't do anything like delete remap here
-			if (page){
+			if (likely(page)){
 				folio = page_folio(page);
 				// if (migentry.val) { //the remapping is useless now, discard it
 				// 	VM_BUG_ON_FOLIO(non_swap_entry(migentry), folio);
@@ -4159,7 +4159,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 
 	if (swapcache) { //we do the clean
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
-		if (folio_test_stalesaved(folio) && folio == swapcache){ 
+		if (unlikely(folio_test_stalesaved(folio) && folio == swapcache)){ 
 			// folio locked already, this is still a stale saved page
 			// in this case, two kind of state in this case
 			// this is a before free_unref page, that might be in before enabled
@@ -4254,7 +4254,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 					folio_test_stalesaved(folio), folio_ref_count(folio));	
 			}
 			else{ //read from sync IO
-				pr_err("read from sync IO, impossible entry[%lx]->folio[%p] stale wb[%d]sw$[%d] stale[%d] refcount[%d]", 
+				pr_err("read from sync IO, impossible entry[%lx]->folio[%p] stale[%d] wb[%d]sw$[%d] stale[%d] refcount[%d]", 
 							orientry.val, folio,  folio_test_stalesaved(folio), 
 							folio_test_writeback(folio), folio_test_swapcache(folio), 
 							folio_test_stalesaved(folio), folio_ref_count(folio));
@@ -4371,10 +4371,10 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	 */
 	// if (!valid_remap) //non remap case
 	swap_free(entry);
-	if (valid_remap)
+	if (unlikely(valid_remap))
 		pr_err("do_swap valid_remap swap_free entry[%lx], count %d, folio[%p]->pri[%lx] ref[%d]", 
 					entry.val, __swp_swapcount(entry), folio, page_private(folio_page(folio, 0)) ,folio_ref_count(folio));		
-	if (invalid_remap){
+	if (unlikely(invalid_remap)){
 		pr_err("do_swap invalid_remap swap_free entry[%lx], count %d, folio[%p] ref[%d]", 
 					entry.val, __swp_swapcount(entry), folio, folio_ref_count(folio));			
 		if (!folio_test_swapcache(folio))
@@ -4384,13 +4384,13 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	// 	pr_err("do_swap swap_free[%lx] folio[%p]", entry.val, folio);
 	// }
 #ifndef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
-	if (invalid_remap || valid_remap)	
+	if (unlikely(invalid_remap || valid_remap))
 		try_free_entry = 1;//force free, no excuse
 	else
 		try_free_entry = 0;
 #endif
 	//first is valid_remap && try_to_free
-	if (valid_remap || invalid_remap){
+	if (unlikely(valid_remap || invalid_remap)){
 		if (valid_remap) { //valid remap case
 			if (should_try_to_free_swap(folio, vma, vmf->flags, try_free_entry)){			
 				folio_free_swap(folio);
@@ -4461,14 +4461,14 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		}
 	}
 
-	if (folio_test_stalesaved(folio)){
+	if (unlikely(folio_test_stalesaved(folio))){
 		folio_clear_stalesaved(folio);
 		pr_err("do_swap CLEAN STALESAVED entry[%lx] folio[%p] $[%d] ref[%d] cnt[%d]", 
 					entry.val, folio, folio_test_swapcache(folio),  folio_ref_count(folio), 
 					__swp_swapcount(entry));
 	}
 
-	if (migentry.val){ 
+	if (unlikely(migentry.val)){ 
 		//it shows that this is a invalid remap
 		//these entries are not saved, (probably because refaulted before end_bio_write check)
 		//since this refault happened, there's no need for remap to exists for now

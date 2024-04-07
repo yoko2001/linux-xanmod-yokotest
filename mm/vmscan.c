@@ -1440,7 +1440,8 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 #ifdef CONFIG_LRU_GEN_SHADOW_ENTRY_EXT
 		shadow_ext = shadow_entry_alloc();
 		// pr_info("[ALLOC] entry_ext[%p]", shadow_ext);
-		atomic_inc(&ext_count);
+		// atomic_inc(&ext_count);
+		// shadow_ext = NULL;
 #else
 		shadow_ext = NULL;
 #endif 
@@ -1452,7 +1453,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	BUG_ON(!folio_test_locked(folio) && folio_test_swapcache(folio));
 	BUG_ON(mapping != folio_mapping(folio));
 
-	if (folio_test_stalesaved(folio)){
+	if (unlikely(folio_test_stalesaved(folio))){
 		mig_entry = folio_swap_entry(folio);//folio_get_migentry(folio, ori_swap);
 		if (!folio_test_active(folio)){
 			pr_err("__remove_mapping folio[%p]ori[%lx]->mig[%lx]ref[%d]wb[%d]d[%d]$[%d]", 
@@ -1682,9 +1683,9 @@ cannot_free:
 	if (!folio_test_swapcache(folio))
 		spin_unlock(&mapping->host->i_lock);
 	if (shadow_ext){
-		if (folio->shadow_ext)
-		pr_info("[FREE]__remove_mapping free folio shadow[%p]->[%p] free[%p]", 
-					folio, folio->shadow_ext, shadow_ext);		
+		// if (folio->shadow_ext)
+		// pr_info("[FREE]__remove_mapping free folio shadow[%p]->[%p] free[%p]", 
+		// 			folio, folio->shadow_ext, shadow_ext);		
 
 		shadow_entry_free(shadow_ext);
 		atomic_dec(&ext_count);

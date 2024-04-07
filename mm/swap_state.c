@@ -126,7 +126,7 @@ void *get_shadow_from_swap_cache_erase(swp_entry_t entry)
 //			pr_err("addr_space[%p]ind[%lx] = [%lx]", address_space, idx, old);
 			if (xa_is_value(old)) { //files
 				xas_store(&xas, NULL);
-				pr_err("get shadow clean shadow entry[%lx]->shadow[%p]", entry.val, old);
+				// pr_err("get shadow clean shadow entry[%lx]->shadow[%p]", entry.val, old);
 			}
 			else if (old){
 				entry_state = entry_is_entry_ext(old);
@@ -1741,7 +1741,7 @@ struct page *read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 		si = get_swap_device(entry);
 		if (get_fastest_swap_prio() == si->prio){
 			count_memcg_event_mm(vma->vm_mm, SWAPIN_FAST);
-			pr_err("read_swap_cache_async entry[%lx]", entry.val);
+			// pr_err("read_swap_cache_async entry[%lx]", entry.val);
 		} else if (get_slowest_swap_prio() == si->prio){
 			count_memcg_event_mm(vma->vm_mm, SWAPIN_SLOW);
 		} else{
@@ -1996,10 +1996,9 @@ static void swap_ra_info(struct vm_fault *vmf,
 #endif
 
 	/*DJL ADD BEGIN*/
-	// max_win = 1 << min_t(unsigned int, READ_ONCE(page_cluster),
-	// 		     SWAP_RA_ORDER_CEILING);
-	max_win = 1 << min_t(unsigned int, READ_ONCE(page_cluster),// + READ_ONCE(ra_boost_order),
-			     SWAP_RA_ORDER_CEILING + SWAP_RA_ORDER_CEILING_BOOST);
+	max_win = 1 << min_t(unsigned int, READ_ONCE(page_cluster),
+			     SWAP_RA_ORDER_CEILING);
+	// max_win = 1 << min_t(unsigned int, READ_ONCE(page_cluster), SWAP_RA_ORDER_CEILING + SWAP_RA_ORDER_CEILING_BOOST);
 	/*DJL ADD END*/
 
 	if (max_win == 1) {
@@ -2127,10 +2126,11 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 		entry = pte_to_swp_entry(pentry);
 		if (unlikely(non_swap_entry(entry)))
 			continue;
-		si = swp_swap_info(entry);
-		if (data_race(si->flags & SWP_SYNCHRONOUS_IO)){ // block all IOs
-			continue;
-		}
+		// // fast swap device IO-through
+		// si = swp_swap_info(entry);
+		// if (data_race(si->flags & SWP_SYNCHRONOUS_IO)){ // block all IOs
+		// 	continue;
+		// }
 		/*DJL ADD BEGIN*/
 		page = __read_swap_cache_async(entry, gfp_mask, vma,
 					       vmf->address, &page_allocated, (!enable_ra_fast_evict) || (i == ra_info.offset), 
