@@ -3754,6 +3754,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	void *shadow = NULL;
 	/*DJL ADD BEGIN*/
 	int swap_level = -2;
+	bool abandon_shadow = false;
 	int rf_dist_ts;
 	int try_free_entry;
 	struct address_space *address_space;
@@ -3938,7 +3939,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				}
 #endif
 				if (shadow){
- 					workingset_refault(folio, shadow, &rf_dist_ts, vmf->address,swap_level, entry);
+ 					workingset_refault(folio, shadow, &rf_dist_ts, vmf->address,swap_level, entry, &abandon_shadow);
 					if (swap_level==1){
 						count_memcg_event_mm(vma->vm_mm, WORKINGSET_REFAULT_FAST);
 					}
@@ -3951,7 +3952,13 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 						swap_level, rf_dist_ts >= MAX_NR_GENS ? 0 : 1);
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 					if (entry_is_entry_ext(shadow) == 1){
-						folio->shadow_ext = shadow;
+						if (!abandon_shadow){
+							folio->shadow_ext = shadow;
+						}
+						else{
+							folio->shadow_ext = NULL;
+							shadow_entry_free(shadow);
+						}
 						// pr_info("[TRANSFER]do_swap_page  entry[%lx]->folio[%p] ext[%p]", entry.val, folio, shadow);
 					}
 #endif				

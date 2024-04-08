@@ -1529,6 +1529,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 	struct swap_info_struct *si;
 	struct folio *folio;
 	void *shadow = NULL;
+	bool abandon_shadow = false;
 	/*DJL ADD BEGIN*/
 	struct lruvec *lruvec;
 	pg_data_t* pgdat;
@@ -1648,7 +1649,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 
 	/*DJL ADD BEGIN*/
 	if (shadow){
-		workingset_refault(folio, shadow, &rf_dist_ts, addr, swap_level, entry);
+		workingset_refault(folio, shadow, &rf_dist_ts, addr, swap_level, entry, &abandon_shadow);
 		if (vma && vma->vm_mm){
 			if (get_fastest_swap_prio() == si->prio){
 				count_memcg_event_mm(vma->vm_mm, WORKINGSET_REFAULT_FAST);
@@ -1673,7 +1674,12 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 	}
 	folio->shadow_ext = NULL;
 	if (entry_is_entry_ext(shadow) == 1){
-		folio->shadow_ext = shadow;
+		if (!abandon_shadow){
+			folio->shadow_ext = shadow;
+		}
+		else{
+			shadow_entry_free(shadow);
+		}
 		// pr_info("[TRANSFER]read_cache entry[%lx]=>folio[%p] ext[%p]", 
 		// 			entry.val, folio, folio->shadow_ext);
 	}

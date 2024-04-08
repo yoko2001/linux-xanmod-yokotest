@@ -513,7 +513,7 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, long swap_spa
 }
 
 static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_entry, unsigned long va, 
-			int swap_level, unsigned long entry)
+			int swap_level, unsigned long entry, bool* abandon_shadow)
 {
 	int hist, tier, refs;
 	int memcg_id;
@@ -553,7 +553,7 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 		dist_ret = dist;
 	}
 	else{
-		dist = ((min_seq % 65535) - lasthist);
+		dist = ((min_seq % 0xFFFF) - lasthist) % 0xFFFF;
 		dist_ret = dist + MAX_NR_GENS;
 	}
 	swp_entry_t temp_entry;
@@ -602,6 +602,10 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 			}
 			break;
 	};
+	if (dist >= 20){ //its time to give up on this page
+		if (abandon_shadow)
+			*abandon_shadow = true;
+	}
 skip_count:
 	/*DJL ADD END*/
 	/*DJL ADD BEGIN*/
@@ -669,7 +673,7 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, long swap_spa
 }
 
 static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_entry
-							int swap_level, unsigned long entry)
+							int swap_level, unsigned long entry, bool* abandon_shadow)
 {
 }
 
@@ -746,7 +750,7 @@ void *workingset_eviction(struct folio *folio, struct mem_cgroup *target_memcg, 
  * pressure caused the eviction.
  */
 void workingset_refault(struct folio *folio, void *shadow, int* try_free_entry, 
-						unsigned long va, int swap_level, swp_entry_t entry)
+						unsigned long va, int swap_level, swp_entry_t entry, bool* abandon_shadow)
 {
 	bool file = folio_is_file_lru(folio);
 	struct mem_cgroup *eviction_memcg;
@@ -763,7 +767,7 @@ void workingset_refault(struct folio *folio, void *shadow, int* try_free_entry,
 	long nr;
 
 	if (lru_gen_enabled()) {
-		lru_gen_refault(folio, shadow, try_free_entry, va, swap_level, (unsigned long)entry.val);
+		lru_gen_refault(folio, shadow, try_free_entry, va, swap_level, (unsigned long)entry.val, abandon_shadow);
 		return;
 	}
 
@@ -1091,9 +1095,11 @@ static void shadow_entry_ctor(void *data)
 static int shadow_entry_cache_init(void)
 {
 	shadow_entry_cache = kmem_cache_create("shadow_entry", sizeof(struct shadow_entry),
-			(sizeof(long)* 2), SLAB_PANIC|SLAB_ACCOUNT,//SLAB_TYPESAFE_BY_RCU
+			0 , SLAB_PANIC|SLAB_ACCOUNT,//SLAB_TYPESAFE_BY_RCU
 			shadow_entry_ctor);
-	return 0;
+	if (shadow_entry_cache)
+		return 0;
+	return -1;
 }
 
 static int __init workingset_init(void)

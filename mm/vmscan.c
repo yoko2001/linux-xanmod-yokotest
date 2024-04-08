@@ -1438,10 +1438,11 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	swp_entry_t ori_swap, mig_entry;
 	if (!folio_test_stalesaved(folio) && folio_test_swapcache(folio) && reclaimed && !mapping_exiting(mapping)){
 #ifdef CONFIG_LRU_GEN_SHADOW_ENTRY_EXT
-		shadow_ext = shadow_entry_alloc();
+		// shadow_ext = shadow_entry_alloc();
 		// pr_info("[ALLOC] entry_ext[%p]", shadow_ext);
 		// atomic_inc(&ext_count);
-		// shadow_ext = NULL;
+		// shadow_entry_free(shadow_ext);
+		shadow_ext = NULL;
 #else
 		shadow_ext = NULL;
 #endif 

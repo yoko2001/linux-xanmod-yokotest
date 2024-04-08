@@ -1034,7 +1034,7 @@ typedef struct shadow_entry{
 	// unsigned short flag;
 #endif
 	void* shadow;//original shadow
-}__aligned(sizeof(unsigned int)) shadow_entry_t;
+}__aligned(sizeof(unsigned short)) shadow_entry_t;
 
 /**
  * enum fault_flag - Fault flag definitions.

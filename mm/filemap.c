@@ -983,7 +983,7 @@ int filemap_add_folio(struct address_space *mapping, struct folio *folio,
 		 */
 		WARN_ON_ONCE(folio_test_active(folio));
 		if (!(gfp & __GFP_WRITE) && shadow)
-			workingset_refault(folio, shadow, &temp, 0, -2, entry);
+			workingset_refault(folio, shadow, &temp, 0, -2, entry, NULL);
 		if (entry_is_entry_ext(shadow) == 1){
 			pr_err("[FREE]__filemap_add_folio shadow[%p]", shadow);
 			shadow_entry_free(shadow);
