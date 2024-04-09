@@ -812,7 +812,7 @@ unsigned long shmem_partial_swap_usage(struct address_space *mapping,
 			continue;
 		if (xa_is_value(page))
 			swapped++;
-		if (entry_is_entry_ext(page))
+		if (unlikely(entry_is_entry_ext(page) == 1))
 			pr_err("undefined sequence %s:%d", __FILE__, __LINE__);
 		if (need_resched()) {
 			xas_pause(&xas);
@@ -938,7 +938,7 @@ static void shmem_undo_range(struct inode *inode, loff_t lstart, loff_t lend,
 							indices[i], folio);
 				continue;
 			}
-			if (entry_is_entry_ext(folio)) {
+			if (unlikely(entry_is_entry_ext(folio) == 1)) {
 				pr_err("undefined sequence %s:%d", __FILE__, __LINE__);
 				if (unfalloc)
 					continue;
@@ -1018,7 +1018,7 @@ whole_folios:
 				nr_swaps_freed++;
 				continue;
 			}
-			if (entry_is_entry_ext(folio))
+			if (unlikely(entry_is_entry_ext(folio)))
 				pr_err("undefined sequence %s:%d", __FILE__, __LINE__);
 			folio_lock(folio);
 
@@ -1204,7 +1204,7 @@ static int shmem_find_swap_entries(struct address_space *mapping,
 
 		if (!xa_is_value(folio))
 			continue;
-		if (entry_is_entry_ext(folio))
+		if (unlikely(entry_is_entry_ext(folio) == 1))
 			pr_err("undefined sequence %s:%d", __FILE__, __LINE__);
 		entry = radix_to_swp_entry(folio);
 		/*
@@ -1243,7 +1243,7 @@ static int shmem_unuse_swap_entries(struct inode *inode,
 	for (i = 0; i < folio_batch_count(fbatch); i++) {
 		struct folio *folio = fbatch->folios[i];
 
-		if (!xa_is_value(folio) && !entry_is_entry_ext(folio))
+		if (!xa_is_value(folio) && entry_is_entry_ext(folio) <= 0)
 			continue;
 		error = shmem_swapin_folio(inode, indices[i],
 					  &folio, SGP_CACHE,
@@ -1830,7 +1830,7 @@ static int shmem_swapin_folio(struct inode *inode, pgoff_t index,
 	delete_from_swap_cache(folio);
 	folio_mark_dirty(folio);
 	swap_free(swap);
-	if (folio->shadow_ext){
+	if (unlikely(folio->shadow_ext)){
 		pr_err("failing 2"); BUG();
 	}
 	put_swap_device(si);

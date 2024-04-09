@@ -968,7 +968,7 @@ static inline struct folio *page_copy_prealloc(struct mm_struct *src_mm,
 	new_folio = vma_alloc_folio(GFP_HIGHUSER_MOVABLE, 0, vma, addr, false);
 	if (!new_folio)
 		return NULL;
-	check_private_debug(new_folio);
+	// check_private_debug(new_folio);
 
 	if (mem_cgroup_charge(new_folio, src_mm, GFP_KERNEL)) {
 		folio_put(new_folio);
@@ -3092,7 +3092,7 @@ static vm_fault_t wp_page_copy(struct vm_fault *vmf)
 				vmf->address, false);
 		if (!new_folio)
 			goto oom;
-		check_private_debug(new_folio);
+		// check_private_debug(new_folio);
 		ret = __wp_page_copy_user(&new_folio->page, vmf->page, vmf);
 		if (ret) {
 			/*
@@ -3906,7 +3906,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 			/* skip swapcache */
 			folio = vma_alloc_folio(GFP_HIGHUSER_MOVABLE, 0,
 						vma, vmf->address, false);
-			check_private_debug(folio);
+			// check_private_debug(folio);
 			page = &folio->page;
 			if (folio) {
 				__folio_set_locked(folio);

@@ -29,7 +29,8 @@
 #define SWP_RESERVE_SHIFT (SWP_TYPE_SHIFT - SWP_RESERVE_MARK)
 #define SWP_EXT_MARK 2    //used to mark if swp_entry is mapping a real out-mem page
 #define SWP_EXT_SHIFT (SWP_RESERVE_SHIFT - SWP_EXT_MARK)
-#define SWP_SPECIAL_MARK 5 //used to mark version 0-32
+// #define SWP_SPECIAL_MARK 5 //used to mark version 0-32
+#define SWP_SPECIAL_MARK 4 //used to mark version 0-32
 #define SWP_SPECIAL_SHIFT (SWP_EXT_SHIFT - SWP_SPECIAL_MARK)
 #define SWP_EXT_MASK ((1UL << SWP_RESERVE_SHIFT) - (1UL << SWP_EXT_SHIFT))
 #define SWP_SPECIAL_MASK ((1UL << SWP_EXT_SHIFT) - (1UL << SWP_SPECIAL_SHIFT))

@@ -850,7 +850,7 @@ static bool swap_offset_any_version_occupied(struct swap_info_struct* si,
 	int v;
 	unsigned long offset_v;
 	if (__si_can_version(si)){ //FAST, we support multiversion
-		for (v = 0; v < (1 << SWP_SPECIAL_MARK); v++){
+		for (v = 0; v <= SWP_ENTRY_ALIVE_VERSION_SPEC; v++){
 			offset_v = offset + v * si->max;
 			if (data_race(si->swap_map[offset_v])) {
 				// pr_err("swap_offset_occupied prio[%d]offset[%lx]v[%d]=[%d] occupied", 
@@ -1399,7 +1399,7 @@ static struct swap_info_struct *_swap_info_get(swp_entry_t entry, bool allow_unu
 	if (offset >= p->max)
 		goto bad_offset;
 	if (__si_can_version(p)){
-		for (int v = 0; v < (1 << SWP_SPECIAL_MARK); v++){
+		for (int v = 0; v <= SWP_ENTRY_ALIVE_VERSION_SPEC; v++){
 			__offset_v = offset + v * p->max;
 			if (p->swap_map[__offset_v])
 				return p;
@@ -3952,7 +3952,7 @@ int add_swap_count_continuation(swp_entry_t entry, gfp_t gfp_mask)
 	if (!page_private(head)) {
 		BUG_ON(count & COUNT_CONTINUED);
 		INIT_LIST_HEAD(&head->lru);
-		set_page_private_debug(head, SWP_CONTINUED, -1);
+		set_page_private(head, SWP_CONTINUED);
 		pr_err("page[%p] was set SWP_CONTINUED", page);
 		si->flags |= SWP_CONTINUED;
 	}
@@ -4091,7 +4091,7 @@ static void free_swap_count_continuations(struct swap_info_struct *si)
 {
 	pgoff_t offset, offset_v;
 	int v;
-	int v_max = __si_can_version(si) ? (1 << SWP_SPECIAL_MARK) : 1;
+	int v_max = __si_can_version(si) ? SWP_ENTRY_ALIVE_VERSION_SPEC+1 : 1;
 	for (v = 0; v < v_max; v++){
 		for (offset = 0; offset < si->max; offset += PAGE_SIZE) {
 			struct page *head;

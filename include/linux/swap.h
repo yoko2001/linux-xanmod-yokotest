@@ -372,7 +372,7 @@ static inline void check_page_private_debug(struct page *page)
 static inline void folio_set_swap_entry(struct folio *folio, swp_entry_t entry)
 {
 	folio->private = (void *)entry.val;
-	check_private_debug(folio);
+	// check_private_debug(folio);
 }
 
 /* linux/mm/workingset.c */

@@ -98,22 +98,6 @@ static inline unsigned int folio_swap_flags(struct folio *folio)
 	return page_swap_info(&folio->page)->flags;
 }
 
-static inline void set_page_private_debug(struct page *page, unsigned long private, int place)
-{
-	if (!page)
-		BUG();
-	set_page_private(page, private);
-	check_page_private_debug(page);
-	if (PageSwapBacked(page))
-		pr_err("[%d]page[%pK]->pri[%lx] $[%d]wb[%d]d[%d]", place, page, private, 
-				PageSwapCache(page), PageWriteback(page), PageDirty(page));
-	else{
-		if (place == -10){
-			pr_err("set_page_private_debug a unswappable page[%pK], swb[%d]", 
-				page, PageSwapBacked(page));
-		}
-	}
-}
 struct swap_info_struct *swap_info_get_test(swp_entry_t entry);
 #else /* CONFIG_SWAP */
 struct swap_iocb;
@@ -198,9 +182,6 @@ static inline unsigned int folio_swap_flags(struct folio *folio)
 {
 	return 0;
 }
-static inline void set_page_private_debug(struct page *page, unsigned long private, int place)
-{
-	return set_page_private(page, private);
-}
+
 #endif /* CONFIG_SWAP */
 #endif /* _MM_SWAP_H */

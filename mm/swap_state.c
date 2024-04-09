@@ -158,7 +158,6 @@ unlock:
 	return NULL;
 }
 
-extern atomic_t ext_count;
 /*
  * add_to_swap_cache resembles filemap_add_folio on swapper_space,
  * but sets SwapCache flag and private instead of mapping and index.
@@ -207,7 +206,6 @@ int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 							pr_info("[FREE]folio[%p] add to sw$ , not freed entry[%lx] ext[%p] addr_spc[%p]idx[%ld]", 
 										folio, entry.val, old, address_space, idx);
 							shadow_entry_free(old);
-							atomic_dec(&ext_count);
 							// BUG();
 						}
 					}
@@ -239,7 +237,7 @@ unlock:
 		xas_unlock_irq(&xas);
 	} while (xas_nomem(&xas, gfp));
 	// pr_err("set entry[%lx]->folio[%p]", entry.val, folio);
-	check_private_debug(folio);
+	// check_private_debug(folio);
 	if (!xas_error(&xas))
 		return 0;
 
@@ -358,7 +356,7 @@ int enable_swp_entry_remap(struct folio* folio, swp_entry_t from_entry, swp_entr
 unlock:
 		xas_unlock_irq(&xas);
 	} while (xas_nomem(&xas, (__GFP_HIGH|__GFP_NOMEMALLOC|__GFP_NOWARN)));
-	check_private_debug(folio);
+	// check_private_debug(folio);
 	if (locked){
 		p_to_entry->val = 0;
 		return 1;
@@ -492,7 +490,7 @@ static int add_to_swap_cache_save_check(struct folio *folio, swp_entry_t entry,
 unlock:
 		xas_unlock_irq(&xas);
 	} while (xas_nomem(&xas, gfp));
-	check_private_debug(folio);
+	// check_private_debug(folio);
 
 	if (!xas_error(&xas))
 		return 0;
@@ -816,7 +814,7 @@ void __delete_from_swap_cache(struct folio *folio,
 		xas_next(&xas);
 	}
 	folio_clear_swapcache(folio);
-	check_private_debug(folio);
+	// check_private_debug(folio);
 	// if (shadow)
 	// 	pr_err("delete $ entry[%lx]->folio[%p]=>shadow[%p]", entry.val, folio, shadow);
 	address_space->nrpages -= nr;
@@ -1498,7 +1496,6 @@ struct page*__read_swap_cache_async_save(swp_entry_t entry,
 	if (entry_is_entry_ext(shadow) > 0){
 		pr_err("[FREE]__read_swap_cache_async_save free entry[%p]", shadow);
 		shadow_entry_free(shadow);
-		atomic_dec(&ext_count);
 	}
 #endif
 	/*DJL ADD END*/
@@ -1687,7 +1684,6 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 	if (entry_is_entry_ext(shadow) > 0){
 		pr_err("[FREE]__read_swap_cache_async free entry[%p]", shadow);
 		shadow_entry_free(shadow);
-		atomic_dec(&ext_count);
 	}
 #endif
 	/*DJL ADD END*/

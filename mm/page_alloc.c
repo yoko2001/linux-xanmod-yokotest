@@ -795,7 +795,7 @@ static void prep_compound_tail(struct page *head, int tail_idx)
 
 	p->mapping = TAIL_MAPPING;
 	set_compound_head(p, head);
-	set_page_private_debug(p, 0, 13);
+	set_page_private(p, 0);
 }
 
 void prep_compound_page(struct page *page, unsigned int order)
@@ -860,7 +860,7 @@ static inline bool set_page_guard(struct zone *zone, struct page *page,
 
 	__SetPageGuard(page);
 	INIT_LIST_HEAD(&page->buddy_list);
-	set_page_private_debug(page, order, 12);
+	set_page_private(page, order);
 	/* Guard pages are not available for any usage */
 	if (!is_migrate_isolate(migratetype))
 		__mod_zone_freepage_state(zone, -(1 << order), migratetype);
@@ -876,7 +876,7 @@ static inline void clear_page_guard(struct zone *zone, struct page *page,
 
 	__ClearPageGuard(page);
 
-	set_page_private_debug(page, 0, 11);
+	set_page_private(page, 0);
 	if (!is_migrate_isolate(migratetype))
 		__mod_zone_freepage_state(zone, (1 << order), migratetype);
 }
@@ -947,7 +947,7 @@ void __init init_mem_debugging_and_hardening(void)
 
 static inline void set_buddy_order(struct page *page, unsigned int order)
 {
-	set_page_private_debug(page, order, 10);
+	set_page_private(page, order);
 	__SetPageBuddy(page);
 }
 
@@ -1043,7 +1043,7 @@ static inline void del_page_from_free_list(struct page *page, struct zone *zone,
 
 	list_del(&page->buddy_list);
 	__ClearPageBuddy(page);
-	set_page_private_debug(page, 0, 15);
+	set_page_private(page, 0);
 	zone->free_area[order].nr_free--;
 }
 
@@ -1628,7 +1628,7 @@ static void free_one_page(struct zone *zone,
 		is_migrate_isolate(migratetype))) {
 		migratetype = get_pfnblock_migratetype(page, pfn);
 	}
-	check_page_private_debug(page);
+	// check_page_private_debug(page);
 	__free_one_page(page, pfn, zone, order, migratetype, fpi_flags);
 	spin_unlock_irqrestore(&zone->lock, flags);
 }
@@ -2502,7 +2502,7 @@ inline void post_alloc_hook(struct page *page, unsigned int order,
 	bool reset_tags = true;
 	int i;
 
-	set_page_private_debug(page, 0, 14);
+	set_page_private(page, 0);
 	set_page_refcounted(page);
 
 	arch_alloc_page(page, order);
@@ -3573,7 +3573,7 @@ void free_unref_page_list(struct list_head *list)
 		}
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 		folio = page_folio(page);
-		check_private_debug(folio);
+		// check_private_debug(folio);
 		if (folio->shadow_ext){
 			if (entry_is_entry_ext_debug(folio->shadow_ext) == 1){
 				shadow_entry_free(folio->shadow_ext);

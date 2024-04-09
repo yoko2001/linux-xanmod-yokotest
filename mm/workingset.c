@@ -196,31 +196,29 @@ const unsigned int shadow_entry_magic = 0x4321;
 const unsigned int shadow_entry_invalidmagic = 0x8765; 
 
 int entry_is_entry_ext(const void *entry){
-	if (!entry)
+	if (unlikely(!entry))
 		return -2;
-	if (xa_is_value(entry)) return 0;
-	if (entry){
-		if (((struct shadow_entry*)entry)->magic != (unsigned short)((shadow_entry_magic) ^ ((unsigned long)entry & 0xFFFF))){
-			// if (((struct shadow_entry*)entry)->magic == shadow_entry_invalidmagic)
-			// 	pr_err("entry was invalied ext[%lx]",entry);
-			if (((struct shadow_entry*)entry)->magic == 0xFFFF){
-				// pr_err("entry_is_entry_ext ext[%lx] has been freed", entry);
-				return -1;
-			}
-			else if (((struct shadow_entry*)entry)->magic != (unsigned short)((unsigned long)entry & 0xFFFF)){
-				return 0;
-			} else {
-				pr_err("entry was poisoned ext[%lx] magic[%lx]",entry, ((struct shadow_entry*)entry)->magic);
-				BUG();
-			}
+	if (unlikely(xa_is_value(entry)))
+		return 0;
+	if (((struct shadow_entry*)entry)->magic != (unsigned short)((shadow_entry_magic) ^ ((unsigned long)entry & 0xFFFF))){
+		// if (((struct shadow_entry*)entry)->magic == shadow_entry_invalidmagic)
+		// 	pr_err("entry was invalied ext[%lx]",entry);
+		if (((struct shadow_entry*)entry)->magic == 0xFFFF){
+			// pr_err("entry_is_entry_ext ext[%lx] has been freed", entry);
+			return -1;
 		}
-		if (!xa_is_value(((struct shadow_entry*)entry)->shadow)){
-			// pr_err("entry_is_entry_ext !xa_is_value ext[%lx]",(unsigned long)entry);
+		else if (((struct shadow_entry*)entry)->magic != (unsigned short)((unsigned long)entry & 0xFFFF)){
 			return 0;
+		} else {
+			pr_err("entry was poisoned ext[%lx] magic[%lx]",entry, ((struct shadow_entry*)entry)->magic);
+			BUG();
 		}
-		return 1;
 	}
-	return -2;
+	if (unlikely(!xa_is_value(((struct shadow_entry*)entry)->shadow))){
+		// pr_err("entry_is_entry_ext !xa_is_value ext[%lx]",(unsigned long)entry);
+		return 0;
+	}
+	return 1;
 }
 int entry_is_entry_ext_debug(const void *entry){
 	if (!entry){
@@ -231,29 +229,25 @@ int entry_is_entry_ext_debug(const void *entry){
 		pr_err("entry_is_entry_ext_debug entry[%p] xa_is_value", entry);
 		return 0;
 	}
-	if (entry){
-		if (((struct shadow_entry*)entry)->magic != (unsigned short)((shadow_entry_magic) ^ ((unsigned long)entry & 0xFFFF))){
-			
-			if (((struct shadow_entry*)entry)->magic == 0xFFFF){
-				pr_err("entry_is_entry_ext_debug ext[%lx] has been freed", entry);
-				return -1;
-			}else if (((struct shadow_entry*)entry)->magic != (unsigned short)((unsigned long)entry & 0xFFFF)) { // other stuff
-				pr_err("entry was magic invalid ext[%lx] magic[%lx]",entry, ((struct shadow_entry*)entry)->magic);
-				return 0;
-			}else {
-				pr_err("entry was poisoned ext[%lx] magic[%lx]",entry, ((struct shadow_entry*)entry)->magic);
-				BUG();
-			}
-		}
-		if (!xa_is_value(((struct shadow_entry*)entry)->shadow)){
-			pr_err("entry_is_entry_ext !xa_is_value ext[%lx]",(unsigned long)entry);
+	if (((struct shadow_entry*)entry)->magic != (unsigned short)((shadow_entry_magic) ^ ((unsigned long)entry & 0xFFFF))){
+		
+		if (((struct shadow_entry*)entry)->magic == 0xFFFF){
+			pr_err("entry_is_entry_ext_debug ext[%lx] has been freed", entry);
+			return -1;
+		}else if (((struct shadow_entry*)entry)->magic != (unsigned short)((unsigned long)entry & 0xFFFF)) { // other stuff
+			pr_err("entry was magic invalid ext[%lx] magic[%lx]",entry, ((struct shadow_entry*)entry)->magic);
 			return 0;
+		}else {
+			pr_err("entry was poisoned ext[%lx] magic[%lx]",entry, ((struct shadow_entry*)entry)->magic);
+			BUG();
 		}
-		return 1;
 	}
-	return -2;
+	if (!xa_is_value(((struct shadow_entry*)entry)->shadow)){
+		pr_err("entry_is_entry_ext !xa_is_value ext[%lx]",(unsigned long)entry);
+		return 0;
+	}
+	return 1;
 }
-extern atomic_t ext_count;
 
 int entry_ext_memcg_id(struct shadow_entry* entry_ext){
 	int _memcgid, _nid;
@@ -315,7 +309,6 @@ static void *pack_shadow_ext(int memcgid, pg_data_t *pgdat, unsigned long evicti
 			// pr_info("[FREE]workingset_refualt entry[%lx]->folio[%p] ext[%p](free)->[%p] ok", 
 			// 			entry.val, folio, old_entry_ext, entry_ext);
 			shadow_entry_free(old_entry_ext);
-			atomic_dec(&ext_count);
 		}
 		else{
 			for(i = 1; i < SE_HIST_SIZE; i++){
@@ -433,8 +426,8 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, long swap_spa
 	hist = lru_hist_from_seq(min_seq);
 	atomic_long_add(delta, &lrugen->evicted[hist][type][tier]);
 
-	is_se = 0;
 	if (!se){
+		is_se = 0;
 		ret = pack_shadow(mem_cgroup_id(memcg), pgdat, token, refs);
 		if (!xa_is_value(ret)){
 			pr_err("bug in pack_shadow");
@@ -443,7 +436,6 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, long swap_spa
 		if (folio->shadow_ext && entry_is_entry_ext(folio->shadow_ext)){
 			pr_err("bug2 in pack_shadow");
 			shadow_entry_free(folio->shadow_ext);
-			atomic_dec(&ext_count);
 			BUG();
 		}
 		folio->shadow_ext = NULL;
@@ -634,8 +626,8 @@ skip_count:
 	}
 	/*DJL ADD END*/
 
-	if ((token >> LRU_REFS_WIDTH) != (min_seq & (EVICTION_MASK >> LRU_REFS_WIDTH)))
-		goto unlock;
+	// if ((token >> LRU_REFS_WIDTH) != (min_seq & (EVICTION_MASK >> LRU_REFS_WIDTH)))
+	// 	goto unlock;
 
 	hist = lru_hist_from_seq(min_seq);
 	/* see the comment in folio_lru_refs() */
@@ -1095,7 +1087,7 @@ static void shadow_entry_ctor(void *data)
 static int shadow_entry_cache_init(void)
 {
 	shadow_entry_cache = kmem_cache_create("shadow_entry", sizeof(struct shadow_entry),
-			0 , SLAB_PANIC|SLAB_ACCOUNT,//SLAB_TYPESAFE_BY_RCU
+			0 , SLAB_PANIC, //|SLAB_ACCOUNT,//SLAB_TYPESAFE_BY_RCU
 			shadow_entry_ctor);
 	if (shadow_entry_cache)
 		return 0;

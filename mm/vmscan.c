@@ -73,7 +73,6 @@
 /*DJL ADD START*/
 #include <trace/events/lru_gen.h>
 /*DJL ADD END*/
-atomic_t ext_count = ATOMIC_INIT(0);
 
 struct scan_control {
 	/* How many pages shrink_list() should reclaim */
@@ -1438,11 +1437,10 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	swp_entry_t ori_swap, mig_entry;
 	if (!folio_test_stalesaved(folio) && folio_test_swapcache(folio) && reclaimed && !mapping_exiting(mapping)){
 #ifdef CONFIG_LRU_GEN_SHADOW_ENTRY_EXT
-		// shadow_ext = shadow_entry_alloc();
+		shadow_ext = shadow_entry_alloc();
 		// pr_info("[ALLOC] entry_ext[%p]", shadow_ext);
-		// atomic_inc(&ext_count);
 		// shadow_entry_free(shadow_ext);
-		shadow_ext = NULL;
+		// shadow_ext = NULL;
 #else
 		shadow_ext = NULL;
 #endif 
@@ -1667,7 +1665,6 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	if (shadow_ext && !(shadow == shadow_ext)){
 		pr_err("[FREE]fail alloc free %d [%p]", __LINE__, shadow_ext);
 		shadow_entry_free(shadow_ext);
-		atomic_dec(&ext_count);
 	}
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 	if (folio->shadow_ext){
@@ -1689,7 +1686,6 @@ cannot_free:
 		// 			folio, folio->shadow_ext, shadow_ext);		
 
 		shadow_entry_free(shadow_ext);
-		atomic_dec(&ext_count);
 	}
 	
 	return 0;
@@ -6789,9 +6785,7 @@ static int __init init_lru_gen(void)
 
 	debugfs_create_file("lru_gen", 0644, NULL, NULL, &lru_gen_rw_fops);
 	debugfs_create_file("lru_gen_full", 0444, NULL, NULL, &lru_gen_ro_fops);
-	
-	atomic_set(&ext_count, 0);
-	
+		
 	return 0;
 };
 late_initcall(init_lru_gen);
