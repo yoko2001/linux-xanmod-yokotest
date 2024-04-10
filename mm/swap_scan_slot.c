@@ -33,7 +33,7 @@ static void reactivate_swap_scan_slot(void)
 	if (swap_scan_slot_active)
 		return;
 	mutex_lock(&swap_scan_slot_mutex);
-	swap_scan_slot_active = false;
+	swap_scan_slot_active = true;
 	// pr_err("reactivate_swap_scan_slot");
 	mutex_unlock(&swap_scan_slot_mutex);
 }

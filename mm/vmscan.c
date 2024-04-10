@@ -1495,6 +1495,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	refcount = 1 + folio_nr_pages(folio);
 	if (folio_test_stalesaved(folio)){
 		refcount += 1; //one for remap, one for swapcache to slow
+		pr_err("folio[%p] stale ref[%d]", folio, folio_ref_count(folio));
 	}
 
 	if (!folio_ref_freeze(folio, refcount))
@@ -2013,14 +2014,14 @@ keep_next_time:
 			VM_BUG_ON_FOLIO(non_swap_entry(entry), folio);	
 			VM_BUG_ON_FOLIO(folio_mapped(folio), folio);	
 			if (!folio_test_stalesaved(folio)){
-				//we're fucked up by do swap turn this page into safe state
-				pr_err("intercepted before enable remap folio[%p]cnt[%d]$[%d]", 
-						folio,	folio_ref_count(folio), folio_test_swapcache(folio));
-				//we need to handle the remap & mig cache clean up part
+				// //we're fucked up by do swap turn this page into safe state
+				// pr_err("intercepted before enable remap folio[%p]cnt[%d]$[%d]", 
+				// 		folio,	folio_ref_count(folio), folio_test_swapcache(folio));
+				// //we need to handle the remap & mig cache clean up part
 
-				delete_from_swap_remap_get_mig(folio, entry, &migentry);
-				delete_from_swap_cache_mig(folio, migentry, true, false);
-				swap_free(migentry);
+				// delete_from_swap_remap_get_mig(folio, entry, &migentry);
+				// delete_from_swap_cache_mig(folio, migentry, true, false);
+				// swap_free(migentry);
 				if (__swap_count(migentry) != 0){
 					pr_err("folio[%p]$[%d]private[%lx]cnt[%d]map[%d] remap deleted add to lru, swap freed", 
 						folio,	folio_test_swapcache(folio), 
@@ -2028,17 +2029,17 @@ keep_next_time:
 					BUG();
 				}
 
-				//try clear original entry before unlock
-				if (!folio_test_ksm(folio)){
-					folio_free_swap(folio);
-				}
-				else{
-					BUG();
-				}
+				// //try clear original entry before unlock
+				// if (!folio_test_ksm(folio)){
+				// 	folio_free_swap(folio);
+				// }
+				// else{
+				// 	BUG();
+				// }
 				
-				folio_add_lru(folio); //this should be ok, because lru is protected by folio_lock
-				//do_swap will not map to it, it should get freed normally
-				folio_unlock(folio);
+				// folio_add_lru(folio); //this should be ok, because lru is protected by folio_lock
+				// //do_swap will not map to it, it should get freed normally
+				// folio_unlock(folio);
 				continue;
 			} 
 
@@ -6113,10 +6114,10 @@ static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *
 
 	blk_finish_plug(&plug);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
-	// if (current_is_kswapd()){
-	// 	if (pgdat->prio_lruvec)
-	// 		swap_scan_savior(sc, pgdat->prio_lruvec);
-	// }
+	if (current_is_kswapd()){
+		if (pgdat->prio_lruvec)
+			swap_scan_savior(sc, pgdat->prio_lruvec);
+	}
 #endif
 done:
 	/* kswapd should never fail */

@@ -706,6 +706,10 @@ static int shmem_add_to_page_cache(struct folio *folio,
 	VM_BUG_ON(expected && folio_test_large(folio));
 
 	folio_ref_add(folio, nr);
+	if (folio_test_stalesaved(folio) && folio_ref_count(folio) > 3){
+		pr_err("[%s:%s] folio[%pK] reaches ref[%d]", __FILE__, __LINE__, folio, folio_ref_count(folio));
+		BUG();
+	}
 	folio->mapping = mapping;
 	folio->index = index;
 

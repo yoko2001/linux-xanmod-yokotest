@@ -179,6 +179,9 @@ int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 	VM_BUG_ON_FOLIO(!folio_test_swapbacked(folio), folio);
 
 	folio_ref_add(folio, nr);
+	if (folio_test_stalesaved(folio) && folio_ref_count(folio) > 3){
+		pr_err("[%s:%s] folio[%pK] reaches ref[%d]", __FILE__, __LINE__, folio, folio_ref_count(folio));
+	}
 	folio_set_swapcache(folio);
 	if (entry_is_entry_ext(folio) != 0){
 		pr_err("add_to_swap_cache bad folio[%p]", folio);
@@ -439,6 +442,9 @@ static int add_to_swap_cache_save_check(struct folio *folio, swp_entry_t entry,
 	VM_BUG_ON_FOLIO(!folio_test_swapbacked(folio), folio);
 
 	folio_ref_add(folio, nr);
+	if (folio_test_stalesaved(folio) && folio_ref_count(folio) > 3){
+		pr_err("[%s:%s] folio[%pK] reaches ref[%d]", __FILE__, __LINE__, folio, folio_ref_count(folio));
+	}
 	folio_set_swapcache(folio);
 	do {
 		xas_lock_irq(&xas);
@@ -525,6 +531,9 @@ static int add_to_swap_cache_save(struct folio *folio, swp_entry_t entry,
 	VM_BUG_ON_FOLIO(!folio_test_swapbacked(folio), folio);
 
 	folio_ref_add(folio, nr);
+	if (folio_test_stalesaved(folio) && folio_ref_count(folio) > 3){
+		pr_err("[%s:%s] folio[%pK] reaches ref[%d]", __FILE__, __LINE__, folio, folio_ref_count(folio));
+	}
 	folio_set_swapcache(folio);
 	do {
 		xas_lock_irq(&xas);
@@ -911,7 +920,7 @@ void __delete_from_swap_remap(struct folio *folio, swp_entry_t entry_from, swp_e
 		xas_next(&xas);
 	}
 	address_space->nrpages -= nr;
-	pr_err("delete_from_swap_remap folio[%p] [%lx]->[%lx]", 
+	pr_info("delete_from_swap_remap folio[%p] [%lx]->[%lx]", 
 			folio, entry_from.val, entry_to.val);
 }
 
@@ -941,7 +950,7 @@ static void __delete_from_swap_remap_get_mig(struct folio *folio, swp_entry_t en
 		xas_next(&xas);
 	}
 	address_space->nrpages -= nr;
-	pr_err("__delete_from_swap_remap_get_mig folio[%p] [%lx]->[%lx]", 
+	pr_info("__delete_from_swap_remap_get_mig folio[%p] [%lx]->[%lx]", 
 			folio, entry_from.val, entry_to->val);
 }
 /**
@@ -1322,7 +1331,7 @@ static struct folio *raw_swap_cache_get_folio(struct swap_info_struct * si, swp_
 	else{
 		folio = filemap_get_folio(swap_address_space(entry), offset_v);
 		if (folio){
-			pr_err("scgf async return entry[%lx]->[%p]", entry.val, folio);
+			pr_info("scgf async return entry[%lx]->[%p]", entry.val, folio);
 		}
 	}
 	return folio;
@@ -1413,8 +1422,10 @@ struct page*__read_swap_cache_async_save(swp_entry_t entry,
 		folio = filemap_get_folio(swap_address_space(entry),
 						swp_offset(entry));
 		put_swap_device(si);
-		if (folio)
-			pr_err("found already in swap_cache[%lx] -> folio[%p] ref[%d]", entry.val, folio, folio_ref_count(folio));
+		if (folio){
+			pr_info("found already in swap_cache[%lx] -> folio[%p] ref[%d] stale[%d]", entry.val, folio, 
+						folio_ref_count(folio), folio_test_stalesaved(folio));
+		}
 		if (folio)
 			return folio_file_page(folio, swp_offset(entry));
 
