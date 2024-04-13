@@ -7564,8 +7564,8 @@ static void uncharge_folio(struct folio *folio, struct uncharge_gather *ug)
 		if (!mem_cgroup_is_root(memcg)){
 			ug->nr_memory += nr_pages;
 			if (unlikely(folio_test_stalesaved(folio))){
-				pr_err("staled folio [%p] nr[%ld] uncharged to memcg[%p]" ,
-							folio, nr_pages, memcg);
+				pr_info("staled folio [%p] nr[%ld] uncharged to memcg[%d]" ,
+							folio, nr_pages, mem_cgroup_id(memcg));
 				folio_clear_stalesaved(folio);
 				count_memcg_folio_events(folio, SWAP_STALE_SAVE, folio_nr_pages(folio));
 			}

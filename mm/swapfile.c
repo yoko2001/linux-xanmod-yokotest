@@ -1090,11 +1090,13 @@ checks:
 	if (version > 0){
 		slots[n_ret++] = swp_entry_version(si->type, offset, version);
 		if (usage == SWAP_HAS_CACHE)
-			pr_info("version[%d]entry[%lx] offset[%lx] added to slots SWAP_HAS_CACHE", 
-				version, slots[n_ret-1].val, offset);
+			if (unlikely(version > 1))
+				pr_info("version[%d]entry[%lx] offset[%lx] added to slots SWAP_HAS_CACHE", 
+					version, slots[n_ret-1].val, offset);
 		else
-			pr_info("version[%d]entry[%lx] offset[%lx] added to slots[%x]", 
-				version, slots[n_ret-1].val, offset, usage);
+			if (unlikely(version > 1))
+				pr_info("version[%d]entry[%lx] offset[%lx] added to slots[%x]", 
+					version, slots[n_ret-1].val, offset, usage);
 	} else {
 		slots[n_ret++] = swp_entry(si->type, offset);
 		if 	(__si_can_version(si)) {
@@ -1323,8 +1325,6 @@ start_over:
 		if (size == SWAPFILE_CLUSTER) {
 			if (si->flags & SWP_BLKDEV)
 				n_ret = swap_alloc_cluster(si, swp_entries);
-			// pr_err("doesn't support si[%d] ver control yet", si->prio);
-			// BUG();
 			//it's ok, because usually we don't use a blk dev
 		} else
 			n_ret = scan_swap_map_slots(si, SWAP_HAS_CACHE,
@@ -1493,10 +1493,7 @@ static unsigned char __swap_entry_free_locked(struct swap_info_struct *p,
 				offset, version, p->prio, usage == SWAP_MAP_BAD ? "SWAP_MAP_BAD" : "COUNT_CONTINUED");
 		BUG();
 	}
-	// if 	(__si_can_version(p) && version > 0) {
-	// 	pr_err("__swap_entry_free_locked version[%d] offset[%lx] set slots to[%x]", 
-	// 			version,  offset, usage);
-	// }
+
 	if (usage)
 		WRITE_ONCE(p->swap_map[offset_v], usage);
 	else
@@ -1939,7 +1936,7 @@ int free_swap_and_cache(swp_entry_t entry)
 			__try_to_reclaim_swap(p, swp_offset(entry),
 					      TTRS_UNMAPPED | TTRS_FULL);
 		if (__si_can_version(p) && swp_entry_test_special(entry) > 0)
-			pr_err("free_swap_and_cache entry[%lx]v[%lu]", entry.val, (unsigned long)swp_entry_test_special(entry));
+			pr_info("free_swap_and_cache entry[%lx]v[%lu]", entry.val, (unsigned long)swp_entry_test_special(entry));
 	}
 	// else {
 	// 	// pr_err("free_s&$ err swap_info[%p], count[%d], entry[%lx]", p, count, entry.val);
@@ -2417,7 +2414,8 @@ void swap_shadow_scan_next(struct swap_info_struct * si, struct lruvec * lruvec,
 	mapping = swap_address_space(entry);
 
 	*scanned = swap_scan_entries_savior(mapping, lruvec, start, end, type, threshold);
-	pr_err("swap_scan_entries_savior called scanned[%lu]->memcg[%d]", 
+	if (*scanned)
+		pr_info("swap_scan_entries_savior called scanned[%lu]->memcg[%d]", 
 			*scanned, mem_cgroup_id(lruvec_memcg(lruvec)));
 	trace_swap_shadow_scan_next(start, end, *scanned, mem_cgroup_id(lruvec_memcg(lruvec)));
 

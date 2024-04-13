@@ -159,6 +159,10 @@ static inline void swp_entry_set_ext(swp_entry_t* entry, unsigned long num){
 	entry->val = (entry->val & (~SWP_EXT_MASK)) | num;
 }
 
+static inline bool swp_entry_physical_same(swp_entry_t entry_a, swp_entry_t entry_b){
+	return ((entry_a.val & (~SWP_EXT_MASK)) == (entry_b.val & (~SWP_EXT_MASK)));
+}
+
 static inline void swp_entry_clear_ext(swp_entry_t* entry, unsigned long num){
 	num = num % ((1 << SWP_EXT_MARK));
 	num = (num << SWP_EXT_SHIFT) & SWP_EXT_MASK;

@@ -120,17 +120,11 @@ static inline void page_ref_add(struct page *page, int nr)
 	atomic_add(nr, &page->_refcount);
 	if (page_ref_tracepoint_active(page_ref_mod))
 		__page_ref_mod(page, nr);
-	if (folio_test_stalesaved(page_folio(page)) && folio_ref_count(page_folio(page)) > 3){
-		pr_err("folio[%p] reaches ref[%d]", page_folio(page), folio_ref_count(page_folio(page)));
-	}
 }
 
 static inline void folio_ref_add(struct folio *folio, int nr)
 {
 	page_ref_add(&folio->page, nr);
-	if (folio_test_stalesaved(folio) && folio_ref_count(folio) > 3){
-		pr_err("folio[%p] reaches ref[%d]", folio, folio_ref_count(folio));
-	}
 }
 
 static inline void page_ref_sub(struct page *page, int nr)
@@ -245,10 +239,6 @@ static inline bool page_ref_add_unless(struct page *page, int nr, int u)
 
 	if (page_ref_tracepoint_active(page_ref_mod_unless))
 		__page_ref_mod_unless(page, nr, ret);
-	if (folio_test_stalesaved(page_folio(page)) && folio_ref_count(page_folio(page)) > 3){
-		pr_err("folio[%p] reaches ref[%d]", page_folio(page), folio_ref_count(page_folio(page)));
-		dump_stack();
-	}
 	return ret;
 }
 
@@ -292,10 +282,6 @@ static inline bool folio_ref_try_add_rcu(struct folio *folio, int count)
 		return false;
 	}
 #endif
-	if (folio_test_stalesaved(folio) && folio_ref_count(folio) > 3){
-		pr_err("try_add_rcu folio[%p] reaches ref[%d]", folio, folio_ref_count(folio));
-		dump_stack();
-	}
 	return true;
 }
 

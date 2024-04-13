@@ -195,7 +195,7 @@ swp_entry_t get_next_saved_entry(bool* finished){
 		pr_err("returning bad entry [%d/%d]", cache->cur, cache->nr);
 		BUG();
 	}else{
-		pr_err("get_next_saved_entry return entry[%lx]", entry.val);
+		pr_info("get_next_saved_entry return entry[%lx]", entry.val);
 	}
 	return entry;
 } 

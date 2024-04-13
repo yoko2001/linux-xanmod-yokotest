@@ -1455,13 +1455,11 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	if (unlikely(folio_test_stalesaved(folio))){
 		mig_entry = folio_swap_entry(folio);//folio_get_migentry(folio, ori_swap);
 		if (!folio_test_active(folio)){
-			pr_err("__remove_mapping folio[%p]ori[%lx]->mig[%lx]ref[%d]wb[%d]d[%d]$[%d]", 
+			pr_info("__remove_mapping folio[%p]ori[%lx]->mig[%lx]ref[%d]wb[%d]d[%d]$[%d] new se[%p]", 
 						folio, ori_swap.val, mig_entry.val,
 						folio_ref_count(folio), folio_test_writeback(folio),
-						folio_test_dirty(folio), folio_test_swapcache(folio));
+						folio_test_dirty(folio), folio_test_swapcache(folio), shadow_ext);
 		}
-		if (shadow_ext)
-			BUG();
 	}
 
 	if (!folio_test_swapcache(folio))
@@ -1558,7 +1556,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		
 		xa_unlock_irq(&mapping->i_pages);
 		if (!folio_test_stalesaved(folio)){
-			if((page_private(folio_page(folio, 0)) != 0) || folio_test_swapcache(folio))
+			if(unlikely((page_private(folio_page(folio, 0)) != 0) || folio_test_swapcache(folio)))
 			{
 				pr_err("ckpt folio[%p] $[%d], priavte[%lx]", 
 							folio, folio_test_swapcache(folio), page_private(folio_page(folio, 0)));
@@ -1654,7 +1652,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 
 		if (free_folio){
 			if (folio->shadow_ext){
-				pr_err("[FREE]__remove_mapping free folioshadow[%p]->[%p]", 
+				pr_info("[FREE]__remove_mapping free folioshadow[%p]->[%p]", 
 						folio, folio->shadow_ext);
 				shadow_entry_free(folio->shadow_ext);
 				folio->shadow_ext = NULL;
@@ -1681,7 +1679,7 @@ cannot_free:
 	xa_unlock_irq(&mapping->i_pages);
 	if (!folio_test_swapcache(folio))
 		spin_unlock(&mapping->host->i_lock);
-	if (shadow_ext){
+	if (unlikely(shadow_ext)){
 		// if (folio->shadow_ext)
 		// pr_info("[FREE]__remove_mapping free folio shadow[%p]->[%p] free[%p]", 
 		// 			folio, folio->shadow_ext, shadow_ext);		
@@ -1988,7 +1986,7 @@ collect_fail_lock_keep:
 			if (!folio_test_stalesaved(folio)){ //cancelled by do_swap
 				pr_err("folio[%p] taken by do_swap, don't touch it", folio);
 				folio_unlock(folio);
-				BUG();
+				// BUG();
 				continue;
 			}
 			goto keep_next_time_locked;
@@ -2044,8 +2042,8 @@ keep_next_time:
 			} 
 
 			delete_from_swap_cache_mig(folio, entry, false, false); //delete from origin entry
-			pr_err("folio[%p] delete_from_swap_cache_mig ref[%d] origin[%lx]cnt[%d]", 
-						folio, folio_ref_count(folio), entry.val, __swp_swapcount(entry));
+			pr_info("folio[%p]->ext[%p] delete_from_swap_cache_mig ref[%d] origin[%lx]cnt[%d]", 
+						folio, folio->shadow_ext, folio_ref_count(folio), entry.val, __swp_swapcount(entry));
 
 			ret = enable_swp_entry_remap(folio, entry, &migentry);
 			if (ret){

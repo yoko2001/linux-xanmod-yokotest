@@ -48,7 +48,7 @@ static void __end_swap_bio_write_save(struct bio* bio){
 		ClearPageReclaim(page);
 	}
 	end_page_writeback(page);
-	pr_err("called end_page_writeback page[%p]d[%d]wb[%d]rcl[%d]sv[%d] ref=%d",
+	pr_info("called end_page_writeback page[%p]d[%d]wb[%d]rcl[%d]sv[%d] ref=%d",
 			page, PageDirty(page), PageWriteback(page), 
 			PageReclaim(page), PageStaleSaved(page), folio_ref_count(page_folio(page)));
 }
@@ -404,7 +404,7 @@ static void swap_writepage_bdev_async(struct page *page,
 	set_page_writeback(page);
 	unlock_page(page);
 	if (folio_test_stalesaved(folio)){
-		pr_err("swap_writepage_bdev_async submit folio[%p] wb[%d]lock[%d]", 
+		pr_info("swap_writepage_bdev_async submit folio[%p] wb[%d]lock[%d]", 
 				folio, folio_test_writeback(folio), folio_test_locked(folio));
 	}
 	submit_bio(bio);

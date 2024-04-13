@@ -179,9 +179,6 @@ int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 	VM_BUG_ON_FOLIO(!folio_test_swapbacked(folio), folio);
 
 	folio_ref_add(folio, nr);
-	if (folio_test_stalesaved(folio) && folio_ref_count(folio) > 3){
-		pr_err("[%s:%s] folio[%pK] reaches ref[%d]", __FILE__, __LINE__, folio, folio_ref_count(folio));
-	}
 	folio_set_swapcache(folio);
 	if (entry_is_entry_ext(folio) != 0){
 		pr_err("add_to_swap_cache bad folio[%p]", folio);
@@ -206,8 +203,9 @@ int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 						if (shadowp){
 							*shadowp = old;
 						}else{ //
-							pr_info("[FREE]folio[%p] add to sw$ , not freed entry[%lx] ext[%p] addr_spc[%p]idx[%ld]", 
-										folio, entry.val, old, address_space, idx);
+							pr_info("[FREE]folio[%p] add to sw$ , not freed entry[%lx] ext[%p]stale[%d] addr_spc[%p]idx[%ld]", 
+										folio, entry.val, old, folio_test_stalesaved(folio), 
+										address_space, idx);
 							shadow_entry_free(old);
 							// BUG();
 						}
@@ -345,7 +343,7 @@ int enable_swp_entry_remap(struct folio* folio, swp_entry_t from_entry, swp_entr
 				}
 				else{
 					xas_store(&xas, xa_mk_value(to_entry_enabled.val + i));
-					pr_err("enable_swp_entry_remap success folio[%p]ref[%d] $[%d] entry[%lx]->entry[%lx] ", 
+					pr_info("enable_swp_entry_remap success folio[%p]ref[%d] $[%d] entry[%lx]->entry[%lx] ", 
 							folio, folio_ref_count(folio), folio_test_swapcache(folio), 
 							from_entry.val, to_entry_enabled.val);					
 				}
@@ -442,9 +440,6 @@ static int add_to_swap_cache_save_check(struct folio *folio, swp_entry_t entry,
 	VM_BUG_ON_FOLIO(!folio_test_swapbacked(folio), folio);
 
 	folio_ref_add(folio, nr);
-	if (folio_test_stalesaved(folio) && folio_ref_count(folio) > 3){
-		pr_err("[%s:%s] folio[%pK] reaches ref[%d]", __FILE__, __LINE__, folio, folio_ref_count(folio));
-	}
 	folio_set_swapcache(folio);
 	do {
 		xas_lock_irq(&xas);
@@ -460,9 +455,9 @@ static int add_to_swap_cache_save_check(struct folio *folio, swp_entry_t entry,
 					xas_unlock_irq(&xas);
 					return -2;
 				} 
-				else if (entry_is_entry_ext(_entry) > 0){
+				else if (entry_is_entry_ext(_entry) == 1){
 					if (saved){
-						pr_err("got shadow entry [%lx], transfer to folio[%p] ", (unsigned long)_entry, folio);
+						pr_info("got shadow entry [%p], transfer to folio[%p] ", _entry, folio);
 						folio->shadow_ext = _entry;						
 					}
 					else{
@@ -531,9 +526,6 @@ static int add_to_swap_cache_save(struct folio *folio, swp_entry_t entry,
 	VM_BUG_ON_FOLIO(!folio_test_swapbacked(folio), folio);
 
 	folio_ref_add(folio, nr);
-	if (folio_test_stalesaved(folio) && folio_ref_count(folio) > 3){
-		pr_err("[%s:%s] folio[%pK] reaches ref[%d]", __FILE__, __LINE__, folio, folio_ref_count(folio));
-	}
 	folio_set_swapcache(folio);
 	do {
 		xas_lock_irq(&xas);
@@ -602,37 +594,38 @@ swp_entry_t entry_get_migentry_lock(swp_entry_t ori_swap)
 	return mig_swap;
 }
 
-// swp_entry_t entry_get_migentry_unlock(swp_entry_t ori_swap, swp_entry_t mig_swap)
-// {
-// 	swp_entry_t mig_swap, locked_mig;
-// 	struct address_space *address_space_remap;
-// 	mig_swap.val = 0;
-// 	address_space_remap = swap_address_space_remap(ori_swap);
-// 	if (!address_space_remap) 
-// 		return mig_swap;
-// 	long nr = 1, i;
-// 	pgoff_t idx = swp_offset(ori_swap);
-// 	XA_STATE(xas, &address_space_remap->i_pages, idx);
+//returns unlocked migentry
+swp_entry_t entry_get_migentry_unlock(swp_entry_t ori_swap, swp_entry_t _mig_swap)
+{
+	swp_entry_t mig_swap, locked_mig;
+	struct address_space *address_space_remap;
+	mig_swap.val = 0;
+	address_space_remap = swap_address_space_remap(ori_swap);
+	if (!address_space_remap) 
+		return mig_swap;
+	long nr = 1, i;
+	pgoff_t idx = swp_offset(ori_swap);
+	XA_STATE(xas, &address_space_remap->i_pages, idx);
 
-// 	xa_lock_irq(&address_space_remap->i_pages);
-// 	for (i = 0; i < nr; i++) {
-// 		void *entry = xas_load(&xas);
-// 		if (xa_is_value(entry)){
-// 			mig_swap.val = xa_to_value(entry);
-// 			if (mig_swap.val && non_swap_entry(mig_swap)){
-// 				pr_err("remap err [%lx]->[%lx]", ori_swap.val, mig_swap.val);
-// 				BUG();
-// 			}
-// 			locked_mig.val = mig_swap.val;
-// 			swp_entry_set_ext(&locked_mig, swp_entry_test_ext(locked_mig)| 0x2);
-// 			xas_store(&xas, xa_mk_value(locked_mig.val));
-// 		}
-// 		xas_next(&xas);
-// 	}
-// 	xa_unlock_irq(&address_space_remap->i_pages);
+	xa_lock_irq(&address_space_remap->i_pages);
+	for (i = 0; i < nr; i++) {
+		void *entry = xas_load(&xas);
+		if (xa_is_value(entry)){
+			mig_swap.val = xa_to_value(entry);
+			if (mig_swap.val && non_swap_entry(mig_swap) || !swp_entry_physical_same(mig_swap, _mig_swap)){
+				pr_err("remap err [%lx]->[%lx] <> [%lx]", ori_swap.val, mig_swap.val, _mig_swap.val);
+				BUG();
+			}
+			locked_mig.val = mig_swap.val;
+			swp_entry_clear_ext(&locked_mig,  0x2);
+			xas_store(&xas, xa_mk_value(locked_mig.val));
+		}
+		xas_next(&xas);
+	}
+	xa_unlock_irq(&address_space_remap->i_pages);
 
-// 	return mig_swap;
-// }
+	return locked_mig;
+}
 
 swp_entry_t entry_get_migentry(swp_entry_t ori_swap)
 {
@@ -817,9 +810,10 @@ void __delete_from_swap_cache(struct folio *folio,
 		}
 		// set_page_private_debug(folio_page(folio, i), 0, 3);
 		set_page_private(folio_page(folio, i), 0);
-		if (unlikely(swp_entry_test_special(entry) > 1))
-			pr_err("__delete_from_swap_cache entry[%lx] folio[%p]->shadow[%lx]", 
-				entry.val, folio, shadow);
+		if (unlikely(swp_entry_test_special(entry) > 0))
+			pr_err("__delete_from_swap_cache folio[%p]stale[%d]->shadow[%lx] entry[%lx]->ext[%p]", 
+				folio, folio_test_stalesaved(folio), folio->shadow_ext, 
+				entry.val, shadow);
 		xas_next(&xas);
 	}
 	folio_clear_swapcache(folio);
@@ -868,13 +862,13 @@ void __delete_from_swap_cache_mig(struct folio *folio,
 					shadow = folio->shadow_ext;
 					xas_store(&xas, shadow);
 					xas_next(&xas);
+					pr_info("[TRANSFER]__delete_sc_mig folio[%p]->entry[%lx] ext[%p]", 
+								folio, entry.val, folio->shadow_ext);
 					folio->shadow_ext = NULL;
-					pr_info("[TRANSFER]__delete_sc_mig folio[%p]->entry[%lx] ext[%lx]", 
-								folio, entry.val, (unsigned long)folio->shadow_ext);
 					continue;
 				}
 				else{
-					pr_err("__delete_sc_mig fail transfer folio[%p]->shadow[%lx]", folio, (unsigned long)folio->shadow_ext);
+					pr_err("__delete_sc_mig fail transfer folio[%p]->shadow[%]", folio, folio->shadow_ext);
 					BUG();
 				}
 			}
@@ -884,8 +878,8 @@ void __delete_from_swap_cache_mig(struct folio *folio,
 		xas_next(&xas);
 	}
 	address_space->nrpages -= nr;
-	pr_err("delete mig $ entry[%lx]->folio[%p] shadow[%lx] ref[%d]", 
-				entry.val, folio, (unsigned long)shadow, folio_ref_count(folio));
+	pr_info("delete mig $ entry[%lx]->folio[%p] shadow[%p] ref[%d]", 
+				entry.val, folio, shadow, folio_ref_count(folio));
 
 	__node_stat_mod_folio(folio, NR_FILE_PAGES, -nr);
 	__lruvec_stat_mod_folio(folio, NR_SWAPCACHE, -nr);
@@ -977,7 +971,8 @@ bool add_to_swap(struct folio *folio, long* left_space)
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
 	if (swp_entry_test_special(entry) > 0){
 		count_memcg_folio_events(folio, SWAP_STALE_SAVE_REUSE, folio_nr_pages(folio));
-		pr_info("folio_alloc_swap normal entry[%lx] v[%d] for folio[%p] cnt:%d",
+		if (swp_entry_test_special(entry) > 0)
+			pr_info("folio_alloc_swap normal entry[%lx] v[%d] for folio[%p] cnt:%d",
 				 entry.val, swp_entry_test_special(entry), folio, __swap_count(entry));		
 	}
 
@@ -1114,6 +1109,8 @@ void delete_from_swap_cache(struct folio *folio)
 	xa_unlock_irq(&address_space->i_pages);
 
 	put_swap_folio(folio, entry);
+	if (swp_entry_test_special(entry))
+		pr_err("after delete_s$ folio[%p]->ext[%p]", folio, folio->shadow_ext);
 	folio_ref_sub(folio, folio_nr_pages(folio));
 }
 
@@ -1517,7 +1514,6 @@ struct page*__read_swap_cache_async_save(swp_entry_t entry,
 
 	if (new_page_allocated)
 		*new_page_allocated = true;
-	pr_err("ckpt5 folio[%p], entry[%lx]", folio, entry.val);
 
 	return &folio->page; 
 
@@ -1681,15 +1677,16 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 		}
 	}
 	folio->shadow_ext = NULL;
+	abandon_shadow = false;
 	if (entry_is_entry_ext(shadow) == 1){
 		if (!abandon_shadow){
 			folio->shadow_ext = shadow;
 		}
 		else{
 			shadow_entry_free(shadow);
+			pr_info("[ABANDON]read_cache entry[%lx]=>folio[%p] stale free ext[%p]", 
+					entry.val, folio, shadow);
 		}
-		// pr_info("[TRANSFER]read_cache entry[%lx]=>folio[%p] ext[%p]", 
-		// 			entry.val, folio, folio->shadow_ext);
 	}
 #else
 	if (entry_is_entry_ext(shadow) > 0){
@@ -2215,7 +2212,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 			reset_private = false;
 			folio = next = NULL;
 	
-			pr_err("start dealing with saved entry[%lx]", saved_entry.val);
+			pr_info("start dealing with saved entry[%lx]", saved_entry.val);
 			if (unlikely(non_swap_entry(saved_entry))){
 				goto skip_this_save;
 			}
@@ -2233,7 +2230,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 			}
 
 			//valid entry, we can swapin
-			if (swp_entry_test_special(saved_entry)){
+			if (unlikely(swp_entry_test_special(saved_entry))){
 				pr_err("swap entry [%lx] got but special bit used !", saved_entry.val);
 				goto skip_this_save;
 			}
@@ -2241,14 +2238,14 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 			//test if folio is already in swapcache
 			folio = raw_swap_cache_get_folio(si, saved_entry);
 			if (folio) {
-				pr_err("saved_entry[%lx] raw_swap_cache_get_folio folio[%p] already dealed with",
+				pr_info("saved_entry[%lx] raw_swap_cache_get_folio folio[%p] already dealed with",
 						 saved_entry.val, folio);
 				put_swap_device(si);
 				folio_ref_dec(folio);
 				goto skip_this_save;
 			}
 			put_swap_device(si);
-			pr_err("saved_entry[%lx] dealed with",saved_entry.val);
+			pr_info("saved_entry[%lx] dealed with",saved_entry.val);
 
 			folio = vma_alloc_folio(GFP_NOWAIT, 0,
 						vma, vmf->address, false); //we don't support derect recalim so it may fail
@@ -2272,7 +2269,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 			//don't mem_cgroup_swapin_uncharge_swap(entry);
 			folio_set_swap_entry(folio, saved_entry);			
 			swap_readpage(page, true, &splug_save);
-			pr_err("swap_readpage finished page[%p]", page);
+			pr_info("swap_readpage finished page[%p]", page);
 			count_memcg_event_mm(vma->vm_mm, SWAPIN_FAST_SAVE);
 
 			//page was ok now
@@ -2291,7 +2288,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				pr_err("invalide mig_entry[%lx] alloc swap", mig_entry.val);
 				goto fail_page_out;
 			}
-			pr_err("folio_alloc_swap entry[%lx] v[%d] for folio[%p] cnt:%d",
+			pr_info("folio_alloc_swap entry[%lx] v[%d] for folio[%p] cnt:%d",
 				 mig_entry.val, swp_entry_test_special(mig_entry), folio, __swap_count(mig_entry));
 			
 			_err = add_to_swap_cache_save_check(folio, saved_entry, gfp_mask & (__GFP_HIGH|__GFP_NOMEMALLOC|__GFP_NOWARN), true);
@@ -2313,7 +2310,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				folio_unlock(folio);
 				goto fail_delete_mig_cache;
 			}
-			pr_err("folio[%p] saved[%lx] ref[%d] add_to_swap_cache_save_check success ", 
+			pr_info("folio[%p] saved[%lx] ref[%d] add_to_swap_cache_save_check success ", 
 					folio, saved_entry.val, folio_ref_count(folio));			
 			//first mark entry as faked for now (currently under initialization)
 			swp_entry_set_ext(&mig_entry, 0x1);
@@ -2326,7 +2323,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				folio_unlock(folio);
 				goto fail_delete_saved_cache;
 			}
-			pr_err("add_swp_entry_remap [%lx]=>[%lx]", saved_entry.val, mig_entry.val);
+			pr_info("add_swp_entry_remap [%lx]=>[%lx]", saved_entry.val, mig_entry.val);
 			swp_entry_clear_ext(&mig_entry, 0x3); // 局部变量无所谓
 			//now we add the real entry
 			VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
@@ -2444,7 +2441,6 @@ skip_this_save:
 		blk_finish_plug(&plug_save);
 		swap_read_unplug(splug_save);
 		//add to lru_gen
-		pr_err("add pages to lru_gen");
 		if (lruvec && lrugen){
 			spin_lock_irq(&lruvec->lru_lock);
 			for (int i = 0; i < num_folio_list_wb; i++){
@@ -2456,7 +2452,7 @@ skip_this_save:
 				}
 				folio = folio_list_wb[i];//lru_to_folio_next(&folio_list_wb);
 				VM_BUG_ON_FOLIO(!folio_test_writeback(folio), folio);
-				pr_err("folio[%p] => saved_folios", folio);
+				pr_info("folio[%p] => saved_folios", folio);
 				list_add(&folio->lru, &lrugen->saved_folios);
 				trace_add_to_lruvec_saved_folios(lruvec, folio, num_moved);	
 			}
