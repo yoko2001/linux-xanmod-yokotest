@@ -203,9 +203,8 @@ int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 						if (shadowp){
 							*shadowp = old;
 						}else{ //
-							pr_info("[FREE]folio[%p] add to sw$ , not freed entry[%lx] ext[%p]stale[%d] addr_spc[%p]idx[%ld]", 
-										folio, entry.val, old, folio_test_stalesaved(folio), 
-										address_space, idx);
+							pr_info("[FREE]folio[%p] add to sw$ , not freed entry[%lx] ext[%p]stale[%d] idx[%ld]", 
+										folio, entry.val, old, folio_test_stalesaved(folio), idx);
 							shadow_entry_free(old);
 							// BUG();
 						}
@@ -334,8 +333,8 @@ int enable_swp_entry_remap(struct folio* folio, swp_entry_t from_entry, swp_entr
 					locked = true; 
 					//message has been passed to this place
 					//we should unlock it here, and let do_swap_page do the rest			
-					swp_entry_clear_ext(&to_entry_enabled, 0x2); //we cannot use 0x3 to test if locked
-					pr_err("enable_swp_entry_remap clear locked [%p]ref[%d] $[%d] entry[%lx]->entry[%lx] ", 
+					// swp_entry_clear_ext(&to_entry_enabled, 0x2); //we cannot use 0x3 to test if locked
+					pr_err("enable clear unready, should be deleted by intercepter [%p]ref[%d] $[%d] entry[%lx]->entry[%lx] ", 
 							folio, folio_ref_count(folio), folio_test_swapcache(folio), 
 							from_entry.val, to_entry_enabled.val);	
 					xas_store(&xas, xa_mk_value(to_entry_enabled.val + i));
@@ -811,7 +810,7 @@ void __delete_from_swap_cache(struct folio *folio,
 		// set_page_private_debug(folio_page(folio, i), 0, 3);
 		set_page_private(folio_page(folio, i), 0);
 		if (unlikely(swp_entry_test_special(entry) > 0))
-			pr_err("__delete_from_swap_cache folio[%p]stale[%d]->shadow[%lx] entry[%lx]->ext[%p]", 
+			pr_info("__delete_from_swap_cache folio[%p]stale[%d]->shadow[%p] entry[%lx]->ext[%p]", 
 				folio, folio_test_stalesaved(folio), folio->shadow_ext, 
 				entry.val, shadow);
 		xas_next(&xas);
@@ -868,7 +867,7 @@ void __delete_from_swap_cache_mig(struct folio *folio,
 					continue;
 				}
 				else{
-					pr_err("__delete_sc_mig fail transfer folio[%p]->shadow[%]", folio, folio->shadow_ext);
+					pr_err("__delete_sc_mig fail transfer folio[%p]->shadow[%p]", folio, folio->shadow_ext);
 					BUG();
 				}
 			}
@@ -2261,7 +2260,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 			SetPageStaleSaved(page);
 			__folio_set_swapbacked(folio);
 			if (mem_cgroup_swapin_charge_folio(folio,
-						vma->vm_mm, GFP_KERNEL,
+						vma->vm_mm, GFP_NOWAIT,
 						saved_entry)) {
 				pr_err("mem_cgroup_swapin_charge_folio fail folio[%p]", folio);
 				goto fail_page_out;
@@ -2376,14 +2375,16 @@ fail_delete_mig_cache:
 				pr_err("fail_delete_mig_cache");
 				swp_entry_clear_ext(&mig_entry, 0x3);
 				delete_from_swap_cache_mig(folio, mig_entry, true, false); //page private is also cleared
-				// reset_private = true;
 fail_page_out:
-				// put_swap_folio(folio, mig_entry);
-				pr_err("fail page_out folio[%p], mig_entry[%lx]", folio, mig_entry.val);
 				folio_clear_dirty(folio);
 				folio_clear_stalesaved(folio);
 				folio_unlock(folio);
 				folio_put(folio);
+				pr_err("fail page_out folio[%p], mig_entry[%lx]", folio, mig_entry.val);
+				if (folio_ref_count(folio)){
+					pr_err("fail page_out folio[%p], ref err [%d]", folio,folio_ref_count(folio));
+					BUG();
+				}
 				goto skip_this_save;
 scceed_pageout:
 				;
@@ -2413,8 +2414,9 @@ skip_this_save:
 				//we can change it back , to maintain correctness befor bio complete, 
 				// because bio has been submitted, doesn't need it(private = migentry) anymore
 				set_page_private(folio_page(folio, 0), ori_pri_entry.val);
-				// pr_err("reset folio[%p]lru[%d] private [%lx]", folio, 
-				// 			folio_test_lru(folio), page_private(folio_page(folio, 0)));
+				pr_err("reset folio[%p]lru[%d] ori[%lx]cnt[%d] pri[%lx]", 
+							folio, folio_test_lru(folio), ori_pri_entry.val, 
+							__swap_count(ori_pri_entry), page_private(folio_page(folio, 0)));
 			}
 			if (entry_retry_putback){
 				putback_last_saved_entry(saved_entry);

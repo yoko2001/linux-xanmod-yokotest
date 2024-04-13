@@ -3839,7 +3839,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 			ret |= VM_FAULT_RETRY;
 			pr_err("[IOing]swap cache mapped but intercepting stale saved entry[%lx] mig[%lx][%d]", orientry.val, migentry.val, swp_entry_test_ext(migentry));
 			folio = NULL;
-			goto out; //this will block two migentry do_swap on same entry
+			goto out_release; //this will block two migentry do_swap on same entry
 		}	
 	}	
 

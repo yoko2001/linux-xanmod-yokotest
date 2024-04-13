@@ -1455,8 +1455,9 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	if (unlikely(folio_test_stalesaved(folio))){
 		mig_entry = folio_swap_entry(folio);//folio_get_migentry(folio, ori_swap);
 		if (!folio_test_active(folio)){
-			pr_info("__remove_mapping folio[%p]ori[%lx]->mig[%lx]ref[%d]wb[%d]d[%d]$[%d] new se[%p]", 
-						folio, ori_swap.val, mig_entry.val,
+			ori_swap.val = page_private(folio_page(folio, 0));
+			pr_info("__remove_mapping folio[%p]ori[%lx][%d]->mig[%lx][%d]ref[%d]wb[%d]d[%d]$[%d] new se[%p]", 
+						folio, ori_swap.val,__swap_count(ori_swap), mig_entry.val,__swap_count(mig_entry),
 						folio_ref_count(folio), folio_test_writeback(folio),
 						folio_test_dirty(folio), folio_test_swapcache(folio), shadow_ext);
 		}

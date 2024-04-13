@@ -2421,6 +2421,7 @@ void swap_shadow_scan_next(struct swap_info_struct * si, struct lruvec * lruvec,
 
 	if (unlikely(si->max == end)){
 		si->swap_scan_cur_bit = 0;
+		pr_info("swap_scan_entries_savior called reset cur_bit");
 	}
 	else{
 		si->swap_scan_cur_bit = end;
