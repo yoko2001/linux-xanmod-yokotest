@@ -2109,7 +2109,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 	bool save_slot_finish;
 	unsigned int i;
 	long tmp;
-	bool page_allocated;
+	bool page_allocated ,no_space_force_stop = false;
 	swp_entry_t ori_pri_entry;
 	struct folio* folio_list_wb[SWAP_SLOTS_SCAN_SAVE_ONCE];
 	int num_folio_list_wb = 0;
@@ -2262,7 +2262,8 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 			if (mem_cgroup_swapin_charge_folio(folio,
 						vma->vm_mm, GFP_NOWAIT,
 						saved_entry)) {
-				pr_err("mem_cgroup_swapin_charge_folio fail folio[%p]", folio);
+				pr_err("mem_cgroup_swapin_charge_folio fail folio[%p] ref[%d]", folio, folio_ref_count(folio));
+				no_space_force_stop = true;
 				goto fail_page_out;
 			}
 			//don't mem_cgroup_swapin_uncharge_swap(entry);
@@ -2287,30 +2288,37 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				pr_err("invalide mig_entry[%lx] alloc swap", mig_entry.val);
 				goto fail_page_out;
 			}
-			pr_info("folio_alloc_swap entry[%lx] v[%d] for folio[%p] cnt:%d",
+			pr_info("folio_alloc_swap entry[%lx] v[%d] for folio[%p]cnt[%d]",
 				 mig_entry.val, swp_entry_test_special(mig_entry), folio, __swap_count(mig_entry));
 			
 			_err = add_to_swap_cache_save_check(folio, saved_entry, gfp_mask & (__GFP_HIGH|__GFP_NOMEMALLOC|__GFP_NOWARN), true);
-			if (_err) {
+			if (unlikely(_err || !__swp_swapcount(saved_entry))) {
 				if (_err == -2 || _err == -3){
 					pr_err("folio[%p] add_to_swap_cache_save_check interupted [%d]", folio, _err);
 				}
 				pr_err("folio[%p] add_to_swap_cache_save_check fail [%d]", folio, _err);
-				put_swap_folio(folio, saved_entry);
-				folio_unlock(folio);
-				goto fail_page_out;
+				if (__swp_swapcount(saved_entry)){
+					put_swap_folio(folio, saved_entry);
+					folio_unlock(folio);
+					goto fail_page_out;					
+				}
+				else{
+					put_swap_folio(folio, saved_entry);
+					folio_unlock(folio);
+					goto fail_delete_saved_cache; //delete saved cache again
+				}
 			}
-
+			pr_info("folio[%p] saved[%lx]cnt[%d] ref[%d] add_to_swap_cache_save_check success ", 
+					folio, saved_entry.val, __swp_swapcount(saved_entry), folio_ref_count(folio));	
 
 			_err = add_to_swap_cache_save_check(folio, mig_entry, gfp_mask & (__GFP_HIGH|__GFP_NOMEMALLOC|__GFP_NOWARN), false);
 			if (_err) {
 				pr_err("folio[%p] add_to_swap_cache_save fail", folio);
 				put_swap_folio(folio, mig_entry);
 				folio_unlock(folio);
-				goto fail_delete_mig_cache;
+				goto fail_delete_saved_cache;
 			}
-			pr_info("folio[%p] saved[%lx] ref[%d] add_to_swap_cache_save_check success ", 
-					folio, saved_entry.val, folio_ref_count(folio));			
+		
 			//first mark entry as faked for now (currently under initialization)
 			swp_entry_set_ext(&mig_entry, 0x1);
 			//adding a remap from saved_entry -> mig_entry
@@ -2320,9 +2328,12 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 			if (err){
 				pr_err("folio[%p] add_swp_entry_remap fail", folio);
 				folio_unlock(folio);
-				goto fail_delete_saved_cache;
+				goto fail_delete_mig_cache;
 			}
-			pr_info("add_swp_entry_remap [%lx]=>[%lx]", saved_entry.val, mig_entry.val);
+			pr_info("add_swp_entry_remap [%lx]cnt[%d]=>[%lx][%d]", 
+						saved_entry.val, __swp_swapcount(saved_entry), 
+						mig_entry.val, __swp_swapcount(mig_entry));
+
 			swp_entry_clear_ext(&mig_entry, 0x3); // 局部变量无所谓
 			//now we add the real entry
 			VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
@@ -2368,13 +2379,13 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				case 3: //PAGE_CLEAN
 					pr_err("pageout returns PAGE_CLEAN");
 				}
-fail_delete_saved_cache:
-				pr_err("fail_delete_saved_cache");
-				delete_from_swap_cache_mig(folio, saved_entry, true, false); //page private is also cleared
 fail_delete_mig_cache:
 				pr_err("fail_delete_mig_cache");
 				swp_entry_clear_ext(&mig_entry, 0x3);
 				delete_from_swap_cache_mig(folio, mig_entry, true, false); //page private is also cleared
+fail_delete_saved_cache:
+				pr_err("fail_delete_saved_cache");
+				delete_from_swap_cache_mig(folio, saved_entry, true, false); //page private is also cleared
 fail_page_out:
 				folio_clear_dirty(folio);
 				folio_clear_stalesaved(folio);
@@ -2428,7 +2439,9 @@ skip_this_save:
 
 			//get next
 			if (entry_saved >= SWAP_SLOTS_SCAN_SAVE_ONCE)
-				break;			
+				break;
+			if (no_space_force_stop)
+				break;		
 			saved_entry = get_next_saved_entry(&save_slot_finish);
 		} while (!save_slot_finish);
 

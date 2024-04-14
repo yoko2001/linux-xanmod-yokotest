@@ -3824,6 +3824,9 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 					folio, folio_test_stalesaved(folio),  
 					page_private(page), entry.val, folio_test_swapcache(folio));
 		}
+		if (unlikely(folio_test_stalesaved(folio))){
+			pr_info("in process folio[%p]", folio);
+		}
 	}
 	/*DJL ADD END*/
 	swapcache = folio;
@@ -3838,7 +3841,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		{
 			ret |= VM_FAULT_RETRY;
 			pr_err("[IOing]swap cache mapped but intercepting stale saved entry[%lx] mig[%lx][%d]", orientry.val, migentry.val, swp_entry_test_ext(migentry));
-			folio = NULL;
+			// folio = NULL;
 			goto out_release; //this will block two migentry do_swap on same entry
 		}	
 	}	
@@ -3863,7 +3866,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 			ret |= VM_FAULT_RETRY;
 			pr_err("[Scanning]swap cache mapped but intercepting stale saved entry[%lx]->mig[%lx]", 
 						orientry.val, migentry.val);
-			BUG();
+			if (!folio_test_stalesaved(swapcache))
+				BUG();
 			goto out_release;
 		}
 	}
@@ -4441,7 +4445,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 
 	if (unlikely(migentry.val) && need_unlock){ 
 		entry_get_migentry_unlock(orientry, migentry);
-			pr_err("do_swap unlock reamp ori[%lx]cnt[%d]->mig[%lx]cnt[ %d]", 
+			pr_err("do_swap unlock reamp ori[%lx]cnt[%d]->mig[%lx]cnt[%d]", 
 					orientry.val, __swp_swapcount(orientry),
 					migentry.val, __swp_swapcount(migentry));		
 		//it shows that this is a invalid remap

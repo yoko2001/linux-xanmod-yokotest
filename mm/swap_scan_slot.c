@@ -208,10 +208,10 @@ int add_to_scan_slot(swp_entry_t entry)
 	cache = &global_swp_scan_slot;//raw_cpu_ptr(&swp_scan_slots);
 	cpu = smp_processor_id();
 
+	spin_lock_irq(&cache->scan_lock);
 	if (likely(use_swap_scan_slot && cache->slots && ! cache->scan_stop)){
-		spin_lock_irq(&cache->scan_lock);
+		// spin_lock_irq(&cache->scan_lock);
 		if (!use_swap_scan_slot || !cache->slots){
-			spin_unlock_irq(&cache->scan_lock);
 			if (cache->slots)
 				pr_err("add_to_scan_slot stopped by use_swap_scan_slot[%d]enable[%d]sysfs[%d]", 
 							use_swap_scan_slot, swap_scan_slot_enabled, swap_scan_enabled_sysfs);
@@ -241,6 +241,7 @@ int add_to_scan_slot(swp_entry_t entry)
 		return 0; //success add
 	}
 fail_add:
+	spin_unlock_irq(&cache->scan_lock);
 	return -1;
 }
 

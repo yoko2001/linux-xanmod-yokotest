@@ -211,7 +211,7 @@ int entry_is_entry_ext(const void *entry){
 			return 0;
 		} else {
 			pr_err("entry was poisoned ext[%lx] magic[%lx]",entry, ((struct shadow_entry*)entry)->magic);
-			BUG();
+			return 0;
 		}
 	}
 	if (unlikely(!xa_is_value(((struct shadow_entry*)entry)->shadow))){
@@ -235,11 +235,11 @@ int entry_is_entry_ext_debug(const void *entry){
 			pr_err("entry_is_entry_ext_debug ext[%lx] has been freed", entry);
 			return -1;
 		}else if (((struct shadow_entry*)entry)->magic != (unsigned short)((unsigned long)entry & 0xFFFF)) { // other stuff
-			pr_err("entry was magic invalid ext[%lx] magic[%lx]",entry, ((struct shadow_entry*)entry)->magic);
+			pr_err("entry was magic invalid ext[%p] magic[%lx]",entry, ((struct shadow_entry*)entry)->magic);
 			return 0;
 		}else {
-			pr_err("entry was poisoned ext[%lx] magic[%lx]",entry, ((struct shadow_entry*)entry)->magic);
-			BUG();
+			pr_err("entry was poisoned ext[%p] magic[%lx]",entry, ((struct shadow_entry*)entry)->magic);
+			return 0;
 		}
 	}
 	if (!xa_is_value(((struct shadow_entry*)entry)->shadow)){
