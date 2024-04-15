@@ -2388,7 +2388,7 @@ static unsigned int find_next_to_unuse(struct swap_info_struct *si,
 
 	return i;
 }
-
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
 /* si is ok */
 void swap_shadow_scan_next(struct swap_info_struct * si, struct lruvec * lruvec, 
 		unsigned long* scanned, unsigned long* saved)
@@ -2427,7 +2427,10 @@ void swap_shadow_scan_next(struct swap_info_struct * si, struct lruvec * lruvec,
 		si->swap_scan_cur_bit = end;
 	}
 }
-
+#else
+void swap_shadow_scan_next(struct swap_info_struct * si, struct lruvec * lruvec, 
+		unsigned long* scanned, unsigned long* saved){return;}
+#endif
 static int try_to_unuse(unsigned int type)
 {
 	struct mm_struct *prev_mm;

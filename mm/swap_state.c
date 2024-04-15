@@ -27,6 +27,9 @@
 #include "swap.h"
 /*DJL ADD START*/
 #include <linux/memcontrol.h>
+
+#include <trace/events/lru_gen.h>
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/swap.h>
 /*DJL ADD END*/
@@ -1664,6 +1667,9 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 						rf_dist_ts >= MAX_NR_GENS ? rf_dist_ts - 4 : rf_dist_ts, 
 						swap_level, rf_dist_ts >= MAX_NR_GENS ? 0 : 1);
 		}
+	}
+	else{
+		trace_folio_ws_chg(folio, addr, folio_pgdat(folio), -1, 0, 0, 1, swap_level, -2, (unsigned long)entry.val);
 	}
 
 	//now shadow has been used

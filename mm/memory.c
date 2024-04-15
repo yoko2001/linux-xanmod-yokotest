@@ -92,6 +92,7 @@
 #include "swap.h"
 /*DJL ADD BEGIN*/
 #include <trace/events/swap.h>
+#include <trace/events/lru_gen.h>
 /*DJL ADD END*/
 
 #if defined(LAST_CPUPID_NOT_IN_PAGE_FLAGS) && !defined(CONFIG_COMPILE_TEST)
@@ -3830,8 +3831,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	}
 	/*DJL ADD END*/
 	swapcache = folio;
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
 	orientry.val = entry.val; //save origin
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
 	migentry = entry_get_migentry_lock(entry); //this will only lock on existed migentry
 
 	//this avoid multiple do_swap_page enter critical section
@@ -3962,6 +3963,9 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 							pr_info("[TRANSFER]do_swap_page  entry[%lx]->folio[%p] ext[%p]", entry.val, folio, shadow);
 					}
 #endif				
+				}
+				else{
+					trace_folio_ws_chg(folio, vmf->address, folio_pgdat(folio), -1, 0, 0, 1, swap_level, -2, (unsigned long)entry.val);
 				}
 				/*DJL ADD END*/
 				if (unlikely(invalid_remap)){ //safe checks
