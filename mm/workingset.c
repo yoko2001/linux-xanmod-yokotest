@@ -210,7 +210,7 @@ int entry_is_entry_ext(const void *entry){
 		else if (((struct shadow_entry*)entry)->magic != (unsigned short)((unsigned long)entry & 0xFFFF)){
 			return 0;
 		} else {
-			pr_err("entry was poisoned ext[%lx] magic[%lx]",entry, ((struct shadow_entry*)entry)->magic);
+			// pr_err("entry was poisoned ext[%lx] magic[%lx]",entry, ((struct shadow_entry*)entry)->magic);
 			return 0;
 		}
 	}

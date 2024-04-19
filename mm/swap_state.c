@@ -206,15 +206,24 @@ int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 						if (shadowp){
 							*shadowp = old;
 						}else{ //
-							pr_info("[FREE]folio[%p] add to sw$ , not freed entry[%lx] ext[%p]stale[%d] idx[%ld]", 
-										folio, entry.val, old, folio_test_stalesaved(folio), idx);
+							// pr_info("[FREE]folio[%p] add to sw$ , not freed entry[%lx] ext[%p]stale[%d] idx[%ld]", 
+							// 			folio, entry.val, old, folio_test_stalesaved(folio), idx);
 							shadow_entry_free(old);
 							// BUG();
 						}
 					}
 					else if (old && 0 == entry_state){
-						pr_err("return a fucked entry[%lx]->shadow[%p], folio[%p] failed add $", entry.val, old, folio);
-						BUG();
+						struct folio* migrating_folio = (struct folio*)old;
+						pr_err("return a folio entry[%lx]->folio[%p], folio[%p] failed add $", entry.val, old, folio);
+						if (shadowp && migrating_folio->shadow_ext){
+							*shadowp = migrating_folio->shadow_ext;
+							migrating_folio->shadow_ext = NULL;
+						}
+						else{
+							shadow_entry_free(migrating_folio->shadow_ext);
+							migrating_folio->shadow_ext = NULL;
+						}
+						folio_clear_stalesaved(migrating_folio);
 					}
 					else if (-1 == entry_state){
 						pr_err("add_to_swap_cache invalid entry[%lx]->shadow[%p], folio[%p] failed add $", entry.val, old, folio);
@@ -347,7 +356,9 @@ int enable_swp_entry_remap(struct folio* folio, swp_entry_t from_entry, swp_entr
 					xas_store(&xas, xa_mk_value(to_entry_enabled.val + i));
 					pr_info("enable_swp_entry_remap success folio[%p]ref[%d] $[%d] entry[%lx]->entry[%lx] ", 
 							folio, folio_ref_count(folio), folio_test_swapcache(folio), 
-							from_entry.val, to_entry_enabled.val);					
+							from_entry.val, to_entry_enabled.val);			
+					if (unlikely(!folio_test_uptodate(folio)))
+						BUG();		
 				}
 			}
 			else{
@@ -361,7 +372,8 @@ unlock:
 	} while (xas_nomem(&xas, (__GFP_HIGH|__GFP_NOMEMALLOC|__GFP_NOWARN)));
 	// check_private_debug(folio);
 	if (locked){
-		p_to_entry->val = 0;
+		swp_entry_clear_ext(&to_entry_enabled, 0x3); //we cannot use 0x3 to test if locked
+		p_to_entry->val = to_entry_enabled.val;
 		return 1;
 	}
 	else{
@@ -399,6 +411,11 @@ int add_swp_entry_remap(struct folio* folio, swp_entry_t from_entry, swp_entry_t
 			old = xas_load(&xas);
 			if (xa_is_value(old)) {
 				xas_unlock_irq(&xas);
+				return -EEXIST;
+			}
+			if (!folio_test_stalesaved(folio)){
+				xas_unlock_irq(&xas);
+				pr_err("add_swp_entry_remap abandon folio[%p] st[%d]", folio, folio_test_stalesaved(folio));
 				return -EEXIST;
 			}
 			VM_BUG_ON_FOLIO(xas.xa_index != idx + i, folio);
@@ -454,6 +471,7 @@ static int add_to_swap_cache_save_check(struct folio *folio, swp_entry_t entry,
 				if (xa_is_value(_entry)){
 					message = xa_to_value(_entry);
 					pr_err("got message[%lx]", message);
+					BUG();
 					xas_unlock_irq(&xas);
 					return -2;
 				} 
@@ -464,7 +482,7 @@ static int add_to_swap_cache_save_check(struct folio *folio, swp_entry_t entry,
 					}
 					else{
 						pr_err("got shadow entry [%lx], in mig[%lx]", (unsigned long)_entry, entry.val);
-						BUG();
+						shadow_entry_free(_entry);
 					}
 				}
 				else if (entry_is_entry_ext(_entry) == 0){
@@ -812,10 +830,10 @@ void __delete_from_swap_cache(struct folio *folio,
 		}
 		// set_page_private_debug(folio_page(folio, i), 0, 3);
 		set_page_private(folio_page(folio, i), 0);
-		if (unlikely(swp_entry_test_special(entry) > 0))
-			pr_info("__delete_from_swap_cache folio[%p]stale[%d]->shadow[%p] entry[%lx]->ext[%p]", 
-				folio, folio_test_stalesaved(folio), folio->shadow_ext, 
-				entry.val, shadow);
+		// if (unlikely(swp_entry_test_special(entry) > 0))
+		// 	pr_info("__delete_from_swap_cache folio[%p]stale[%d]->shadow[%p] entry[%lx]->ext[%p]", 
+		// 		folio, folio_test_stalesaved(folio), folio->shadow_ext, 
+		// 		entry.val, shadow);
 		xas_next(&xas);
 	}
 	folio_clear_swapcache(folio);
@@ -973,9 +991,9 @@ bool add_to_swap(struct folio *folio, long* left_space)
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
 	if (swp_entry_test_special(entry) > 0){
 		count_memcg_folio_events(folio, SWAP_STALE_SAVE_REUSE, folio_nr_pages(folio));
-		if (swp_entry_test_special(entry) > 0)
-			pr_info("folio_alloc_swap normal entry[%lx] v[%d] for folio[%p] cnt:%d",
-				 entry.val, swp_entry_test_special(entry), folio, __swap_count(entry));		
+		// if (swp_entry_test_special(entry) > 0)
+		// 	pr_info("folio_alloc_swap normal entry[%lx] v[%d] for folio[%p] cnt:%d",
+		// 		 entry.val, swp_entry_test_special(entry), folio, __swap_count(entry));		
 	}
 
 #endif
@@ -1111,8 +1129,8 @@ void delete_from_swap_cache(struct folio *folio)
 	xa_unlock_irq(&address_space->i_pages);
 
 	put_swap_folio(folio, entry);
-	if (swp_entry_test_special(entry))
-		pr_err("after delete_s$ folio[%p]->ext[%p]", folio, folio->shadow_ext);
+	// if (swp_entry_test_special(entry))
+	// 	pr_err("after delete_s$ folio[%p]->ext[%p]", folio, folio->shadow_ext);
 	folio_ref_sub(folio, folio_nr_pages(folio));
 }
 
@@ -1422,8 +1440,9 @@ struct page*__read_swap_cache_async_save(swp_entry_t entry,
 						swp_offset(entry));
 		put_swap_device(si);
 		if (folio){
-			pr_info("found already in swap_cache[%lx] -> folio[%p] ref[%d] stale[%d]", entry.val, folio, 
-						folio_ref_count(folio), folio_test_stalesaved(folio));
+			pr_info("found already in swap_cache[%lx] -> folio[%p] ref[%d] stale[%d] update[%d]", 
+						entry.val, folio, folio_ref_count(folio), 
+						folio_test_stalesaved(folio), folio_test_uptodate(folio));
 		}
 		if (folio)
 			return folio_file_page(folio, swp_offset(entry));
@@ -1676,7 +1695,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 	if (folio->shadow_ext){
 		if (folio->shadow_ext != shadow){
-			pr_err("[FREE]folio[%p]->shadowext[%p] shadow[%p]", 
+			pr_info("[FREE]folio[%p]->shadowext[%p] shadow[%p]", 
 			folio, folio->shadow_ext, shadow);
 			shadow_entry_free(folio->shadow_ext);
 		}
@@ -2246,7 +2265,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				pr_info("saved_entry[%lx] raw_swap_cache_get_folio folio[%p] already dealed with",
 						 saved_entry.val, folio);
 				put_swap_device(si);
-				folio_ref_dec(folio);
+				// folio_ref_dec(folio);
 				goto skip_this_save;
 			}
 			put_swap_device(si);
@@ -2275,7 +2294,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 			//don't mem_cgroup_swapin_uncharge_swap(entry);
 			folio_set_swap_entry(folio, saved_entry);			
 			swap_readpage(page, true, &splug_save);
-			pr_info("swap_readpage finished page[%p]", page);
+			pr_info("swap_readpage finished page[%p] ref[%d]", page, folio_ref_count(folio));
 			count_memcg_event_mm(vma->vm_mm, SWAPIN_FAST_SAVE);
 
 			//page was ok now
@@ -2290,22 +2309,27 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 
 			mig_entry = folio_alloc_swap(folio, &tmp, true);
 			if (!mig_entry.val || (mig_entry.val > LONG_MAX) 
-					|| !data_race(p->flags & SWP_SYNCHRONOUS_IO)){ //have to xa_mk_value
+					|| !data_race(p->flags & SWP_SYNCHRONOUS_IO) 
+					|| (swp_swap_info(mig_entry)->flags & SWP_SYNCHRONOUS_IO)){ //have to xa_mk_value
 				pr_err("invalide mig_entry[%lx] alloc swap", mig_entry.val);
 				goto fail_page_out;
 			}
-			pr_info("folio_alloc_swap entry[%lx] v[%d] for folio[%p]cnt[%d]",
-				 mig_entry.val, swp_entry_test_special(mig_entry), folio, __swap_count(mig_entry));
+			pr_info("folio_alloc_swap entry[%lx] v[%d] for folio[%p]ref[%d]cnt[%d]",
+				 mig_entry.val, swp_entry_test_special(mig_entry), 
+				 folio, folio_ref_count(folio), __swap_count(mig_entry));
 			
 			_err = add_to_swap_cache_save_check(folio, saved_entry, gfp_mask & (__GFP_HIGH|__GFP_NOMEMALLOC|__GFP_NOWARN), true);
 			if (unlikely(_err || !__swp_swapcount(saved_entry))) {
 				if (_err == -2 || _err == -3){
 					pr_err("folio[%p] add_to_swap_cache_save_check interupted [%d]", folio, _err);
+					folio_ref_sub(folio, folio_nr_pages(folio));
+					//this page was already in swap $
+					goto fail_page_out;
 				}
+				BUG();
 				pr_err("folio[%p] add_to_swap_cache_save_check fail [%d]", folio, _err);
 				if (__swp_swapcount(saved_entry)){
 					put_swap_folio(folio, saved_entry);
-					folio_unlock(folio);
 					goto fail_page_out;					
 				}
 				else{
@@ -2336,10 +2360,14 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				folio_unlock(folio);
 				goto fail_delete_mig_cache;
 			}
-			pr_info("add_swp_entry_remap [%lx]cnt[%d]=>[%lx][%d]", 
+			pr_info("add_swp_entry_remap folio[%p] ref[%d][%lx]cnt[%d]=>[%lx][%d]",
+						folio, folio_ref_count(folio), 
 						saved_entry.val, __swp_swapcount(saved_entry), 
 						mig_entry.val, __swp_swapcount(mig_entry));
-
+			if (unlikely(!folio_test_stalesaved(folio))){
+				pr_err("folio[%p] got intercepted before remap init", folio);
+				BUG();
+			}
 			swp_entry_clear_ext(&mig_entry, 0x3); // 局部变量无所谓
 			//now we add the real entry
 			VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
@@ -2361,9 +2389,12 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				switch (pageout_save(folio, folio_mapping(folio), &plug_save_wb)) {
 				case 0: //PAGE_KEEP
 					pr_err("pageout returns PAGE_KEEP");
-					goto fail_page_out;
+					folio_unlock(folio);
+					folio_put(folio);
+					goto skip_this_save;
 				case 1: //PAGE_ACTIVATE
 					pr_err("pageout returns PAGE_ACTIVATE");
+					BUG();
 					goto fail_page_out;
 				case 2: //PAGE_SUCCESS
 					//check if sync io
@@ -2386,12 +2417,12 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 					pr_err("pageout returns PAGE_CLEAN");
 				}
 fail_delete_mig_cache:
-				pr_err("fail_delete_mig_cache");
 				swp_entry_clear_ext(&mig_entry, 0x3);
 				delete_from_swap_cache_mig(folio, mig_entry, true, false); //page private is also cleared
+				pr_err("fail_delete_mig_cache folio[%p] ref[%d]", folio, folio_ref_count(folio));
 fail_delete_saved_cache:
-				pr_err("fail_delete_saved_cache");
 				delete_from_swap_cache_mig(folio, saved_entry, true, false); //page private is also cleared
+				pr_err("fail_delete_saved_cache folio[%p] ref[%d]", folio, folio_ref_count(folio));
 fail_page_out:
 				folio_clear_dirty(folio);
 				folio_clear_stalesaved(folio);
@@ -2423,8 +2454,7 @@ scceed_pageout:
 			entry_saved ++ ;
 			folio_set_stalesaved(folio);
 			if (folio_test_locked(folio)){
-				pr_err("page not lock bug");
-				BUG();
+				pr_err("folio[%p] lock after pageout_save", folio);
 			}
 skip_this_save:
 			if (reset_private){ 

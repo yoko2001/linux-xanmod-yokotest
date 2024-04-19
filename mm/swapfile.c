@@ -2143,7 +2143,6 @@ setpte:
 	swap_free(entry);
 	if (!__swap_count(entry)){
 		pr_err("unuse clear_shadow_from_swap_cache entry[%lx]", entry.val);
-		BUG();
 		clear_shadow_from_swap_cache(swp_swap_info(entry), swp_offset(entry),swp_offset(entry)+1, 1);
 	}
 out:
@@ -2507,6 +2506,7 @@ retry:
 		 */
 		pr_err("try_to_unuse lock entry[%lx], folio[%p]", entry.val, folio);
 		folio_lock(folio);
+		pr_err("try_to_unuse wait_writeback[%lx], folio[%p]", entry.val, folio);
 		folio_wait_writeback(folio);
 		folio_free_swap(folio);
 		folio_unlock(folio);

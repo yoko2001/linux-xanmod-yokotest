@@ -1362,7 +1362,7 @@ int pageout_save(struct folio *folio, struct address_space *mapping, struct swap
 		return PAGE_KEEP;
 	}
 	if (!is_page_cache_freeable_save(folio)){
-		pr_err("pageout_save folio[%p] ref err [%d]-[%d]<>1 + [%ld] ", 
+		pr_err("pageout_save folio[%p] ref err [%d]-[%d]<>1 + [%ld] intercepted", 
 				folio, folio_ref_count(folio), 
 				folio_test_private(folio), folio_nr_pages(folio));
 		return PAGE_KEEP;
@@ -1456,10 +1456,10 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		mig_entry = folio_swap_entry(folio);//folio_get_migentry(folio, ori_swap);
 		if (!folio_test_active(folio)){
 			ori_swap.val = page_private(folio_page(folio, 0));
-			pr_info("__remove_mapping folio[%p]ori[%lx][%d]->mig[%lx][%d]ref[%d]wb[%d]d[%d]$[%d] new se[%p]", 
+			pr_info("__remove_mapping folio[%p]ori[%lx][%d]->mig[%lx][%d]ref[%d]wb[%d]d[%d]$[%d]", 
 						folio, ori_swap.val,__swap_count(ori_swap), mig_entry.val,__swap_count(mig_entry),
 						folio_ref_count(folio), folio_test_writeback(folio),
-						folio_test_dirty(folio), folio_test_swapcache(folio), shadow_ext);
+						folio_test_dirty(folio), folio_test_swapcache(folio));
 		}
 	}
 
@@ -2054,7 +2054,9 @@ keep_next_time:
 					// folio_clear_stalesaved(folio); 
 					//we wait for it to get useless, when we get it, it'll be freed
 					// swap_free(entry); //should free by do_swap
+					set_page_private(folio_page(folio, 0), migentry.val);
 					folio_unlock(folio);
+					swap_free(entry);
 					continue;
 				} //locked by do_swap_page, it will unlock it
 			}

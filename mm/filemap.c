@@ -2075,7 +2075,6 @@ struct folio *__syncio_swapcache_get_folio(struct address_space *mapping, pgoff_
 			pr_err("__syncio_swapcache_get_folio got hwpoinson entry[%lx], two pf happens synmo", entry.val);
 			BUG();
 		}
-		// pr_err("__syncio_swapcache_get_folio xavalue indx[%lx]->[%lx]->NULL", index, folio);
 		if (fgp_flags & FGP_ENTRY)
 			return folio;
 		folio = NULL;
