@@ -3763,7 +3763,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	int rf_dist_ts;
 	int try_free_entry;
 	struct address_space *address_space;
-	bool need_unlock= false, valid_remap = false, invalid_remap = false;
+	bool need_unlock= false, valid_remap = false, invalid_remap = false, mig_loss = false;
 	/*DJL ADD END*/
 	if (!pte_unmap_same(vmf))
 		goto out;
@@ -3863,16 +3863,17 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				pr_err("swapcache caught invalid & !stale folio[%p] ", swapcache);
 				// BUG();
 			}
+			mig_loss = true;
 		}
 
-		if (unlikely(!folio_test_uptodate(folio)) && __si_can_version(si)) { //stale saving right now
-			// ret |= VM_FAULT_RETRY;
-			pr_err("[Scanning]intercepting stale saved entry[%lx]->mig[%lx] folio[%p] locked[%d]", 
-						orientry.val, migentry.val,folio, folio_test_locked(folio));
-			if (!folio_test_locked(swapcache))
-				BUG();
-			// goto out_release;
-		}
+		// if (unlikely(!folio_test_uptodate(folio)) && __si_can_version(si)) { //stale saving right now
+		// 	// ret |= VM_FAULT_RETRY;
+		// 	pr_err("[Scanning]intercepting stale saved entry[%lx]->mig[%lx] folio[%p] locked[%d]", 
+		// 				orientry.val, migentry.val,folio, folio_test_locked(folio));
+		// 	if (!folio_test_locked(swapcache))
+		// 		BUG();
+		// 	// goto out_release;
+		// }
 	}
 	else{ //not found in cache (orientry)migentry has to hold the actual page copy
 		if (unlikely(migentry.val)){ //!0
@@ -3884,13 +3885,14 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				if (swp_entry_test_ext(migentry) & 0X1){ //UNDER MIGRATION
 					//in this case we can only assume that the savedentry has not been freed
 					//we have to keep it from freed
-					pr_info("invalid remap [%lx]->[%lx]", orientry.val, migentry.val);
 					invalid_remap = true;
-					// entry.val = migentry.val;
-					// if (si) put_swap_device(si);
-					// si = get_swap_device(migentry);
-					// if (unlikely(!si))
-					// 	goto out;
+					entry.val = migentry.val;
+					if (si) put_swap_device(si);
+					si = get_swap_device(migentry);
+					if (unlikely(!si))
+						goto out;
+					pr_info("invalid remap ori[%lx]->mig[%lx] entry[%lx]", 
+							orientry.val, migentry.val, entry.val);
 				} else { //AFTER MIGRATION
 					//in this case we can to assume that the savedentry has been freed 
 					//so it makes sense to goto the migentry and get our page
@@ -4038,7 +4040,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				}
 
 				page = __read_swap_cache_async_save(entry, GFP_HIGHUSER_MOVABLE, vma, 
-							vmf->address, &page_allocated, false, &try_free_entry);
+							vmf->address, &page_allocated, false, &try_free_entry, false);
 				if (page_allocated){
 					pr_info("__read_swap_cache_async_save folio[%p] remapped entry[%lx] refcount[%d]", 
 								page_folio(page), entry.val, folio_ref_count(page_folio(page)));
@@ -4460,26 +4462,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		pr_err("do_swap unlock reamp ori[%lx]cnt[%d]->mig[%lx]cnt[%d] folio[%p]ref[%d]", 
 					orientry.val, __swp_swapcount(orientry),
 					migentry.val, __swp_swapcount(migentry), 
-					folio, folio_ref_count(folio));		
-		//it shows that this is a invalid remap
-		//these entries are not saved, (probably because refaulted before end_bio_write check)
-		//since this refault happened, there's no need for remap to exists for now
-
-		//we have to make sure if the folio now is valid, we check the 
-
-		// if (__swap_count(migentry) == 0){
-		// 	delete_from_swap_remap(folio, orientry, migentry, false); //should come with no ref_sub
-		// 	pr_err("do_swap delete_from_swap_remap migentry[%lx], count %d", migentry.val, __swp_swapcount(migentry));		
-		// }
-		// else{
-		// 	pr_err("do_swap cannot delete reamp migentry[%lx], count %d", migentry.val, __swp_swapcount(migentry));		
-		// 	BUG();
-		// }
-		// if (swapcache)
-		// pr_err("do_swap folio[%p] swapcache , wb[%d]d[%d]sb[%d]$[%d]", folio, 
-		// 				folio_test_writeback(folio) , folio_test_dirty(folio), 
-		// 			    folio_test_swapbacked(folio),  folio_test_swapcache(folio));	
-		// BUG();		
+					folio, folio_ref_count(folio));			
 	}
 	if (folio && folio_test_stalesaved(folio)){
 		pr_err("this shouldn't happen folio[%p] stale", folio);

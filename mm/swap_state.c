@@ -1419,7 +1419,7 @@ static inline int should_try_change_swap_entry(int rf_dist, int swap_level, bool
 struct page*__read_swap_cache_async_save(swp_entry_t entry, 	
 	gfp_t gfp_mask, struct vm_area_struct *vma, 
 	unsigned long addr,	bool *new_page_allocated, 
-	bool no_ra, int* try_free_entry)
+	bool no_ra, int* try_free_entry, bool nocheck)
 {
 	struct swap_info_struct *si;
 	struct folio *folio;
@@ -1481,7 +1481,8 @@ struct page*__read_swap_cache_async_save(swp_entry_t entry,
 			break;
 		pr_err("mig swapcache_prepare fail[%d] addr[%lx] entry[%lx]", 
 					err, addr, entry.val);
-
+		if (nocheck && !folio_test_locked(folio))
+			break;
 		folio_put(folio);
 		if (err != -EEXIST)
 			return NULL;
@@ -2314,6 +2315,10 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				pr_err("invalide mig_entry[%lx] alloc swap", mig_entry.val);
 				goto fail_page_out;
 			}
+			if (swap_duplicate(mig_entry) < 0){
+				pr_err("fail dup mig_entry[%lx]", mig_entry.val);
+				goto fail_page_out;
+			}
 			pr_info("folio_alloc_swap entry[%lx] v[%d] for folio[%p]ref[%d]cnt[%d]",
 				 mig_entry.val, swp_entry_test_special(mig_entry), 
 				 folio, folio_ref_count(folio), __swap_count(mig_entry));
@@ -2423,6 +2428,7 @@ fail_delete_mig_cache:
 fail_delete_saved_cache:
 				delete_from_swap_cache_mig(folio, saved_entry, true, false); //page private is also cleared
 				pr_err("fail_delete_saved_cache folio[%p] ref[%d]", folio, folio_ref_count(folio));
+				swap_free(mig_entry);
 fail_page_out:
 				folio_clear_dirty(folio);
 				folio_clear_stalesaved(folio);

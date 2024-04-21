@@ -1574,10 +1574,10 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 				mig_entry_phy.val = mig_entry.val;
 				swp_entry_clear_ext(&mig_entry_phy, 0x3);
 
-				err = swap_duplicate(mig_entry_phy);
-				if (err < 0) {
-					pr_err("swap_duplicate failing entry[%lx]", mig_entry_phy.val);
-				}
+				// err = swap_duplicate(mig_entry_phy);
+				// if (err < 0) {
+				// 	pr_err("swap_duplicate failing entry[%lx]", mig_entry_phy.val);
+				// }
 
 				struct address_space *address_space = swap_address_space(mig_entry);
 				xa_lock_irq(&address_space->i_pages);
@@ -2026,7 +2026,7 @@ keep_next_time:
 					pr_err("folio[%p]$[%d]private[%lx]cnt[%d]map[%d] remap deleted add to lru, swap freed", 
 						folio,	folio_test_swapcache(folio), 
 						page_private(folio_page(folio, 0)), folio_ref_count(folio), __swap_count(migentry));					
-					BUG();
+					// BUG();
 				}
 
 				// //try clear original entry before unlock
@@ -2056,7 +2056,7 @@ keep_next_time:
 					// swap_free(entry); //should free by do_swap
 					set_page_private(folio_page(folio, 0), migentry.val);
 					folio_unlock(folio);
-					swap_free(entry);
+					// swap_free(entry);
 					continue;
 				} //locked by do_swap_page, it will unlock it
 			}
