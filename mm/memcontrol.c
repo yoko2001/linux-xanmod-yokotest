@@ -7856,14 +7856,17 @@ void mem_cgroup_swapout(struct folio *folio, swp_entry_t entry)
 	fast = get_fastest_swap_prio();
 	slow = get_slowest_swap_prio();
 	si = get_swap_device(entry);
-	if (fast == si->prio){
-		count_memcg_folio_events(folio, SWAPOUT_FAST, nr_entries);
-	}else if (slow == si->prio){
-		count_memcg_folio_events(folio, SWAPOUT_SLOW, nr_entries);	
-	}else{
-		count_memcg_folio_events(folio, SWAPOUT_MID, nr_entries);
+	if (si){
+		if (fast == si->prio){
+			count_memcg_folio_events(folio, SWAPOUT_FAST, nr_entries);
+		}else if (slow == si->prio){
+			count_memcg_folio_events(folio, SWAPOUT_SLOW, nr_entries);	
+		}else{
+			count_memcg_folio_events(folio, SWAPOUT_MID, nr_entries);
+		}
+		put_swap_device(si);		
 	}
-	put_swap_device(si);
+
 	/*DJL ADD END*/
 
 	VM_WARN_ON_ONCE_FOLIO(!memcg, folio);

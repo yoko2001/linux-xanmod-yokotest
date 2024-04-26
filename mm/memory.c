@@ -3887,7 +3887,10 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 					//we have to keep it from freed
 					invalid_remap = true;
 					entry.val = migentry.val;
-					if (si) put_swap_device(si);
+					if (si) {
+						put_swap_device(si);
+						si = NULL;
+					}
 					si = get_swap_device(migentry);
 					if (unlikely(!si))
 						goto out;
@@ -3901,7 +3904,10 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 					//change entry, after this entry is valid
 					entry.val = migentry.val;
 					/* Prevent swapoff from happening to us. */
-					if (si) put_swap_device(si);
+					if (si){
+						put_swap_device(si);
+						si = NULL;
+					}
 					si = get_swap_device(migentry);
 					if (unlikely(!si))
 						goto out;

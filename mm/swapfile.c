@@ -298,17 +298,6 @@ signed short get_slowest_swap_prio(void){return slowest_swap_prio;}
 struct swap_info_struct * global_fastest_swap_si(void){
 	if (!fastest_swap_si)
 		goto gfsi_bad_nofile;
-	if (!percpu_ref_tryget_live(&fastest_swap_si->users))
-		goto gfsi_out;
-	/*
-	 * Guarantee the si->users are checked before accessing other
-	 * fields of swap_info_struct.
-	 *
-	 * Paired with the spin_unlock() after setup_swap_info() in
-	 * enable_swap_info().
-	 */
-	smp_rmb();
-
 	return fastest_swap_si;
 gfsi_bad_nofile:
 	pr_err("%s gfsi_bad_nofile", __FILE__);
@@ -771,12 +760,11 @@ static void update_swap_prio_mark(void){
 		}
 		if (fast->prio > fastest_swap_prio) {
 			fastest_swap_prio = fast->prio;
-			pr_err("fastest_swap_prio => %d", fastest_swap_prio);
+			pr_info("fastest_swap_prio => %d [%p]", fastest_swap_prio, fast);
 		}
 		if (slow->prio < slowest_swap_prio) {
 			slowest_swap_prio = slow->prio;
-			pr_err("slowest_swap_prio => %d", slowest_swap_prio);
-
+			pr_info("slowest_swap_prio => %d [%p]", slowest_swap_prio, slow);
 		}
 	}
 	spin_unlock(&swap_avail_lock);
@@ -2494,7 +2482,6 @@ retry:
 
 		entry = swp_entry(type, i);
 		folio = filemap_get_folio(swap_address_space(entry), i);
-		pr_err("try_to_unuse filemap_get_folio entry[%lx], folio[%p]", entry.val, folio);
 		if (!folio)
 			continue;
 
@@ -2504,9 +2491,9 @@ retry:
 		 * might even be back in swap cache on another swap area. But
 		 * that is okay, folio_free_swap() only removes stale folios.
 		 */
-		pr_err("try_to_unuse lock entry[%lx], folio[%p]", entry.val, folio);
+		pr_info("try_to_unuse lock entry[%lx], folio[%p]", entry.val, folio);
 		folio_lock(folio);
-		pr_err("try_to_unuse wait_writeback[%lx], folio[%p]", entry.val, folio);
+		pr_info("try_to_unuse wait_writeback[%lx], folio[%p]", entry.val, folio);
 		folio_wait_writeback(folio);
 		folio_free_swap(folio);
 		folio_unlock(folio);

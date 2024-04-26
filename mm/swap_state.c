@@ -985,7 +985,8 @@ bool add_to_swap(struct folio *folio, long* left_space)
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 	VM_BUG_ON_FOLIO(!folio_test_uptodate(folio), folio);
 
-	entry = folio_alloc_swap(folio, left_space, false);
+	entry = folio_alloc_swap(folio, left_space, folio_test_swappriolow(folio));
+			//folio_alloc_swap(folio, left_space, false);
 	if (!entry.val)
 		return false;
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
@@ -1243,6 +1244,7 @@ void free_pages_and_swap_cache(struct encoded_page **pages, int nr)
 
 static inline bool swap_use_vma_readahead(void)
 {
+	return READ_ONCE(enable_vma_readahead);
 	return READ_ONCE(enable_vma_readahead) && !atomic_read(&nr_rotate_swap);
 }
 
@@ -1656,7 +1658,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 	}
 
 	mem_cgroup_swapin_uncharge_swap(entry);
-
+	si = swp_swap_info(entry);
 #ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
 	folio_clear_swappriohigh(folio); //clear here
 	folio_set_swappriolow(folio);  //set here so that only those got promoted again can go to fast
@@ -2197,6 +2199,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				count_memcg_event_mm(vma->vm_mm, SWAPIN_MID);
 			}
 			put_swap_device(si);
+			si = NULL;
 
 			if (i == ra_info.offset){
 				*try_free_entry = try_free;
@@ -2266,10 +2269,12 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				pr_info("saved_entry[%lx] raw_swap_cache_get_folio folio[%p] already dealed with",
 						 saved_entry.val, folio);
 				put_swap_device(si);
+				si = NULL;
 				// folio_ref_dec(folio);
 				goto skip_this_save;
 			}
 			put_swap_device(si);
+			si = NULL;
 			pr_info("saved_entry[%lx] dealed with",saved_entry.val);
 
 			folio = vma_alloc_folio(GFP_NOWAIT, 0,
@@ -2454,6 +2459,7 @@ scceed_pageout:
 			si = get_swap_device(mig_entry);
 			prio_mig = si->prio;
 			put_swap_device(si);
+			si = NULL;
 
 			trace_vma_ra_save_stale(saved_entry.val, mig_entry.val, entry_saved, prio_ori, prio_mig);
 			//end dealing with current entry_saved

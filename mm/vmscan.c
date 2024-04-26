@@ -1537,8 +1537,10 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 				}
 			}
 		}
-		if (si)
+		if (si){
 			put_swap_device(si);
+			si = NULL;
+		}
 
 		if (!folio_test_stalesaved(folio)){
 			if (shadow_ext && shadow == shadow_ext){
@@ -6070,8 +6072,6 @@ static void swap_scan_savior(struct scan_control *sc, struct lruvec * lruvec)
 	}
 	sc->nr_entry_scanned = nr_entry_scanned;
 	sc->nr_entry_saved = nr_entry_saved;
-
-	put_swap_device(si);
 }
 
 // static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *sc)

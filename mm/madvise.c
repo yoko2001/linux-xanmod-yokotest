@@ -636,8 +636,10 @@ regular_page:
 		// }
 		if (low) {
 			folio_set_swappriolow(folio);
+			folio_clear_swappriohigh(folio);
 		}else{
 			folio_set_swappriohigh(folio);
+			folio_clear_swappriolow(folio);
 		}
 		trace_folio_set_swapprio(folio);
 		// folio_unlock(folio);

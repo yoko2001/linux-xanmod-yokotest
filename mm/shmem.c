@@ -1848,7 +1848,8 @@ unlock:
 		folio_unlock(folio);
 		folio_put(folio);
 	}
-	put_swap_device(si);
+	if (si)
+		put_swap_device(si);
 
 	return error;
 }

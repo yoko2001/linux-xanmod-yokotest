@@ -427,19 +427,7 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 		}
 		goto out;
 	}
-	/*DJL ADD BEGIN*/
-#ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
-	folio_clear_readaheaded(folio);
-#else
-	//PRIORITY STAYS FOR MADVISE 
-	// if (!folio_test_swappriolow(folio) && !folio_test_swappriohigh(folio)){
-	// 	if (folio_test_readaheaded(folio)){
-	// 		folio_set_swappriolow(folio);
-	// 	}
-	// }
-	folio_clear_readaheaded(folio);
-#endif
-	/*DJL ADD END*/
+
 	/*
 	 * Preemption is allowed here, because we may sleep
 	 * in refill_swap_slots_cache().  But it is safe, because
