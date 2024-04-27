@@ -615,15 +615,15 @@ skip_count:
 	
 	*try_free_entry = dist_ret;
 #endif /*CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC*/
-	if (dist <= 3){
-		folio_swapprio_promote(folio);
-		if (folio_test_swappriolow(folio))
-			pr_err("folio[%p] promote fail", folio);		
-	}
-	else if (dist > 3){ //punishment
-		folio_set_swappriolow(folio);
-		folio_clear_swappriohigh(folio);
-	}
+	// if (dist <= 3){
+	// 	folio_swapprio_promote(folio);
+	// 	if (folio_test_swappriolow(folio))
+	// 		pr_err("folio[%p] promote fail", folio);		
+	// }
+	// else if (dist > 3){ //punishment
+	// 	folio_set_swappriolow(folio);
+	// 	folio_clear_swappriohigh(folio);
+	// }
 	/*DJL ADD END*/
 
 	// if ((token >> LRU_REFS_WIDTH) != (min_seq & (EVICTION_MASK >> LRU_REFS_WIDTH)))

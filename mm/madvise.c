@@ -540,10 +540,12 @@ static int madvise_prio_pte_range(pmd_t *pmd,
 	pte_t *orig_pte, *pte, ptent;
 	spinlock_t *ptl;
 	struct folio *folio = NULL;
-
-	if (fatal_signal_pending(current))
+	int count = 0;
+	pr_err("madvise_prio_pte_range addr[%lx-%lx] low[%d]", addr, end, low);
+	if (fatal_signal_pending(current)){
+		pr_err("madvise_prio_pte_range fail addr[%lx-%lx] low[%d]", addr, end, low);
 		return -EINTR;
-
+	}
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 	if (pmd_trans_huge(*pmd)) {
 		pmd_t orig_pmd;
@@ -602,6 +604,7 @@ regular_page:
 	orig_pte = pte = pte_offset_map_lock(vma->vm_mm, pmd, addr, &ptl);
 	flush_tlb_batched_pending(mm);
 	arch_enter_lazy_mmu_mode();
+	pr_err("madvise_prio_pte_range addr[%lx-%lx] low[%d] start", addr, end, low);
 	for (; addr < end; pte++, addr += PAGE_SIZE) {
 		ptent = *pte;
 
@@ -641,10 +644,12 @@ regular_page:
 			folio_set_swappriohigh(folio);
 			folio_clear_swappriolow(folio);
 		}
+		count++;
 		trace_folio_set_swapprio(folio);
 		// folio_unlock(folio);
 		// folio_put(folio);
 	}
+	pr_err("madvise_prio_pte_range count[%d] low[%d] end", count, low);
 
 	arch_leave_lazy_mmu_mode();
 	pte_unmap_unlock(orig_pte, ptl);
@@ -665,7 +670,7 @@ static void madvise_swapprio_page_range(struct mmu_gather *tlb,
 		.low = low,
 		.tlb = tlb,
 	};
-
+	pr_err("madvise_swapprio_page_range vma[%p] addr[%lx-%lx]", vma, addr, end);
 	tlb_start_vma(tlb, vma);
 	walk_page_range(vma->vm_mm, addr, end, &prio_walk_ops, &walk_private);
 	tlb_end_vma(tlb, vma);
@@ -722,10 +727,14 @@ static long madvise_swapprio(struct vm_area_struct *vma,
 	struct mm_struct *mm = vma->vm_mm;
 	struct mmu_gather tlb;
 	int low = behavior - MADV_SWAPPRIO_HIGH;
+	pr_err("madvise_swapprio low[%d]" ,low);
 	*prev = vma;
-	if (!can_madv_lru_vma(vma))	
+	if (!can_madv_lru_vma(vma))	{
 		//make sure not hugetlb / locked or sth else
-		return -EINVAL;
+		pr_err("madvise_swapprio low[%d] vma check fail" ,low);
+		return -EINVAL;		
+	}
+
 	// lru_add_drain();
 	tlb_gather_mmu(&tlb, mm);
 	madvise_swapprio_page_range(&tlb, vma, start_addr, end_addr, low);
