@@ -296,18 +296,18 @@ static struct swap_info_struct * fastest_swap_si = NULL;
 signed short get_fastest_swap_prio(void){return fastest_swap_prio;}
 signed short get_slowest_swap_prio(void){return slowest_swap_prio;}
 struct swap_info_struct * global_fastest_swap_si(void){
-	if (!fastest_swap_si)
-		goto gfsi_bad_nofile;
-	if (!percpu_ref_tryget_live(&fastest_swap_si->users))
-		goto gfsi_out;
-	/*
-	 * Guarantee the si->users are checked before accessing other
-	 * fields of swap_info_struct.
-	 *
-	 * Paired with the spin_unlock() after setup_swap_info() in
-	 * enable_swap_info().
-	 */
-	smp_rmb();
+	// if (!fastest_swap_si)
+	// 	goto gfsi_bad_nofile;
+	// if (!percpu_ref_tryget_live(&fastest_swap_si->users))
+	// 	goto gfsi_out;
+	// /*
+	//  * Guarantee the si->users are checked before accessing other
+	//  * fields of swap_info_struct.
+	//  *
+	//  * Paired with the spin_unlock() after setup_swap_info() in
+	//  * enable_swap_info().
+	//  */
+	// smp_rmb();
 
 	return fastest_swap_si;
 gfsi_bad_nofile:
@@ -2146,7 +2146,7 @@ setpte:
 	swap_free(entry);
 	if (!__swap_count(entry)){
 		pr_err("unuse clear_shadow_from_swap_cache entry[%lx]", entry.val);
-		BUG();
+		// BUG();
 		clear_shadow_from_swap_cache(swp_swap_info(entry), swp_offset(entry),swp_offset(entry)+1, 1);
 	}
 out:
@@ -2391,7 +2391,7 @@ static unsigned int find_next_to_unuse(struct swap_info_struct *si,
 
 	return i;
 }
-
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
 /* si is ok */
 void swap_shadow_scan_next(struct swap_info_struct * si, struct lruvec * lruvec, 
 		unsigned long* scanned, unsigned long* saved)
@@ -2428,7 +2428,10 @@ void swap_shadow_scan_next(struct swap_info_struct * si, struct lruvec * lruvec,
 		si->swap_scan_cur_bit = end;
 	}
 }
-
+#else
+void swap_shadow_scan_next(struct swap_info_struct * si, struct lruvec * lruvec, 
+		unsigned long* scanned, unsigned long* saved){}
+#endif
 static int try_to_unuse(unsigned int type)
 {
 	struct mm_struct *prev_mm;
@@ -3561,6 +3564,7 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 		}
 	} else {
 		atomic_inc(&nr_rotate_swap);
+		pr_err("inc nr_rotate_swap!");
 		inced_nr_rotate_swap = true;
 	}
 

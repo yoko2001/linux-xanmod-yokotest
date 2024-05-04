@@ -3831,8 +3831,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	}
 	/*DJL ADD END*/
 	swapcache = folio;
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
 	orientry.val = entry.val; //save origin
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
 	migentry.val = 0;//= entry_get_migentry_lock(entry); //this will only lock on existed migentry
 
 	//this avoid multiple do_swap_page enter critical section
@@ -3938,7 +3938,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				}
 #endif
 				if (shadow){
- 					workingset_refault(folio, shadow, &rf_dist_ts, vmf->address,swap_level, entry);
+ 					workingset_refault(folio, shadow, &rf_dist_ts, vmf->real_address,swap_level, entry);
 					if (swap_level==1){
 						count_memcg_event_mm(vma->vm_mm, WORKINGSET_REFAULT_FAST);
 					}
@@ -4443,7 +4443,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	else{ //normal case
 		if (should_try_to_free_swap(folio, vma, vmf->flags, try_free_entry)){ //invalid / normal
 			if (orientry.val != entry.val){
-				pr_err("do_swap folio_free_swap[%lx] folio[%p] BUG()", entry.val, folio);
+				pr_err("do_swap folio_free_swap[%lx]orientry[%lx] folio[%p] BUG()", entry.val, orientry.val, folio);
 				BUG();
 			}
 			folio_free_swap(folio);

@@ -1830,9 +1830,10 @@ static int shmem_swapin_folio(struct inode *inode, pgoff_t index,
 	delete_from_swap_cache(folio);
 	folio_mark_dirty(folio);
 	swap_free(swap);
-	if (folio->shadow_ext){
-		pr_err("failing 2"); BUG();
-	}
+	// if (folio->shadow_ext){
+	// 	shadow_entry_freefolio->shadow_ext);
+	// 	folio->shadow_ext = NULL;
+	// }
 	put_swap_device(si);
 
 	*foliop = folio;

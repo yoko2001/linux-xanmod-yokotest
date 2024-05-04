@@ -1919,6 +1919,7 @@ static bool may_enter_fs(struct folio *folio, gfp_t gfp_mask)
 }
 
 #ifdef CONFIG_LRU_GEN
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
 unsigned int check_saved_folios_wb(struct lruvec *lruvec, 
 		struct pglist_data *pgdat, struct scan_control *sc)
 {
@@ -2088,6 +2089,10 @@ keep_next_time:
 
 	return nr_reclaimed;
 }
+#else
+unsigned int check_saved_folios_wb(struct lruvec *lruvec, 
+		struct pglist_data *pgdat, struct scan_control *sc){return 0;}
+#endif
 #endif
 
 /*

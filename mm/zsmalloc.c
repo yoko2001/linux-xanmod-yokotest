@@ -914,7 +914,7 @@ static void reset_page(struct page *page)
 {
 	__ClearPageMovable(page);
 	ClearPagePrivate(page);
-	pr_err("reset_page [%pK]", page);
+	// pr_err("reset_page [%pK]", page);
 	set_page_private(page, 0);
 	page_mapcount_reset(page);
 	page->index = 0;
@@ -1101,7 +1101,7 @@ static void create_page_chain(struct size_class *class, struct zspage *zspage,
 	for (i = 0; i < nr_pages; i++) {
 		page = pages[i];
 		set_page_private(page, (unsigned long)zspage);
-		pr_err("create_page_chain page[%pK]->pri %lu", page, (unsigned long)zspage);
+		// pr_err("create_page_chain page[%pK]->pri %lu", page, (unsigned long)zspage);
 		page->index = 0;
 		if (i == 0) {
 			zspage->first_page = page;
