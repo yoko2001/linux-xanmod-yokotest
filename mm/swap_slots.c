@@ -503,17 +503,17 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 		struct lruvec* temp_lruvec;
 		temp_lruvec = folio_lruvec(folio);
 		dec_tree_result = temp_lruvec->predict(temp_lruvec->lru_dec_tree, (short*)(&features), folio);
-		if (features.seq0 + FRE0 < FREX) {
-			count_memcg_folio_events(folio, features.seq0 + FRE0, 1);
+		if (features.seq0/4 + FRE0 < FREX) {
+			count_memcg_folio_events(folio, features.seq0/4 + FRE0, 1);
 		} else {
 			count_memcg_folio_events(folio, FREX, 1);
 		}
 		count_memcg_folio_events(folio, WI_TREE, 1);
-		// if (features.seq0 <= 45){
-		// 	dec_tree_result = 1;
-		// }else{
-		// 	dec_tree_result = 0;
-		// }
+		if (features.seq0 <= 10){
+			dec_tree_result = 1;
+		}else{
+			dec_tree_result = 0;
+		}
 		if(dec_tree_result == 1){
 			count_memcg_folio_events(folio, PREDICT_FAST, 1);
 		}else if(dec_tree_result == 0){

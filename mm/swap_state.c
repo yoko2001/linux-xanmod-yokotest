@@ -2118,6 +2118,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 	struct swap_iocb *plug_save_wb = NULL;
 
 	swap_ra_info(vmf, &ra_info);
+	// ra_info.win = 1;
 	if (ra_info.win == 1)
 		goto skip;
 	if (swp_entry_test_special(fentry))
