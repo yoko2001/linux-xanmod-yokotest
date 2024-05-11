@@ -539,6 +539,12 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 
 	min_seq = READ_ONCE(lrugen->min_seq[type]);
 	/*DJL ADD BEGIN*/
+	if (entry_is_entry_ext(shadow) > 0){
+		struct shadow_entry* entry_ext = (struct shadow_entry*)shadow;
+		entry_ext->hist_ts[0] = min_seq - entry_ext->hist_ts[0];
+		lasthist = entry_ext->hist_ts[0];
+	}
+
 	if (lasthist == ULONG_MAX){
 		lasthist = (token >> LRU_REFS_WIDTH) % MAX_NR_GENS;
 		dist = (min_seq + MAX_NR_GENS - lasthist ) % MAX_NR_GENS;		
@@ -615,15 +621,15 @@ skip_count:
 	
 	*try_free_entry = dist_ret;
 #endif /*CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC*/
-	if (dist <= 3){
-		folio_swapprio_promote(folio);
-		if (folio_test_swappriolow(folio))
-			pr_err("folio[%p] promote fail", folio);		
-	}
-	else if (dist > 3){ //punishment
-		folio_set_swappriolow(folio);
-		folio_clear_swappriohigh(folio);
-	}
+	// if (dist <= 3){
+	// 	folio_swapprio_promote(folio);
+	// 	if (folio_test_swappriolow(folio))
+	// 		pr_err("folio[%p] promote fail", folio);		
+	// }
+	// else if (dist > 3){ //punishment
+	// 	folio_set_swappriolow(folio);
+	// 	folio_clear_swappriohigh(folio);
+	// }
 	/*DJL ADD END*/
 
 	// if ((token >> LRU_REFS_WIDTH) != (min_seq & (EVICTION_MASK >> LRU_REFS_WIDTH)))

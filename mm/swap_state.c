@@ -1706,7 +1706,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 	folio->shadow_ext = NULL;
 	abandon_shadow = false;
 	if (entry_is_entry_ext(shadow) == 1){
-		if (!abandon_shadow){
+		if (likely(!abandon_shadow)){
 			folio->shadow_ext = shadow;
 		}
 		else{
@@ -1923,8 +1923,8 @@ struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t gfp_mask,
 	struct vm_area_struct *vma = vmf->vma;
 	unsigned long addr = vmf->address;
 	int try_free;
-	pr_err("swap_cluster_readahead");
-	BUG();
+	// pr_err("swap_cluster_readahead");
+	// BUG();
 
 	mask = swapin_nr_pages(offset) - 1;
 	if (!mask)
