@@ -509,7 +509,7 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 			count_memcg_folio_events(folio, FREX, 1);
 		}
 		count_memcg_folio_events(folio, WI_TREE, 1);
-		if (features.seq0 <= 10){
+		if (features.seq0 <= 80){
 			dec_tree_result = 1;
 		}else{
 			dec_tree_result = 0;
