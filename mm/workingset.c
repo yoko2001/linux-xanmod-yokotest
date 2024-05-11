@@ -539,6 +539,12 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 
 	min_seq = READ_ONCE(lrugen->min_seq[type]);
 	/*DJL ADD BEGIN*/
+	if (entry_is_entry_ext(shadow) > 0){
+		struct shadow_entry* entry_ext = (struct shadow_entry*)shadow;
+		entry_ext->hist_ts[0] = min_seq - entry_ext->hist_ts[0];
+		lasthist = entry_ext->hist_ts[0];
+	}
+
 	if (lasthist == ULONG_MAX){
 		lasthist = (token >> LRU_REFS_WIDTH) % MAX_NR_GENS;
 		dist = (min_seq + MAX_NR_GENS - lasthist ) % MAX_NR_GENS;		

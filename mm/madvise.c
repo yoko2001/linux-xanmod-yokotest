@@ -47,6 +47,7 @@ struct madvise_walk_private {
 struct madvise_walk_private_prio {
 	struct mmu_gather *tlb;
 	int low;
+	int num;
 };
 /*DJL ADD END*/
 
@@ -541,7 +542,7 @@ static int madvise_prio_pte_range(pmd_t *pmd,
 	spinlock_t *ptl;
 	struct folio *folio = NULL;
 	int count = 0;
-	pr_err("madvise_prio_pte_range addr[%lx-%lx] low[%d]", addr, end, low);
+	// pr_err("madvise_prio_pte_range addr[%lx-%lx] low[%d]", addr, end, low);
 	if (fatal_signal_pending(current)){
 		pr_err("madvise_prio_pte_range fail addr[%lx-%lx] low[%d]", addr, end, low);
 		return -EINTR;
@@ -604,7 +605,7 @@ regular_page:
 	orig_pte = pte = pte_offset_map_lock(vma->vm_mm, pmd, addr, &ptl);
 	flush_tlb_batched_pending(mm);
 	arch_enter_lazy_mmu_mode();
-	pr_err("madvise_prio_pte_range addr[%lx-%lx] low[%d] start", addr, end, low);
+	// pr_err("madvise_prio_pte_range addr[%lx-%lx] low[%d] start", addr, end, low);
 	for (; addr < end; pte++, addr += PAGE_SIZE) {
 		ptent = *pte;
 
@@ -649,7 +650,8 @@ regular_page:
 		// folio_unlock(folio);
 		// folio_put(folio);
 	}
-	pr_err("madvise_prio_pte_range count[%d] low[%d] end", count, low);
+	// pr_err("madvise_prio_pte_range count[%d] low[%d] end", count, low);
+	private->num += count;
 
 	arch_leave_lazy_mmu_mode();
 	pte_unmap_unlock(orig_pte, ptl);
@@ -669,10 +671,12 @@ static void madvise_swapprio_page_range(struct mmu_gather *tlb,
 	struct madvise_walk_private_prio walk_private = {
 		.low = low,
 		.tlb = tlb,
+		.num = 0,
 	};
 	pr_err("madvise_swapprio_page_range vma[%p] addr[%lx-%lx]", vma, addr, end);
 	tlb_start_vma(tlb, vma);
 	walk_page_range(vma->vm_mm, addr, end, &prio_walk_ops, &walk_private);
+	pr_err("madvise_swapprio_page_range vma[%p] addr[%lx-%lx] count[%d]", vma, addr, end, walk_private.num);
 	tlb_end_vma(tlb, vma);
 }
 
