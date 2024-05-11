@@ -541,7 +541,7 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 	/*DJL ADD BEGIN*/
 	if (entry_is_entry_ext(shadow) > 0){
 		struct shadow_entry* entry_ext = (struct shadow_entry*)shadow;
-		entry_ext->hist_ts[0] = min_seq - entry_ext->hist_ts[0];
+		entry_ext->hist_ts[0] = (min_seq % 0xFFFF - entry_ext->hist_ts[0]) % 0xFFFF;
 		lasthist = entry_ext->hist_ts[0];
 	}
 

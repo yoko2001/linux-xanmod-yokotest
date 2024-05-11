@@ -459,31 +459,38 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 		features.seq0 = ((struct shadow_entry*)(folio->shadow_ext))->hist_ts[0];
 		features.seq1 = ((struct shadow_entry*)(folio->shadow_ext))->hist_ts[1];
 		features.seq2 = ((struct shadow_entry*)(folio->shadow_ext))->hist_ts[2];
-		if(features.seq0 != 0 && features.seq1 == 0){
-			count_memcg_folio_events(folio, HIS_NUM_1, 1);
-		}
-		if(features.seq0 != 0 && features.seq1 != 0 && features.seq2 == 0){
-			count_memcg_folio_events(folio, HIS_NUM_2, 1);
-		}
-		if(features.seq0 != 0 && features.seq1 != 0 && features.seq2 != 0){
-			count_memcg_folio_events(folio, HIS_NUM_3, 1);
-		}
-		features.seq3 = 0;
-		features.tier = 0;
-		if(features.seq2 == 0 && features.seq1 == 0){
-			features.seq0 = 65535;
-			features.seq1 = 65535;
-		}
-		else if(features.seq1 != 0 && features.seq2 == 0){
-			features.seq0 = features.seq0 - features.seq1;
-			features.seq1 = 65535;
-		}else{
-			features.seq0 = features.seq0 - features.seq1;
-			features.seq1 = features.seq1 - features.seq2;
-		}
+		// if(features.seq0 != 0 && features.seq1 == 0){
+		// 	count_memcg_folio_events(folio, HIS_NUM_1, 1);
+		// }
+		// if(features.seq0 != 0 && features.seq1 != 0 && features.seq2 == 0){
+		// 	count_memcg_folio_events(folio, HIS_NUM_2, 1);
+		// }
+		// if(features.seq0 != 0 && features.seq1 != 0 && features.seq2 != 0){
+		// 	count_memcg_folio_events(folio, HIS_NUM_3, 1);
+		// }
+		// features.seq3 = 0;
+		// features.tier = 0;
+		// if(features.seq2 == 0 && features.seq1 == 0){
+		// 	features.seq0 = 65535;
+		// 	features.seq1 = 65535;
+		// }
+		// else if(features.seq1 != 0 && features.seq2 == 0){
+		// 	features.seq0 = features.seq0 - features.seq1;
+		// 	features.seq1 = 65535;
+		// }else{
+		// 	features.seq0 = features.seq0 - features.seq1;
+		// 	features.seq1 = features.seq1 - features.seq2;
+		// }
 		struct lruvec* temp_lruvec;
 		temp_lruvec = folio_lruvec(folio);
-		dec_tree_result = temp_lruvec->predict(temp_lruvec->lru_dec_tree, (short*)(&features), folio);
+		// dec_tree_result = temp_lruvec->predict(temp_lruvec->lru_dec_tree, (short*)(&features), folio);
+		if (features.seq0 == 0){
+			dec_tree_result = 0;
+		} else if (features.seq0 <= 40){
+			dec_tree_result = 1;
+		} else {
+			dec_tree_result = 0;
+		}
 		if(dec_tree_result == 1){
 			count_memcg_folio_events(folio, PREDICT_FAST, 1);
 		}else if(dec_tree_result == 0){
@@ -524,8 +531,6 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 #ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP
 	if (force_slow)
 		dec_tree_result = 0;
-	else	
-		dec_tree_result = 1;
 	if (dec_tree_result == 0){
 #else
 	if (folio_test_swappriolow(folio)){
