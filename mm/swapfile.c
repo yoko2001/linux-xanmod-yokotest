@@ -2376,6 +2376,7 @@ static unsigned int find_next_to_unuse(struct swap_info_struct *si,
 	return i;
 }
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
 /* si is ok */
 void swap_shadow_scan_next(struct swap_info_struct * si, struct lruvec * lruvec, 
 		unsigned long* scanned, unsigned long* saved)
@@ -3550,6 +3551,7 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 		}
 	} else {
 		atomic_inc(&nr_rotate_swap);
+		pr_err("inc nr_rotate_swap!");
 		inced_nr_rotate_swap = true;
 	}
 

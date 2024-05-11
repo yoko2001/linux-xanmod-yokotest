@@ -752,6 +752,38 @@ static const unsigned int memcg_vm_event_stat[] = {
 	HIS_NUM_3,
 	SWAP_STALE_SAVE,
 	SWAP_STALE_SAVE_REUSE,
+	FRE0,
+	FRE1,
+	FRE2,
+	FRE3,
+	FRE4,
+	FRE5,
+	FRE6,
+	FRE7,
+	FRE8,
+	FRE9,
+	FRE10,
+	FRE11,
+	FRE12,
+	FRE13,
+	FRE14,
+	FRE15,
+	FRE16,
+	FRE17,
+	FRE18,
+	FRE19,
+	FRE20,
+	FRE21,
+	FRE22,
+	FRE23,
+	FRE24,
+	FRE25,
+	FRE26,
+	FRE27,
+	FRE28,
+	FRE29,
+	FRE30,
+	FREX,
 #endif
 /*DJL ADD END*/
 };
@@ -5340,7 +5372,7 @@ struct dec_tree* tree_init(struct dec_tree* lru_dec_tree){
     lru_dec_tree->root = (char*)root;
     lru_dec_tree->deep = 5;
 	// 10% of fast_dev
-    root->threshold_value = 819*9;
+    root->threshold_value = 11718/4;
     root->label = 0;
     root->which_feature = space_left;
 
@@ -5351,13 +5383,39 @@ struct dec_tree* tree_init(struct dec_tree* lru_dec_tree){
     left1->which_feature = space_left;
     set_left(root, left1);
 
+		//------------------------------------------
+	// left8  -- end node
+    struct dec_node* mid_space = creat_node();
+    mid_space->threshold_value = 11718*6;
+    mid_space->label = 0;
+    mid_space->which_feature = space_left;
+    // mid_space->left = NULL;
+    // mid_space->right = NULL;
+    set_right(root, mid_space);
+
+    // right8 -- end node
+    struct dec_node* right8 = creat_node();
+    right8->threshold_value = 0;
+    right8->label = 1;
+    right8->which_feature = -1;
+    right8->left = NULL;
+    right8->right = NULL;
+	right8->name = LEAF1;
+    set_right(mid_space, right8);
+
+
+
+	//------------------------------------------
+
     // right1
     struct dec_node* right1 = creat_node();
-    right1->threshold_value = 40;
+    right1->threshold_value = 60;
     right1->label = 1;
     right1->which_feature = seq0;
 	right1->name = LEAF5;
-    set_right(root, right1);
+    set_left(mid_space, right1);
+
+
 
 
     // left2
@@ -5373,7 +5431,7 @@ struct dec_tree* tree_init(struct dec_tree* lru_dec_tree){
 
     // right2
     struct dec_node* right2 = creat_node();
-    right2->threshold_value = 10;
+    right2->threshold_value = 55;
     right2->label = 0;
     right2->which_feature = seq0;
     set_right(left1, right2);
@@ -5390,7 +5448,7 @@ struct dec_tree* tree_init(struct dec_tree* lru_dec_tree){
 
     // right3
     struct dec_node* right3 = creat_node();
-    right3->threshold_value = 30;
+    right3->threshold_value = 60;
     right3->label = 1;
     right3->which_feature = seq1;
     set_right(right1, right3);
@@ -5415,7 +5473,7 @@ struct dec_tree* tree_init(struct dec_tree* lru_dec_tree){
 
     // left5 
     struct dec_node* left5 = creat_node();
-    left5->threshold_value = 15;
+    left5->threshold_value = 55;
     left5->label = 1;
     left5->which_feature = seq1;
     set_left(right2, left5);
