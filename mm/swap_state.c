@@ -1677,7 +1677,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 
 	/*DJL ADD BEGIN*/
 	if (shadow){
-		workingset_refault(folio, shadow, &rf_dist_ts, real_addr, swap_level, entry);
+		workingset_refault(folio, shadow, &rf_dist_ts, real_addr, swap_level, entry, &abandon_shadow);
 		if (vma && vma->vm_mm){
 			if (get_fastest_swap_prio() == si->prio){
 				count_memcg_event_mm(vma->vm_mm, WORKINGSET_REFAULT_FAST);

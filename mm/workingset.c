@@ -446,6 +446,7 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, long swap_spa
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 		if (folio->shadow_ext){
 			if	(entry_is_entry_ext(folio->shadow_ext) > 0){
+				count_memcg_folio_events(folio, LEAF1, 1);
 				ret = pack_shadow_ext(mem_cgroup_id(memcg), pgdat, token, refs, se, min_seq, folio->shadow_ext, folio, entry);
 			}
 			else if (entry_is_entry_ext(folio->shadow_ext) < 0){ //already freed
@@ -547,11 +548,11 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 
 	if (lasthist == ULONG_MAX){
 		lasthist = (token >> LRU_REFS_WIDTH) % MAX_NR_GENS;
-		dist = (min_seq + MAX_NR_GENS - lasthist ) % MAX_NR_GENS;		
+		dist = lasthist;//(min_seq + MAX_NR_GENS - lasthist ) % MAX_NR_GENS;		
 		dist_ret = dist;
 	}
 	else{
-		dist = ((min_seq % 0xFFFF) - lasthist) % 0xFFFF;
+		dist = lasthist;//((min_seq % 0xFFFF) - lasthist) % 0xFFFF;
 		dist_ret = dist + MAX_NR_GENS;
 	}
 	swp_entry_t temp_entry;
@@ -600,10 +601,10 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 			}
 			break;
 	};
-	if (dist >= 20){ //its time to give up on this page
-		if (abandon_shadow)
-			*abandon_shadow = true;
-	}
+	// if (dist >= 20){ //its time to give up on this page
+		// if (abandon_shadow)
+		// 	*abandon_shadow = true;
+	// }
 skip_count:
 	/*DJL ADD END*/
 	/*DJL ADD BEGIN*/
@@ -619,7 +620,8 @@ skip_count:
 #ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
 	// folio_set_swappriohigh(folio);
 	
-	*try_free_entry = dist_ret;
+	// *try_free_entry = dist_ret;
+	*try_free_entry = false;
 #endif /*CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC*/
 	// if (dist <= 3){
 	// 	folio_swapprio_promote(folio);

@@ -1916,7 +1916,6 @@ static bool may_enter_fs(struct folio *folio, gfp_t gfp_mask)
 
 #ifdef CONFIG_LRU_GEN
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
 unsigned int check_saved_folios_wb(struct lruvec *lruvec, 
 		struct pglist_data *pgdat, struct scan_control *sc)
 {
