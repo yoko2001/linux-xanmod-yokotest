@@ -1692,6 +1692,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 	}
 	else{
 		trace_folio_ws_chg(folio, addr, folio_pgdat(folio), -1, 0, 0, 1, swap_level, -2, (unsigned long)entry.val);
+		count_memcg_folio_events(folio, LEAF7, 1);
 	}
 
 	//now shadow has been used
@@ -1733,9 +1734,9 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 		*new_page_allocated = true;
 
 //reclaim another 4kb pages space //1mb = 128*4kb pages space
-	lruvec = folio_lruvec(folio);
-	pgdat = lruvec_pgdat(lruvec);
-	pgdat->prio_lruvec = lruvec;
+	// lruvec = folio_lruvec(folio);
+	// pgdat = lruvec_pgdat(lruvec);
+	// pgdat->prio_lruvec = lruvec;
 #ifdef CONFIG_LRU_GEN_CGROUP_KSWAPD_BOOST
 	if (force_wake_up_delay_now++ >= force_wake_up_delay){
 		force_wake_up_delay_now = 0;

@@ -1830,6 +1830,7 @@ static int mem_cgroup_soft_reclaim(struct mem_cgroup *root_memcg,
 {
 	struct mem_cgroup *victim = NULL;
 	int total = 0;
+	int total_add = 0;
 	int loop = 0;
 	unsigned long excess;
 	unsigned long nr_scanned;
@@ -1863,9 +1864,12 @@ static int mem_cgroup_soft_reclaim(struct mem_cgroup *root_memcg,
 			}
 			continue;
 		}
-		total += mem_cgroup_shrink_node(victim, gfp_mask, false,
+		total_add = mem_cgroup_shrink_node(victim, gfp_mask, false,
 					pgdat, &nr_scanned);
+		total += total_add;
 		*total_scanned += nr_scanned;
+		if (total_add)
+			pgdat->prio_lruvec = mem_cgroup_lruvec(victim, pgdat);
 		if (!soft_limit_excess(root_memcg))
 			break;
 	}

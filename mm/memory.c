@@ -3983,6 +3983,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				}
 				else{
 					trace_folio_ws_chg(folio, vmf->address, folio_pgdat(folio), -1, 0, 0, 1, swap_level, -2, (unsigned long)entry.val);
+					count_memcg_event_mm(vma->vm_mm, LEAF6);
+					if (folio->shadow_ext) BUG();
 				}
 				/*DJL ADD END*/
 				folio_add_lru(folio);
