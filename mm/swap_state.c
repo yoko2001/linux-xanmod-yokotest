@@ -114,52 +114,82 @@ void *get_shadow_from_swap_cache_erase(swp_entry_t entry)
 {
 	struct address_space *address_space = swap_address_space(entry);
 	pgoff_t idx = swp_offset(entry);
-	XA_STATE_ORDER(xas, &address_space->i_pages, idx, 1);
-	unsigned long i;
+	struct page *page;
 	int entry_state = 0;
-	void *old;
-	// xas_set_update(&xas, workingset_update_node);
-	do {
-		xas_lock_irq(&xas);
-		xas_create_range(&xas);
-		if (xas_error(&xas))
-			goto unlock;
-		for (i = 0; i < 1; i++) {
-			old = xas_load(&xas);
-//			pr_err("addr_space[%p]ind[%lx] = [%lx]", address_space, idx, old);
-			if (xa_is_value(old)) { //files
-				xas_store(&xas, NULL);
-				// pr_err("get shadow clean shadow entry[%lx]->shadow[%p]", entry.val, old);
-			}
-			else if (old){
-				entry_state = entry_is_entry_ext(old);
-				if (entry_state > 0){ //shadow, erased now
-					xas_store(&xas, NULL);
-					// pr_err("get shadow clean shadow_ext entry[%lx]->shadow_ext[%p]", entry.val, old);
-				}
-				else if (-1 == entry_state){ //might be still in swapcache ?
-					pr_err("return a freed entry[%lx]->shadow[%p]", entry.val, old);
-					BUG();
-					old = NULL;
-				}
-				else if (0 == entry_state){
-					// pr_err("get_shadow_from_s$ delete origin folio entry[%lx]->folio[%p]", entry.val, old);
-					old = NULL;
-				}
-				else{
-					BUG();
-				}
-			}
-			xas_next(&xas);
+
+	page = xa_load(&address_space->i_pages, idx);
+	if (!page)
+		return page;
+	if (xa_is_value(page))
+		return page;
+	else {
+		entry_state = entry_is_entry_ext(page);
+		if (entry_state== 1){
+			xa_erase(&address_space->i_pages, idx);
+			return page;
 		}
-unlock:
-		xas_unlock_irq(&xas);
-	} while (xas_nomem(&xas, GFP_KERNEL));
-	if (!xas_error(&xas))
-		return old;
-	BUG();
+		else if (entry_state == -1){
+			pr_err("get_shadow_from_swap_cache entry[%lx] a freed page[%p]", entry.val, page);
+			BUG();
+		}
+	}	
 	return NULL;
 }
+
+// void *get_shadow_from_swap_cache_erase(swp_entry_t entry)
+// {
+// 	struct address_space *address_space = swap_address_space(entry);
+// 	pgoff_t idx = swp_offset(entry);
+// 	XA_STATE_ORDER(xas, &address_space->i_pages, idx, 1);
+// 	unsigned long i;
+// 	int entry_state = 0;
+// 	void *old;
+// 	// xas_set_update(&xas, workingset_update_node);
+// 	do {
+// 		xas_lock_irq(&xas);
+// 		xas_create_range(&xas);
+// 		if (xas_error(&xas))
+// 			goto unlock;
+// 		for (i = 0; i < 1; i++) {
+// 			old = xas_load(&xas);
+// //			pr_err("addr_space[%p]ind[%lx] = [%lx]", address_space, idx, old);
+// 			if (old){
+// 				if (xa_is_value(old)) { //files
+// 					xas_store(&xas, NULL);
+// 					// pr_err("get shadow clean shadow entry[%lx]->shadow[%p]", entry.val, old);
+// 				}
+// 				else{
+// 					entry_state = entry_is_entry_ext(old);
+// 					trace_get_shadow_swcache(entry.val, old, entry_state);
+
+// 					if (entry_state > 0){ //shadow, erased now
+// 						xas_store(&xas, NULL);
+// 						// pr_err("get shadow clean shadow_ext entry[%lx]->shadow_ext[%p]", entry.val, old);
+// 					}
+// 					else if (-1 == entry_state){ //might be still in swapcache ?
+// 						pr_err("return a freed entry[%lx]->shadow[%p]", entry.val, old);
+// 						BUG();
+// 						old = NULL;
+// 					}
+// 					else if (0 == entry_state){
+// 						// pr_err("get_shadow_from_s$ delete origin folio entry[%lx]->folio[%p]", entry.val, old);
+// 						old = NULL;
+// 					}
+// 					else{
+// 						BUG();
+// 					}	
+// 				}
+// 			}
+// 			xas_next(&xas);
+// 		}
+// unlock:
+// 		xas_unlock_irq(&xas);
+// 	} while (xas_nomem(&xas, GFP_KERNEL));
+// 	if (!xas_error(&xas))
+// 		return old;
+// 	BUG();
+// 	return NULL;
+// }
 
 /*
  * add_to_swap_cache resembles filemap_add_folio on swapper_space,
@@ -208,7 +238,8 @@ int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 						}else{ //
 							// pr_info("[FREE]folio[%p] add to sw$ , not freed entry[%lx] ext[%p]stale[%d] idx[%ld]", 
 							// 			folio, entry.val, old, folio_test_stalesaved(folio), idx);
-							shadow_entry_free(old);
+							// trace_shadow_entry_free(old, 1);
+							// shadow_entry_free(old);
 							// BUG();
 						}
 					}
@@ -809,7 +840,7 @@ void __delete_from_swap_cache(struct folio *folio,
 					folio, entry.val, __swp_swapcount(entry));
 	}
 	if (unlikely(shadow && !xa_is_value(shadow) && entry_is_entry_ext(shadow)!=1)){
-		pr_err("bad shadow $ folio[%p] entry[%lx] shadow[%lx]", folio, entry, shadow);
+		pr_err("bad shadow $ folio[%p] entry[%lx] shadow[%lx]", folio, entry.val, shadow);
 		shadow = NULL;
 		BUG();
 	}
@@ -996,7 +1027,6 @@ bool add_to_swap(struct folio *folio, long* left_space)
 		// 	pr_info("folio_alloc_swap normal entry[%lx] v[%d] for folio[%p] cnt:%d",
 		// 		 entry.val, swp_entry_test_special(entry), folio, __swap_count(entry));		
 	}
-
 #endif
 	
 	/*
@@ -1692,6 +1722,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 	}
 	else{
 		trace_folio_ws_chg(folio, addr, folio_pgdat(folio), -1, 0, 0, 1, swap_level, -2, (unsigned long)entry.val);
+		count_memcg_folio_events(folio, LEAF7, 1);
 	}
 
 	//now shadow has been used
@@ -1733,9 +1764,9 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 		*new_page_allocated = true;
 
 //reclaim another 4kb pages space //1mb = 128*4kb pages space
-	lruvec = folio_lruvec(folio);
-	pgdat = lruvec_pgdat(lruvec);
-	pgdat->prio_lruvec = lruvec;
+	// lruvec = folio_lruvec(folio);
+	// pgdat = lruvec_pgdat(lruvec);
+	// pgdat->prio_lruvec = lruvec;
 #ifdef CONFIG_LRU_GEN_CGROUP_KSWAPD_BOOST
 	if (force_wake_up_delay_now++ >= force_wake_up_delay){
 		force_wake_up_delay_now = 0;

@@ -203,7 +203,7 @@ int kswapd_force_boost_cnt[MAX_NUMNODES] __read_mostly;
 int vm_swappiness = 30;
 /*DJL ADD BEGIN*/
 #ifdef CONFIG_LRU_GEN_CGROUP_KSWAPD_BOOST
-int kswapd_force_boost_max = 500;
+int kswapd_force_boost_max = 500000;
 #endif
 /*DJL ADD END*/
 
@@ -1545,7 +1545,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 				shadow_ext = NULL;				
 			}
 			else{
-				__delete_from_swap_cache(folio, swap, shadow);			
+				__delete_from_swap_cache(folio, swap, shadow);
 			}
 			if (shadow_ext){
 				pr_err("shadow_ext no free");
@@ -2515,7 +2515,8 @@ stale_pass_release:
 
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 		//after remove_mapping, eviction complete already
-		if (folio->shadow_ext && entry_is_entry_ext(folio->shadow_ext) > 0) {
+		if (folio_test_anon(folio) && folio_test_swapbacked(folio) && 
+			folio->shadow_ext && entry_is_entry_ext(folio->shadow_ext) > 0) {
 			pr_err("shouldn't happen %s:%d",__FILE__, __LINE__ );
 			shadow_entry_free(folio->shadow_ext);
 			BUG();
@@ -5925,7 +5926,7 @@ restart:
 	if (current_is_kswapd()){
 		if (pgdat->prio_lruvec != NULL){
 			if ((++kswapd_force_boost_cnt[nid]) <= kswapd_force_boost_max){
-				pgdat->prio_lruvec = NULL;
+				// pgdat->prio_lruvec = NULL;
 				rcu_read_unlock();
 				return;
 			}
@@ -5942,11 +5943,17 @@ restart:
 				rcu_read_lock();
 				trace_shrink_many(pgdat->prio_lruvec, sc->nr_reclaimed, mem_cgroup_id(memcg));
 			}
-			pgdat->prio_lruvec = NULL;
+			// pgdat->prio_lruvec = NULL;
 			clear_bit(LRUVEC_BOOST_SHRINK, &lruvec->flags);
+			mem_cgroup_put(memcg);
 			rcu_read_unlock();
 			return;
-		}		
+		}
+		else{
+			mem_cgroup_put(memcg);
+			rcu_read_unlock();
+			return;
+		}
 	}
 #endif
 	if (sc->nr_reclaimed < nr_to_reclaim){

@@ -642,6 +642,67 @@ TRACE_EVENT(folio_ws_chg,
 				(__entry->token >> LRU_REFS_WIDTH),
 				__entry->refs, __entry->tiers)
 );
+TRACE_EVENT(get_shadow_swcache,
+
+	TP_PROTO(unsigned long swap_entry, void* old, int state),
+
+	TP_ARGS(swap_entry, old, state),
+
+	TP_STRUCT__entry(
+		__field(unsigned long, swap_entry)
+		__field(void*, old)
+		__field(int, state)
+	),
+
+	TP_fast_assign(
+		__entry->swap_entry	= swap_entry;
+		__entry->old = old;
+		__entry->state = state;
+	),
+
+	TP_printk("state[%d] entry[%lx] shadow[%p]",
+			 __entry->state, __entry->swap_entry, __entry->old)
+);
+TRACE_EVENT(shadow_entry_free,
+
+	TP_PROTO(void* shadow_ext, int place),
+
+	TP_ARGS(shadow_ext, place),
+
+	TP_STRUCT__entry(
+		__field(void*, shadow_ext)
+		__field(int, place)
+	),
+
+	TP_fast_assign(
+		__entry->shadow_ext	= shadow_ext;
+		__entry->place = place;
+	),
+
+	TP_printk("shadow_ext[%p] [%d]",
+			 __entry->shadow_ext, __entry->place)
+);
+TRACE_EVENT(delete_swcache,
+
+	TP_PROTO(struct folio* folio, unsigned long swap_entry, int place),
+
+	TP_ARGS(folio, swap_entry, place),
+
+	TP_STRUCT__entry(
+		__field(struct folio*,  folio)
+		__field(unsigned long, swap_entry)
+		__field(int, place)
+	),
+
+	TP_fast_assign(
+		__entry->swap_entry	= swap_entry;
+		__entry->folio = folio;
+		__entry->place = place;
+	),
+
+	TP_printk("[%d]entry[%lx] folio[%p]",
+			 __entry->place, __entry->swap_entry, __entry->folio)
+);
 
 TRACE_EVENT(damon_folio_mark_accessed,
 

@@ -446,7 +446,6 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, long swap_spa
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 		if (folio->shadow_ext){
 			if	(entry_is_entry_ext(folio->shadow_ext) > 0){
-				count_memcg_folio_events(folio, LEAF1, 1);
 				ret = pack_shadow_ext(mem_cgroup_id(memcg), pgdat, token, refs, se, min_seq, folio->shadow_ext, folio, entry);
 			}
 			else if (entry_is_entry_ext(folio->shadow_ext) < 0){ //already freed
