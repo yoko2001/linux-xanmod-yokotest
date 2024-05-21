@@ -492,7 +492,7 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 		int useful_seq_num = 0;
 		int avg_seq = 6553;
 		if(features.seq0 == 0 && features.seq1 == 0 && features.seq2 == 0){
-			useful_seq_num = 0;
+			avg_seq = 0;
 		}else{
 			seq_sum += features.seq0;
 			useful_seq_num++;
@@ -506,9 +506,7 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 			}
 			avg_seq = seq_sum / useful_seq_num;
 		}
-		if(features.seq0 == 0 && features.seq1 == 0 && features.seq2 == 0){
-			dec_tree_result = 0;
-		} else if(avg_seq <= 45){
+		if(avg_seq <= 15){
 			dec_tree_result = 1;
 		} else{
 			dec_tree_result = 0;
@@ -516,8 +514,8 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 		struct lruvec* temp_lruvec;
 		temp_lruvec = folio_lruvec(folio);
 		// dec_tree_result = temp_lruvec->predict(temp_lruvec->lru_dec_tree, (short*)(&features), folio);
-		if (avg_seq/4 + FRE0 < FREX) {
-			count_memcg_folio_events(folio, avg_seq/4 + FRE0, 1);
+		if (avg_seq + FRE0 < FREX) {
+			count_memcg_folio_events(folio, avg_seq + FRE0, 1);
 		} else {
 			count_memcg_folio_events(folio, FREX, 1);
 		}
@@ -542,6 +540,7 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 		// 	printk(KERN_INFO "Tree predict ok in kernel 2024-3-15, result:%d\n",dec_tree_result);
 		// 	printk(KERN_INFO "\n");
 		// }
+		dec_tree_result = 1;
 		
 	}else{
 		// default swap out to fast dev
