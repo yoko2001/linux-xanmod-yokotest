@@ -1868,8 +1868,7 @@ static int mem_cgroup_soft_reclaim(struct mem_cgroup *root_memcg,
 					pgdat, &nr_scanned);
 		total += total_add;
 		*total_scanned += nr_scanned;
-		if (total_add)
-			pgdat->prio_lruvec = mem_cgroup_lruvec(victim, pgdat);
+
 		if (!soft_limit_excess(root_memcg))
 			break;
 	}

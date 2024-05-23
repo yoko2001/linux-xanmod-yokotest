@@ -203,7 +203,7 @@ int kswapd_force_boost_cnt[MAX_NUMNODES] __read_mostly;
 int vm_swappiness = 30;
 /*DJL ADD BEGIN*/
 #ifdef CONFIG_LRU_GEN_CGROUP_KSWAPD_BOOST
-int kswapd_force_boost_max = 500000;
+int kswapd_force_boost_max = 1000;
 #endif
 /*DJL ADD END*/
 
@@ -5925,7 +5925,7 @@ restart:
 #ifdef CONFIG_LRU_GEN_CGROUP_KSWAPD_BOOST
 	if (current_is_kswapd()){
 		if (pgdat->prio_lruvec != NULL){
-			if ((++kswapd_force_boost_cnt[nid]) <= kswapd_force_boost_max){
+			if ((++kswapd_force_boost_cnt[nid]) < kswapd_force_boost_max){
 				// pgdat->prio_lruvec = NULL;
 				rcu_read_unlock();
 				return;
@@ -7328,6 +7328,9 @@ static void shrink_zones(struct zonelist *zonelist, struct scan_control *sc)
 			continue;
 		last_pgdat = zone->zone_pgdat;
 		shrink_node(zone->zone_pgdat, sc);
+
+		zone->zone_pgdat->prio_lruvec = mem_cgroup_lruvec(sc->target_mem_cgroup, zone->zone_pgdat);
+		// pr_info("3 pgdat[%p]'s prio_lruvec => memcg[%d]", zone->zone_pgdat, mem_cgroup_id(sc->target_mem_cgroup));
 	}
 
 	if (first_pgdat)
