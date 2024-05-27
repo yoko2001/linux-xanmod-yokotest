@@ -2386,7 +2386,7 @@ void swap_shadow_scan_next(struct swap_info_struct * si, struct lruvec * lruvec,
 	swp_entry_t entry;
 	int threshold;
 
-	if (!si)
+	if (!si || !lruvec)
 		return;
 	if (!__si_can_version(si))
 		return;
@@ -2394,8 +2394,9 @@ void swap_shadow_scan_next(struct swap_info_struct * si, struct lruvec * lruvec,
 	threshold = SEQ_DIFF_THRESHOLD;
 	type = si->type;
 	start = si->swap_scan_cur_bit = max_t(unsigned int, 0, si->swap_scan_cur_bit);
-	end = min_t(unsigned int, si->swap_scan_cur_bit + si->swap_scan_batch_nr, si->max);
-
+	end = min_t(unsigned int, si->swap_scan_cur_bit + si->swap_scan_batch_nr - 1, si->max);
+	if (start > end)
+		return;
 
 	entry = swp_entry(type, start);
 	mapping = swap_address_space(entry);
@@ -2411,7 +2412,7 @@ void swap_shadow_scan_next(struct swap_info_struct * si, struct lruvec * lruvec,
 		pr_info("swap_scan_entries_savior called reset cur_bit");
 	}
 	else{
-		si->swap_scan_cur_bit = end;
+		si->swap_scan_cur_bit = end+1;
 	}
 }
 #else

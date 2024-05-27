@@ -1362,7 +1362,7 @@ int pageout_save(struct folio *folio, struct address_space *mapping, struct swap
 		return PAGE_KEEP;
 	}
 	if (!is_page_cache_freeable_save(folio)){
-		pr_err("pageout_save folio[%p] ref err [%d]-[%d]<>1 + [%ld] intercepted", 
+		pr_info("pageout_save folio[%p] ref err [%d]-[%d]<>1 + [%ld] intercepted", 
 				folio, folio_ref_count(folio), 
 				folio_test_private(folio), folio_nr_pages(folio));
 		return PAGE_KEEP;
@@ -1491,7 +1491,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	refcount = 1 + folio_nr_pages(folio);
 	if (folio_test_stalesaved(folio)){
 		refcount += 1; //one for remap, one for swapcache to slow
-		pr_err("folio[%p] stale ref[%d]", folio, folio_ref_count(folio));
+		pr_info("folio[%p] stale ref[%d]", folio, folio_ref_count(folio));
 	}
 
 	if (!folio_ref_freeze(folio, refcount))
@@ -1590,7 +1590,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 					BUG();
 				}
 
-				pr_err("after clear folio[%p]ref[%d] private[%lx]found mig_entry[%lx] count %d", 
+				pr_info("after clear folio[%p]ref[%d] private[%lx]found mig_entry[%lx] count %d", 
 							folio, folio_ref_count(folio), page_private(folio_page(folio, 0)), mig_entry_phy.val, __swp_swapcount(mig_entry_phy));
 				put_swap_folio(folio, mig_entry_phy);
 			}
@@ -1954,7 +1954,7 @@ collect_fail_lock_keep:
 					&folio_list, folio_list.prev, folio_list.next);
 		return 0;
 	}
-	pr_err("check_saved_folios_wb, do check [%d] folios", scanned);
+	pr_info("check_saved_folios_wb, do check [%d] folios", scanned);
 
 	while (!list_empty(&folio_list)) { //all folio in folio_list are locked
 		struct folio *folio;
@@ -2047,14 +2047,13 @@ keep_next_time:
 
 			ret = enable_swp_entry_remap(folio, entry, &migentry);
 			if (ret){
-				pr_err("folio[%p] enable_swp_entry_remap fail[%d]", folio, ret);
+				pr_err("folio[%p] enable_swp_entry_remap fail[%d] migentry[%lx]", folio, ret, migentry.val);
 				if (ret == 1){
 					// folio_clear_stalesaved(folio); 
 					//we wait for it to get useless, when we get it, it'll be freed
 					// swap_free(entry); //should free by do_swap
 					set_page_private(folio_page(folio, 0), migentry.val);
 					folio_unlock(folio);
-					// swap_free(entry);
 					continue;
 				} //locked by do_swap_page, it will unlock it
 			}
@@ -5672,7 +5671,7 @@ retry:
 				folio_set_referenced(folio);
 			
 			if (folio_test_stalesaved(folio))
-				pr_err("try evict folio[%p] rclm[%d]d[%d]wb[%d]ac[%d]map[%d]lock[%d]", 
+				pr_info("try evict folio[%p] rclm[%d]d[%d]wb[%d]ac[%d]map[%d]lock[%d]", 
 					folio, folio_test_reclaim(folio), folio_test_dirty(folio), folio_test_writeback(folio),
 					folio_test_active(folio), folio_mapped(folio),  folio_test_locked(folio));
 			continue;
@@ -5690,7 +5689,7 @@ retry:
 		/* retry folios that may have missed folio_rotate_reclaimable() */
 		list_move(&folio->lru, &clean);
 		if (folio_test_stalesaved(folio))
-			pr_err("folio[%p] add to clean", folio);
+			pr_info("folio[%p] add to clean", folio);
 		sc->nr_scanned -= folio_nr_pages(folio);
 	}
 	spin_lock_irq(&lruvec->lru_lock);
@@ -6067,7 +6066,7 @@ static void swap_scan_savior(struct scan_control *sc, struct lruvec * lruvec)
 {
 	struct swap_info_struct * si;
 	unsigned long nr_entry_saved, nr_entry_scanned;
-	
+
 	nr_entry_scanned = nr_entry_saved = 0;
 	si = global_fastest_swap_si();
 	if (si){
@@ -6077,6 +6076,8 @@ static void swap_scan_savior(struct scan_control *sc, struct lruvec * lruvec)
 	sc->nr_entry_saved = nr_entry_saved;
 }
 
+static unsigned int swap_scan_savior_delays = 0;
+static const unsigned int swap_scan_savior_delay_max = 16;
 // static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *sc)
 static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *sc, int force)
 {
@@ -6124,8 +6125,13 @@ static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *
 	blk_finish_plug(&plug);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
 	if (current_is_kswapd()){
-		if (pgdat->prio_lruvec)
+		if (pgdat->prio_lruvec){
+			if (swap_scan_savior_delays++ < swap_scan_savior_delay_max){
+				goto done;
+			}
+			swap_scan_savior_delays = 0;
 			swap_scan_savior(sc, pgdat->prio_lruvec);
+		}
 	}
 #endif
 done:

@@ -3840,8 +3840,10 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		if (swp_entry_test_ext(migentry) & 0x2) //locked, wait for the other to finish
 		{
 			ret |= VM_FAULT_RETRY;
-			pr_err("[IOing]swap cache mapped but intercepting stale saved entry[%lx] mig[%lx][%d]", orientry.val, migentry.val, swp_entry_test_ext(migentry));
-			// folio = NULL;
+			pr_err("[IOing]sw$ mapped but intercepting stalesaved entry[%lx] mig[%lx][%d] ", 
+						orientry.val, migentry.val, swp_entry_test_ext(migentry));
+			pte_unmap_unlock(vmf->pte, vmf->ptl);
+			goto out;
 			goto out_release; //this will block two migentry do_swap on same entry
 		}
 		else{
@@ -3852,15 +3854,15 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	//at most one do_swap_page and one stale save process enter this place
 	if (swapcache){ //we do nothing in this case
 		if (unlikely(migentry.val && !non_swap_entry(migentry))){ //got a migentry, test if its valid
-			pr_info("swapcache caught, used orientry[%lx], not migentry[%lx]", 
-						orientry.val, migentry.val);
+			pr_info("swapcache caught, used orientry[%lx], not migentry[%lx], folio[%p]", 
+						orientry.val, migentry.val, swapcache);
 			if (swp_entry_test_ext(migentry)){
 				pr_err("swapcache migentry[%lx] before enable, invalid", migentry.val);
 				invalid_remap = true;
 			}
 			if (!folio_test_stalesaved(swapcache) && invalid_remap) //safety
 			{
-				pr_err("swapcache caught invalid & !stale folio[%p] ", swapcache);
+				pr_info("swapcache caught invalid & !stale folio[%p] ", swapcache);
 				// BUG();
 			}
 			mig_loss = true;
@@ -3886,7 +3888,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 					//in this case we can only assume that the savedentry has not been freed
 					//we have to keep it from freed
 					invalid_remap = true;
-					entry.val = migentry.val;
+					// entry.val = migentry.val;
+					entry.val = orientry.val;
 					if (si) {
 						put_swap_device(si);
 						si = NULL;
@@ -4080,13 +4083,16 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				page = swapin_readahead(entry, GFP_HIGHUSER_MOVABLE,
 						vmf, &try_free_entry);
 			}
-			if (unlikely(migentry.val && migentry.val != entry.val)){
-				pr_err("pf inner err entry[%lx]<>migentry[%lx]", entry.val, migentry.val);
-				BUG();
-			}
+			// if (unlikely(migentry.val && migentry.val != entry.val)){
+			// 	pr_err("pf inner err entry[%lx]<>migentry[%lx]", entry.val, migentry.val);
+			// 	BUG();
+			// }
 			//we don't do anything like delete remap here
 			if (likely(page)){
 				folio = page_folio(page);
+				if (folio_test_uptodate(folio))
+					pr_info("after read  read_$_async entry[%lx] refcount[%d] uptodate[%d]", 
+								entry.val, folio_ref_count(folio), folio_test_uptodate(folio));
 			}
 			else{
 				folio = NULL;
@@ -4133,21 +4139,22 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		ret = VM_FAULT_HWPOISON;
 		goto out_release;
 	}
-
-
 	
 	//if success lock, stale save has to complete
 	locked = folio_lock_or_retry(folio, vma->vm_mm, vmf->flags);
 	if (!locked) {
 		if (unlikely(folio_test_stalesaved(folio)))
-			pr_err("folio[%p] st[%d] retry locked", folio, 1);
+			pr_info("folio[%p] entry[%lx] st[%d] retry locked", folio, orientry.val, folio_test_stalesaved(folio));
 		ret |= VM_FAULT_RETRY;
-		need_unlock = true;
+		// need_unlock = true;
 		goto out_release;
 	}
 	if (unlikely(!folio_test_uptodate(folio))){
-		pr_err("unlocked folio[%p] uptodate[%d]", folio,folio_test_uptodate(folio) );
-		BUG();
+		pr_err("unlocked folio[%p] uptodate[%d] private[%lx]", 
+					folio, folio_test_uptodate(folio), page_private(folio_page(folio, 0)));
+		// BUG();
+		// ret = VM_FAULT_SIGBUS;
+		// goto out_nomap;
 	}
 	if (swapcache) { //we do the clean
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
@@ -4258,8 +4265,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		 */
 		if (unlikely(!folio_test_swapcache(folio) ||
 			    page_private(page) != entry.val)){
-				if (!page_private(page) == migentry.val){
-					pr_info("folio[%p] mis_match entry[%lx] orientry[%lx][%d]migentry[%lx]", 
+				if (!(page_private(page) == migentry.val)){
+					pr_info("folio[%p] pri[%lx] mis_match entry[%lx] orientry[%lx][%d]migentry[%lx]", 
 								folio, page_private(page), entry.val, orientry.val, __swap_count(orientry), migentry.val);
 				}
 				else{
@@ -4473,10 +4480,6 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 					migentry.val, __swp_swapcount(migentry), 
 					folio, folio_ref_count(folio));			
 	}
-	if (folio && folio_test_stalesaved(folio)){
-		pr_err("this shouldn't happen folio[%p] stale", folio);
-		BUG();
-	}
 
 	inc_mm_counter(vma->vm_mm, MM_ANONPAGES);
 	dec_mm_counter(vma->vm_mm, MM_SWAPENTS);
@@ -4558,7 +4561,7 @@ out_release:
 		entry_get_migentry_unlock(orientry, migentry);
 		pr_err("retry do_swap unlock reamp ori[%lx]cnt[%d]->mig[%lx]cnt[%d]", 
 					orientry.val, __swp_swapcount(orientry),
-					migentry.val, __swp_swapcount(migentry));				
+					migentry.val, __swp_swapcount(migentry));
 	}
 	if (folio)
 		folio_put(folio);
@@ -5495,8 +5498,12 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 			return do_fault(vmf);
 	}
 
-	if (!pte_present(vmf->orig_pte))
+	if (!pte_present(vmf->orig_pte)){
+		if (vmf->flags & FAULT_FLAG_TRIED){
+			pr_info("vmf retried [%lx]",pte_to_swp_entry(vmf->orig_pte).val);
+		}
 		return do_swap_page(vmf);
+	}
 
 	if (pte_protnone(vmf->orig_pte) && vma_is_accessible(vmf->vma))
 		return do_numa_page(vmf);
