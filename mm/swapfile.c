@@ -2130,7 +2130,7 @@ setpte:
 	set_pte_at(vma->vm_mm, addr, pte, new_pte);
 	swap_free(entry);
 	if (!__swap_count(entry)){
-		pr_err("unuse clear_shadow_from_swap_cache entry[%lx]", entry.val);
+		pr_info("unuse clear_shadow_from_swap_cache entry[%lx]", entry.val);
 		clear_shadow_from_swap_cache(swp_swap_info(entry), swp_offset(entry),swp_offset(entry)+1, 1);
 	}
 out:
@@ -2402,14 +2402,18 @@ void swap_shadow_scan_next(struct swap_info_struct * si, struct lruvec * lruvec,
 	mapping = swap_address_space(entry);
 
 	*scanned = swap_scan_entries_savior(mapping, lruvec, start, end, type, threshold);
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 	if (*scanned)
 		pr_info("swap_scan_entries_savior called scanned[%lu]->memcg[%d]", 
 			*scanned, mem_cgroup_id(lruvec_memcg(lruvec)));
+#endif
 	trace_swap_shadow_scan_next(start, end, *scanned, mem_cgroup_id(lruvec_memcg(lruvec)));
 
 	if (unlikely(si->max == end)){
 		si->swap_scan_cur_bit = 0;
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 		pr_info("swap_scan_entries_savior called reset cur_bit");
+#endif
 	}
 	else{
 		si->swap_scan_cur_bit = end+1;
