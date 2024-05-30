@@ -1467,7 +1467,22 @@ fail_unmap_mig_entry:
 				print_bad_pte(vma, addr, ptent, NULL);
 success_unmap_mig_entry:
 				;
+				delete_from_swap_remap_raw(entry, migentry);
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+				pr_info("free_swap_and_cache entry[%lx]->migentry[%lx]v[%lu]", 
+						entry.val, migentry.val, (unsigned long)swp_entry_test_special(migentry));
+#endif
 			}
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+			else{
+				swp_entry_t migentry;
+				migentry = entry_get_migentry(entry);
+				if (migentry.val && !non_swap_entry(migentry)){
+					pr_info("err free_swap_and_cache entry[%lx]->migentry[%lx]v[%lu]", 
+						entry.val, migentry.val, (unsigned long)swp_entry_test_special(migentry));
+				}
+			}
+#endif
 		} else if (is_migration_entry(entry)) {
 			page = pfn_swap_entry_to_page(entry);
 			if (!should_zap_page(details, page))
@@ -4086,9 +4101,11 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				/*DJL ADD END*/
 			}
 		} else {
-			if (unlikely(data_race(si->flags & SWP_SYNCHRONOUS_IO))){
+			if (unlikely(data_race(si->flags & SWP_SYNCHRONOUS_IO) && migentry.val)){
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 				pr_info("ASYNC_IO si[%d] on sync entry[%lx] cnt[%d] inv[%d]", 
 							si->prio,  entry.val, __swap_count(entry), invalid_remap);
+#endif
 			}
 			//if migentry is the page read in it
 			if (unlikely(migentry.val)) { //use remap
@@ -4337,8 +4354,9 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 								folio, page_private(page), entry.val, orientry.val, __swap_count(orientry), migentry.val);
 				}
 				else{
-					pr_info("folio[%p] holding bad private[%lx] entry[%lx] orientry[%lx][%d]migentry[%lx]", 
-								folio, page_private(page), entry.val, orientry.val, __swap_count(orientry), migentry.val);
+					pr_info("folio[%p]$[%d] holding bad private[%lx] entry[%lx] orientry[%lx][%d]migentry[%lx]", 
+								folio, folio_test_swapcache(folio), page_private(page), 
+								entry.val, orientry.val, __swap_count(orientry), migentry.val);
 					goto out_page;					
 				}
 		}

@@ -1923,8 +1923,6 @@ int free_swap_and_cache(swp_entry_t entry)
 		    !swap_page_trans_huge_swapped(p, entry))
 			__try_to_reclaim_swap(p, swp_offset(entry),
 					      TTRS_UNMAPPED | TTRS_FULL);
-		if (__si_can_version(p) && swp_entry_test_special(entry) > 0)
-			pr_info("free_swap_and_cache entry[%lx]v[%lu]", entry.val, (unsigned long)swp_entry_test_special(entry));
 	}
 	// else {
 	// 	// pr_err("free_s&$ err swap_info[%p], count[%d], entry[%lx]", p, count, entry.val);
@@ -2486,6 +2484,9 @@ retry:
 	       (i = find_next_to_unuse(si, i)) != 0) {
 
 		entry = swp_entry(type, i);
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+		pr_info("try_to_unuse test entry[%lx]", entry.val);
+#endif		
 		folio = filemap_get_folio(swap_address_space(entry), i);
 		if (!folio)
 			continue;
@@ -2496,15 +2497,19 @@ retry:
 		 * might even be back in swap cache on another swap area. But
 		 * that is okay, folio_free_swap() only removes stale folios.
 		 */
-		pr_info("try_to_unuse lock entry[%lx], folio[%p]", entry.val, folio);
 		folio_lock(folio);
-		pr_info("try_to_unuse wait_writeback[%lx], folio[%p]", entry.val, folio);
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+		pr_info("try_to_unuse wait_writeback[%lx], folio[%p] wb[%p]", 
+				entry.val, folio, folio_test_writeback(folio));
+#endif
 		folio_wait_writeback(folio);
 		folio_free_swap(folio);
 		folio_unlock(folio);
 		folio_put(folio);
 	}
-	pr_err("try_to_unuse[%d]2 after left unuse[%d]", type, si->inuse_pages);
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+	pr_info("try_to_unuse[%d]2 after left unuse[%d]", type, si->inuse_pages);
+#endif
 
 	/*
 	 * Lets check again to see if there are still swap entries in the map.
@@ -2520,7 +2525,9 @@ retry:
 	 * and robust (though cpu-intensive) just to keep retrying.
 	 */
 	if (READ_ONCE(si->inuse_pages)) {
-		pr_err("try_to_unuse[%d] after left unuse[%d]", type, si->inuse_pages);
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+		pr_info("try_to_unuse[%d] after left unuse[%d]", type, si->inuse_pages);
+#endif
 		if (!signal_pending(current))
 			goto retry;
 		return -EINTR;

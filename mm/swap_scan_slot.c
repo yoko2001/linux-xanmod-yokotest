@@ -170,8 +170,17 @@ swp_entry_t get_next_saved_entry(bool* finished){
 	swp_entry_t entry;
 	entry = swp_entry(MAX_SWAPFILES, 0); //invalid entry
 	cache = &global_swp_scan_slot;//raw_cpu_ptr(&swp_scan_slots);
+	if (unlikely(!cache)) {
+		*finished = true;
+		return entry;
+	}
+// #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+// 	pr_info("cache->scan_lock waiting");
+// #endif
 	spin_lock_irq(&cache->scan_lock);
-
+// #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+// 	pr_info("cache->scan_lock got");
+// #endif
 	if (!cache->scan_stop || !use_swap_scan_slot || !cache->slots){
 		if (finished)
 			*finished = true;	

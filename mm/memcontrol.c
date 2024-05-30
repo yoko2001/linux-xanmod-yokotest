@@ -7626,8 +7626,8 @@ static void uncharge_folio(struct folio *folio, struct uncharge_gather *ug)
 			ug->nr_memory += nr_pages;
 			if (unlikely(folio_test_stalesaved(folio))){
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-				pr_info("staled folio [%p] nr[%ld] uncharged to memcg[%d]" ,
-							folio, nr_pages, mem_cgroup_id(memcg));
+				pr_info("staled folio[%p]->entry[%lx] nr[%ld] uncharged to memcg[%d]" ,
+							folio, page_private(folio_page(folio, 0)), nr_pages, mem_cgroup_id(memcg));
 #endif
 				folio_clear_stalesaved(folio);
 				count_memcg_folio_events(folio, SWAP_STALE_SAVE, folio_nr_pages(folio));
