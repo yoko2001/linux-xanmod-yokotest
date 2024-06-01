@@ -2045,7 +2045,7 @@ keep_next_time:
 				
 				// folio_add_lru(folio); //this should be ok, because lru is protected by folio_lock
 				// //do_swap will not map to it, it should get freed normally
-				// folio_unlock(folio);
+				folio_unlock(folio);
 				continue;
 			} 
 

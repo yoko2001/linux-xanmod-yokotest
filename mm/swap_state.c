@@ -864,7 +864,8 @@ void __delete_from_swap_cache(struct folio *folio,
 			pr_info("__delete_sc mismatch entry[%lx]cnt[%d]->[%p]<>folio[%p] stale[%d]", 
 					entry.val, __swap_count(entry), entry_, folio, folio_test_stalesaved(folio));
 #endif
-			//BUG();
+			if (entry_)
+				BUG();
 			xas_next(&xas);
 		}
 		if (unlikely(page_private(folio_page(folio, i)) != entry.val + i)){
@@ -2575,7 +2576,7 @@ fail_page_out:
 				folio_unlock(folio);
 				folio_put(folio);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-				pr_err("fail page_out folio[%p] ref[%d], mig_entry[%lx]", 
+				pr_info("fail page_out folio[%p] ref[%d], mig_entry[%lx]", 
 							folio, folio_ref_count(folio),mig_entry.val);
 #endif
 				goto skip_this_save;
