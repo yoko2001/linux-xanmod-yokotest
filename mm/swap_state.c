@@ -1065,7 +1065,7 @@ bool add_to_swap(struct folio *folio, long* left_space)
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 	VM_BUG_ON_FOLIO(!folio_test_uptodate(folio), folio);
 
-	entry = folio_alloc_swap(folio, left_space, folio_test_swappriolow(folio));
+	entry = folio_alloc_swap(folio, left_space, false);
 			//folio_alloc_swap(folio, left_space, false);
 	if (!entry.val)
 		return false;

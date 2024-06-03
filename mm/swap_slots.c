@@ -443,7 +443,7 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 	WARN_ON_ONCE(folio_test_swappriolow(folio) && folio_test_swappriohigh(folio));
 	/*DJL ADD END*/
 #ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP
-	dec_tree_result = 0;
+	dec_tree_result = 1;
 	// if (is_first == 1){
 	// 	cache->fast_left = 16384;
 	// 	is_first = 0;
@@ -556,10 +556,17 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 			is_first = 0;
 		}
 		dec_tree_result = 0;
-		force_slow = 1;
+		// force_slow = 1;
 	}
+	dec_tree_result = 1;
 #endif
 #ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP
+	//translate from folio_prio to dec_tree_result, because its force
+	if (folio_test_swappriohigh(folio))
+		dec_tree_result = 1;
+	else if (folio_test_swappriolow(folio))
+		dec_tree_result = 0;
+	//stale-saved page force goto slow
 	if (force_slow)
 		dec_tree_result = 0;
 	// dec_tree_result = 1;

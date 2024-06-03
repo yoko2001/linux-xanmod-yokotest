@@ -4573,7 +4573,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 #endif
 	}
 
-	if (unlikely(migentry.val) && need_unlock){ 
+	if (unlikely(migentry.val && need_unlock)){ 
 		entry_get_migentry_unlock(orientry, migentry);
 		// pr_err("do_swap unlock reamp ori[%lx]cnt[%d]->mig[%lx]cnt[%d] folio[%p]ref[%d]", 
 		// 			orientry.val, __swp_swapcount(orientry),
