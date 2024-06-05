@@ -196,6 +196,7 @@ static int alloc_swap_slot_cache(unsigned int cpu)
 	/*DJL ADD BEGIN*/
 	cache->slots_fast = slots_fast;
 	cache->slots_slow = slots_slow;
+	cache->fast_left = cache->slow_left = cache->left = 99999;
 	/*DJL ADD END*/
 
 	mutex_unlock(&swap_slots_cache_mutex);
@@ -413,6 +414,9 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 	int _nr, _cur, _prio;
 	swp_entry_t* _slots;
 	int dec_tree_result;
+	long fast_left;
+	unsigned short gen0, gen1, gen2;
+	struct shadow_entry* shadow_ext;
 	/*DJL ADD END*/
 	
 	entry.val = 0;
@@ -444,132 +448,55 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 	/*DJL ADD END*/
 #ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP
 	dec_tree_result = 1;
-	// if (is_first == 1){
-	// 	cache->fast_left = 16384;
-	// 	is_first = 0;
-	// 	printk(KERN_INFO "CHANGE IS FIRST\n");
-	// }
 	struct dec_feature features;
-	if (entry_is_entry_ext(folio->shadow_ext) == 1){
-		
-		features.pid = 0;
-		features.space_left = cache->fast_left;
-		features.swapprio_b = cache->prio_fast;
-		features.readahead_b = folio_test_readahead(folio);
-		features.seq0 = ((struct shadow_entry*)(folio->shadow_ext))->hist_ts[0];
-		features.seq1 = ((struct shadow_entry*)(folio->shadow_ext))->hist_ts[1];
-		features.seq2 = ((struct shadow_entry*)(folio->shadow_ext))->hist_ts[2];
-		// if(features.seq0 != 0 && features.seq1 == 0){
-		// 	count_memcg_folio_events(folio, HIS_NUM_1, 1);
-		// }
-		// if(features.seq0 != 0 && features.seq1 != 0 && features.seq2 == 0){
-		// 	count_memcg_folio_events(folio, HIS_NUM_2, 1);
-		// }
-		// if(features.seq0 != 0 && features.seq1 != 0 && features.seq2 != 0){
-		// 	count_memcg_folio_events(folio, HIS_NUM_3, 1);
-		// }
-		// features.seq3 = 0;
-		// features.tier = 0;
-		// if(features.seq2 == 0 && features.seq1 == 0){
-		// 	features.seq0 = 6553;
-		// 	features.seq1 = 6553;
-		// }
-		// else if(features.seq1 != 0 && features.seq2 == 0){
-		// 	features.seq0 = features.seq0 - features.seq1;
-		// 	features.seq1 = features.seq0;
-		// }else{
-		// 	features.seq0 = features.seq0 - features.seq1;
-		// 	features.seq1 = features.seq1 - features.seq2;
-		// 	// int seq_abs = features.seq0 - features.seq1;
-		// 	// seq_abs = seq_abs > 0 ? seq_abs : -seq_abs;
-		// 	// if (seq_abs + LEAF1 <= LEAF6){
-		// 	// 	count_memcg_folio_events(folio, seq_abs + LEAF1, 1);
-		// 	// } else {
-		// 	// 	count_memcg_folio_events(folio, LEAF7, 1);
-		// 	// }
-		// }
-		unsigned long seq_sum = 0;
-		int useful_seq_num = 0;
-		int avg_seq = 6553;
-		if(features.seq0 == 0 && features.seq1 == 0 && features.seq2 == 0){
-			useful_seq_num = 0;
-		}else{
-			seq_sum += features.seq0;
-			useful_seq_num++;
-			if(features.seq1!=0){
-				seq_sum += features.seq1;
-				useful_seq_num++;
-			}
-			if(features.seq2!=0){
-				seq_sum += features.seq2;
-				useful_seq_num++;
-			}
-			avg_seq = seq_sum / useful_seq_num;
-		}
-		if(features.seq0 == 0 && features.seq1 == 0 && features.seq2 == 0){
-			dec_tree_result = 0;
-		} else if(avg_seq <= 45){
-			dec_tree_result = 1;
-		} else{
-			dec_tree_result = 0;
-		}
-		struct lruvec* temp_lruvec;
-		temp_lruvec = folio_lruvec(folio);
-		// dec_tree_result = temp_lruvec->predict(temp_lruvec->lru_dec_tree, (short*)(&features), folio);
-		if (avg_seq/4 + FRE0 < FREX) {
-			count_memcg_folio_events(folio, avg_seq/4 + FRE0, 1);
-		} else {
-			count_memcg_folio_events(folio, FREX, 1);
-		}
-		count_memcg_folio_events(folio, WI_TREE, 1);
-		// if (features.seq0 <= 80){
-		// 	dec_tree_result = 1;
-		// }else{
-		// 	dec_tree_result = 0;
-		// }
-		if(dec_tree_result == 1){
-			count_memcg_folio_events(folio, PREDICT_FAST, 1);
-		}else if(dec_tree_result == 0){
-			count_memcg_folio_events(folio, PREDICT_SLOW, 1);
-		}
-		// int i;
-		// if (cache->fast_left != 0){
-		// 	printk(KERN_INFO "space_left:%hd \n", features.space_left);
-		// 	printk(KERN_INFO "space_left:%hd \n", cache->fast_left);
-		// 	printk(KERN_INFO "seq0:%hd \n", features.seq0);
-		// 	printk(KERN_INFO "seq1:%hd \n", features.seq1);
-		// 	printk(KERN_INFO "seq2:%hd \n", features.seq2);
-		// 	printk(KERN_INFO "Tree predict ok in kernel 2024-3-15, result:%d\n",dec_tree_result);
-		// 	printk(KERN_INFO "\n");
-		// }
-		
-	}else{
-		// default swap out to fast dev
-		count_memcg_folio_events(folio, WO_TREE, 1);
-		if (cache->fast_left >= 819*6){
-			dec_tree_result = 1;
-		}else{
-			dec_tree_result = 0;
-		}
-		if(is_first == 1){
-			dec_tree_result = 1;
-			is_first = 0;
-		}
-		dec_tree_result = 0;
-		// force_slow = 1;
-	}
 	dec_tree_result = 1;
+	fast_left = max(cache->fast_left, (long)0);
+	if (entry_is_entry_ext(folio->shadow_ext) == 1){
+		shadow_ext = (struct shadow_entry*)folio->shadow_ext;
+		gen0 = shadow_ext->hist_ts[0];
+		gen1 = shadow_ext->hist_ts[1];
+		unsigned short maxgen = gen0;
+		if (gen1 > 0) maxgen = max(gen1, maxgen);
+
+		if (maxgen >= 75){
+			dec_tree_result = 0;
+		}
+		else{ // maxgen < 60
+			if (maxgen >= 45){
+				if (fast_left > 4096)
+					dec_tree_result = 1;
+				else
+					dec_tree_result = 0;
+			}
+			else if (maxgen < 15) { // 0 -9
+				dec_tree_result = 1;
+			}
+			else{ // 10-44
+				if (fast_left > 1024)
+					dec_tree_result = 1;
+				else
+					dec_tree_result = 0;
+			}
+		}
+	}else{
+		if (fast_left > 16384){
+			dec_tree_result = 1;
+		}
+		else{
+			dec_tree_result = 0;
+		}
+	}
 #endif
 #ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP
 	//translate from folio_prio to dec_tree_result, because its force
-	if (folio_test_swappriohigh(folio))
-		dec_tree_result = 1;
-	else if (folio_test_swappriolow(folio))
-		dec_tree_result = 0;
-	//stale-saved page force goto slow
-	if (force_slow)
-		dec_tree_result = 0;
-	// dec_tree_result = 1;
+	// if (folio_test_swappriohigh(folio))
+	// 	dec_tree_result = 1;
+	// else if (folio_test_swappriolow(folio))
+	// 	dec_tree_result = 0;
+	// //stale-saved page force goto slow
+	// if (force_slow)
+	// 	dec_tree_result = 0;
+	// // dec_tree_result = 1;
 	if (dec_tree_result == 0){
 #else
 	if (folio_test_swappriolow(folio)){

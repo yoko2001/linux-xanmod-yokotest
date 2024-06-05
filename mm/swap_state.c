@@ -2441,15 +2441,16 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 					//this page was already in swap $
 					goto fail_page_out;
 				}
-				if (__swp_swapcount(saved_entry)){
-					put_swap_folio(folio, saved_entry);
-					goto fail_page_out;					
-				}
-				else{
-					put_swap_folio(folio, saved_entry);
-					folio_unlock(folio);
-					goto fail_delete_saved_cache; //delete saved cache again
-				}
+				BUG();
+				// if (__swp_swapcount(saved_entry)){
+				// 	put_swap_folio(folio, saved_entry);
+				// 	goto fail_page_out;					
+				// }
+				// else{
+				// 	put_swap_folio(folio, saved_entry);
+				// 	folio_unlock(folio);
+				// 	goto fail_delete_saved_cache; //delete saved cache again
+				// }
 			}
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 			pr_info("folio[%p] saved[%lx]cnt[%d] ref[%d] add_to_swap_cache_save_check success ", 

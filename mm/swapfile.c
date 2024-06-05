@@ -2436,7 +2436,6 @@ static int try_to_unuse(unsigned int type)
 		return 0;
 
 retry:
-	pr_err("try_to_unuse[%d] shmem_unuse start", type);
 	retval = shmem_unuse(type);
 	if (retval){
 		pr_err("try_to_unuse[%d] shmem_unuse fail ret[%d]", type, retval);
@@ -2507,9 +2506,7 @@ retry:
 		folio_unlock(folio);
 		folio_put(folio);
 	}
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 	pr_info("try_to_unuse[%d]2 after left unuse[%d]", type, si->inuse_pages);
-#endif
 
 	/*
 	 * Lets check again to see if there are still swap entries in the map.
