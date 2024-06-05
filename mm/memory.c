@@ -3882,12 +3882,12 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		swp_entry_t pri_entry;
 		pri_entry.val = page_private(page);
 		swp_entry_clear_ext(&pri_entry, 0x3);
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 		if (pri_entry.val != entry.val){
 			pr_info("folio[%p]stale[%d] private[%lx] entry[%lx]swapcache hit $[%d] private mismatch", 
 					folio, folio_test_stalesaved(folio),  
 					page_private(page), entry.val, folio_test_swapcache(folio));
 		}
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 		if (unlikely(folio_test_stalesaved(folio))){
 			pr_info("in process folio[%p]", folio);
 		}
@@ -4349,14 +4349,16 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		 */
 		if (unlikely(!folio_test_swapcache(folio) ||
 			    page_private(page) != entry.val)){
-				if (!(page_private(page) == migentry.val)){
+				if (migentry.val && !(page_private(page) == migentry.val)){
 					pr_info("folio[%p] pri[%lx] mis_match entry[%lx] orientry[%lx][%d]migentry[%lx]", 
 								folio, page_private(page), entry.val, orientry.val, __swap_count(orientry), migentry.val);
 				}
 				else{
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 					pr_info("folio[%p]$[%d] holding bad private[%lx] entry[%lx] orientry[%lx][%d]migentry[%lx]", 
 								folio, folio_test_swapcache(folio), page_private(page), 
 								entry.val, orientry.val, __swap_count(orientry), migentry.val);
+#endif
 					goto out_page;					
 				}
 		}

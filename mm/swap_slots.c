@@ -459,27 +459,30 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 		if (gen1 > 0) maxgen = max(gen1, maxgen);
 
 		if (maxgen >= 75){
-			dec_tree_result = 0;
+			if (fast_left > 16000)
+				dec_tree_result = 1;
+			else
+				dec_tree_result = 0;
 		}
 		else{ // maxgen < 60
 			if (maxgen >= 45){
-				if (fast_left > 4096)
+				if (fast_left > 1024)
 					dec_tree_result = 1;
 				else
 					dec_tree_result = 0;
 			}
-			else if (maxgen < 15) { // 0 -9
+			else if (maxgen < 16) { // 0 -9
 				dec_tree_result = 1;
 			}
 			else{ // 10-44
-				if (fast_left > 1024)
+				if (fast_left > 512)
 					dec_tree_result = 1;
 				else
 					dec_tree_result = 0;
 			}
 		}
 	}else{
-		if (fast_left > 16384){
+		if (fast_left > 4096*2){
 			dec_tree_result = 1;
 		}
 		else{
