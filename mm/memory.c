@@ -3994,6 +3994,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 			}
 		}
 	}
+#else
+	migentry.val = 0;
 #endif
 	//from this point, whether if folio is the ready or NULL
 	if (!folio) {
@@ -4457,6 +4459,11 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	 * yet.
 	 */
 	// if (!valid_remap) //non remap case
+#ifndef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
+	if (unlikely(valid_remap || invalid_remap)){
+		pr_err("bad remap state bug"); BUG();
+	}
+#endif
 	if (likely(!valid_remap && !invalid_remap))
 		swap_free(entry);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG

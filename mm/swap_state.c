@@ -130,7 +130,7 @@ void *get_shadow_from_swap_cache_erase(swp_entry_t entry)
 		}
 		else if (entry_state == -1){
 			pr_err("get_shadow_from_swap_cache entry[%lx] a freed page[%p]", entry.val, page);
-			BUG();
+			// BUG();
 		}
 	}	
 	return NULL;
