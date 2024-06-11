@@ -447,9 +447,7 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 	WARN_ON_ONCE(folio_test_swappriolow(folio) && folio_test_swappriohigh(folio));
 	/*DJL ADD END*/
 #ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP
-	dec_tree_result = 1;
 	struct dec_feature features;
-	dec_tree_result = 1;
 	fast_left = max(cache->fast_left, (long)0);
 	if (entry_is_entry_ext(folio->shadow_ext) == 1){
 		shadow_ext = (struct shadow_entry*)folio->shadow_ext;
@@ -458,15 +456,15 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 		unsigned short maxgen = gen0;
 		if (gen1 > 0) maxgen = max(gen1, maxgen);
 
-		if (maxgen >= 75){
-			if (fast_left > 16000)
+		if (maxgen >= 50){
+			if (fast_left > 16384)
 				dec_tree_result = 1;
 			else
 				dec_tree_result = 0;
 		}
 		else{ // maxgen < 60
-			if (maxgen >= 45){
-				if (fast_left > 1024)
+			if (maxgen >= 36){
+				if (fast_left > 4096)
 					dec_tree_result = 1;
 				else
 					dec_tree_result = 0;
@@ -475,14 +473,14 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 				dec_tree_result = 1;
 			}
 			else{ // 10-44
-				if (fast_left > 512)
+				if (fast_left > 1024)
 					dec_tree_result = 1;
 				else
 					dec_tree_result = 0;
 			}
 		}
 	}else{
-		if (fast_left > 4096*2){
+		if (fast_left > 16384){
 			dec_tree_result = 1;
 		}
 		else{
@@ -499,7 +497,7 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 	// //stale-saved page force goto slow
 	// if (force_slow)
 	// 	dec_tree_result = 0;
-	// // dec_tree_result = 1;
+	dec_tree_result = 1;
 	if (dec_tree_result == 0){
 #else
 	if (folio_test_swappriolow(folio)){

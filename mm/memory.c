@@ -4351,7 +4351,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		 */
 		if (unlikely(!folio_test_swapcache(folio) ||
 			    page_private(page) != entry.val)){
-				if (migentry.val && !(page_private(page) == migentry.val)){
+				if (!(page_private(page) == migentry.val)){
 					pr_info("folio[%p] pri[%lx] mis_match entry[%lx] orientry[%lx][%d]migentry[%lx]", 
 								folio, page_private(page), entry.val, orientry.val, __swap_count(orientry), migentry.val);
 				}
