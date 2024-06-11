@@ -1923,8 +1923,6 @@ int free_swap_and_cache(swp_entry_t entry)
 		    !swap_page_trans_huge_swapped(p, entry))
 			__try_to_reclaim_swap(p, swp_offset(entry),
 					      TTRS_UNMAPPED | TTRS_FULL);
-		if (__si_can_version(p) && swp_entry_test_special(entry) > 0)
-			pr_info("free_swap_and_cache entry[%lx]v[%lu]", entry.val, (unsigned long)swp_entry_test_special(entry));
 	}
 	// else {
 	// 	// pr_err("free_s&$ err swap_info[%p], count[%d], entry[%lx]", p, count, entry.val);
@@ -2130,7 +2128,7 @@ setpte:
 	set_pte_at(vma->vm_mm, addr, pte, new_pte);
 	swap_free(entry);
 	if (!__swap_count(entry)){
-		pr_err("unuse clear_shadow_from_swap_cache entry[%lx]", entry.val);
+		pr_info("unuse clear_shadow_from_swap_cache entry[%lx]", entry.val);
 		clear_shadow_from_swap_cache(swp_swap_info(entry), swp_offset(entry),swp_offset(entry)+1, 1);
 	}
 out:
@@ -2386,7 +2384,7 @@ void swap_shadow_scan_next(struct swap_info_struct * si, struct lruvec * lruvec,
 	swp_entry_t entry;
 	int threshold;
 
-	if (!si)
+	if (!si || !lruvec)
 		return;
 	if (!__si_can_version(si))
 		return;
@@ -2394,24 +2392,29 @@ void swap_shadow_scan_next(struct swap_info_struct * si, struct lruvec * lruvec,
 	threshold = SEQ_DIFF_THRESHOLD;
 	type = si->type;
 	start = si->swap_scan_cur_bit = max_t(unsigned int, 0, si->swap_scan_cur_bit);
-	end = min_t(unsigned int, si->swap_scan_cur_bit + si->swap_scan_batch_nr, si->max);
-
+	end = min_t(unsigned int, si->swap_scan_cur_bit + si->swap_scan_batch_nr - 1, si->max);
+	if (start > end)
+		return;
 
 	entry = swp_entry(type, start);
 	mapping = swap_address_space(entry);
 
 	*scanned = swap_scan_entries_savior(mapping, lruvec, start, end, type, threshold);
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 	if (*scanned)
 		pr_info("swap_scan_entries_savior called scanned[%lu]->memcg[%d]", 
 			*scanned, mem_cgroup_id(lruvec_memcg(lruvec)));
+#endif
 	trace_swap_shadow_scan_next(start, end, *scanned, mem_cgroup_id(lruvec_memcg(lruvec)));
 
 	if (unlikely(si->max == end)){
 		si->swap_scan_cur_bit = 0;
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 		pr_info("swap_scan_entries_savior called reset cur_bit");
+#endif
 	}
 	else{
-		si->swap_scan_cur_bit = end;
+		si->swap_scan_cur_bit = end+1;
 	}
 }
 #else
@@ -2433,7 +2436,6 @@ static int try_to_unuse(unsigned int type)
 		return 0;
 
 retry:
-	pr_err("try_to_unuse[%d] shmem_unuse start", type);
 	retval = shmem_unuse(type);
 	if (retval){
 		pr_err("try_to_unuse[%d] shmem_unuse fail ret[%d]", type, retval);
@@ -2481,6 +2483,9 @@ retry:
 	       (i = find_next_to_unuse(si, i)) != 0) {
 
 		entry = swp_entry(type, i);
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+		pr_info("try_to_unuse test entry[%lx]", entry.val);
+#endif		
 		folio = filemap_get_folio(swap_address_space(entry), i);
 		if (!folio)
 			continue;
@@ -2491,15 +2496,17 @@ retry:
 		 * might even be back in swap cache on another swap area. But
 		 * that is okay, folio_free_swap() only removes stale folios.
 		 */
-		pr_info("try_to_unuse lock entry[%lx], folio[%p]", entry.val, folio);
 		folio_lock(folio);
-		pr_info("try_to_unuse wait_writeback[%lx], folio[%p]", entry.val, folio);
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+		pr_info("try_to_unuse wait_writeback[%lx], folio[%p] wb[%p]", 
+				entry.val, folio, folio_test_writeback(folio));
+#endif
 		folio_wait_writeback(folio);
 		folio_free_swap(folio);
 		folio_unlock(folio);
 		folio_put(folio);
 	}
-	pr_err("try_to_unuse[%d]2 after left unuse[%d]", type, si->inuse_pages);
+	pr_info("try_to_unuse[%d]2 after left unuse[%d]", type, si->inuse_pages);
 
 	/*
 	 * Lets check again to see if there are still swap entries in the map.
@@ -2515,7 +2522,9 @@ retry:
 	 * and robust (though cpu-intensive) just to keep retrying.
 	 */
 	if (READ_ONCE(si->inuse_pages)) {
-		pr_err("try_to_unuse[%d] after left unuse[%d]", type, si->inuse_pages);
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+		pr_info("try_to_unuse[%d] after left unuse[%d]", type, si->inuse_pages);
+#endif
 		if (!signal_pending(current))
 			goto retry;
 		return -EINTR;

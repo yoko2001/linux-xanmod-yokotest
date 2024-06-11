@@ -1868,8 +1868,7 @@ static int mem_cgroup_soft_reclaim(struct mem_cgroup *root_memcg,
 					pgdat, &nr_scanned);
 		total += total_add;
 		*total_scanned += nr_scanned;
-		if (total_add)
-			pgdat->prio_lruvec = mem_cgroup_lruvec(victim, pgdat);
+
 		if (!soft_limit_excess(root_memcg))
 			break;
 	}
@@ -7626,8 +7625,10 @@ static void uncharge_folio(struct folio *folio, struct uncharge_gather *ug)
 		if (!mem_cgroup_is_root(memcg)){
 			ug->nr_memory += nr_pages;
 			if (unlikely(folio_test_stalesaved(folio))){
-				pr_info("staled folio [%p] nr[%ld] uncharged to memcg[%d]" ,
-							folio, nr_pages, mem_cgroup_id(memcg));
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+				pr_info("staled folio[%p]->entry[%lx] nr[%ld] uncharged to memcg[%d]" ,
+							folio, page_private(folio_page(folio, 0)), nr_pages, mem_cgroup_id(memcg));
+#endif
 				folio_clear_stalesaved(folio);
 				count_memcg_folio_events(folio, SWAP_STALE_SAVE, folio_nr_pages(folio));
 			}

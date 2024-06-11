@@ -48,9 +48,11 @@ static void __end_swap_bio_write_save(struct bio* bio){
 		ClearPageReclaim(page);
 	}
 	end_page_writeback(page);
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 	pr_info("called end_page_writeback page[%p]d[%d]wb[%d]rcl[%d]sv[%d] ref=%d",
 			page, PageDirty(page), PageWriteback(page), 
 			PageReclaim(page), PageStaleSaved(page), folio_ref_count(page_folio(page)));
+#endif
 }
 static void __end_swap_bio_write(struct bio *bio)
 {
@@ -403,10 +405,12 @@ static void swap_writepage_bdev_async(struct page *page,
 	count_swpout_vm_event(page);
 	set_page_writeback(page);
 	unlock_page(page);
-	if (folio_test_stalesaved(folio)){
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+	if (unlikely(folio_test_stalesaved(folio))){
 		pr_info("swap_writepage_bdev_async submit folio[%p] wb[%d]lock[%d]", 
 				folio, folio_test_writeback(folio), folio_test_locked(folio));
 	}
+#endif
 	submit_bio(bio);
 }
 

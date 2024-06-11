@@ -1246,6 +1246,12 @@ config LRU_GEN_STALE_SWP_ENTRY_SAVIOR
 	help
 	  This option enables background scan on those higher priority swap
 	  devices, it marks those stale entries using lru_gen hist refault
+
+config LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+	bool "scan & free stale fast swap entries debug "
+depends on LRU_GEN_STALE_SWP_ENTRY_SAVIOR
+	help
+	  This option enables debugging stats of upper one
 # }
 
 source "mm/damon/Kconfig"

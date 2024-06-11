@@ -731,7 +731,7 @@ static long madvise_swapprio(struct vm_area_struct *vma,
 	struct mm_struct *mm = vma->vm_mm;
 	struct mmu_gather tlb;
 	int low = behavior - MADV_SWAPPRIO_HIGH;
-	pr_err("madvise_swapprio low[%d]" ,low);
+	pr_info("madvise_swapprio [%s]" ,low ? "low" : "high");
 	*prev = vma;
 	if (!can_madv_lru_vma(vma))	{
 		//make sure not hugetlb / locked or sth else

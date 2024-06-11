@@ -232,7 +232,7 @@ int entry_is_entry_ext_debug(const void *entry){
 	if (((struct shadow_entry*)entry)->magic != (unsigned short)((shadow_entry_magic) ^ ((unsigned long)entry & 0xFFFF))){
 		
 		if (((struct shadow_entry*)entry)->magic == 0xFFFF){
-			pr_err("entry_is_entry_ext_debug ext[%lx] has been freed", entry);
+			pr_err("entry_is_entry_ext_debug ext[%p] has been freed", entry);
 			return -1;
 		}else if (((struct shadow_entry*)entry)->magic != (unsigned short)((unsigned long)entry & 0xFFFF)) { // other stuff
 			pr_err("entry was magic invalid ext[%p] magic[%lx]",entry, ((struct shadow_entry*)entry)->magic);

@@ -2185,7 +2185,9 @@ unsigned swap_scan_entries_savior(struct address_space *mapping,
 						continue;
 					}
 					if (add_to_scan_slot(entry) == -2){
-						pr_err("add_to_scan_slot stoped");
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+						pr_info("add_to_scan_slot stoped");
+#endif
 						break;
 					}
 					count_choosed ++;

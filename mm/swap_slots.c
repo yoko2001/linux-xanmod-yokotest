@@ -196,6 +196,7 @@ static int alloc_swap_slot_cache(unsigned int cpu)
 	/*DJL ADD BEGIN*/
 	cache->slots_fast = slots_fast;
 	cache->slots_slow = slots_slow;
+	cache->fast_left = cache->slow_left = cache->left = 99999;
 	/*DJL ADD END*/
 
 	mutex_unlock(&swap_slots_cache_mutex);
@@ -413,6 +414,9 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 	int _nr, _cur, _prio;
 	swp_entry_t* _slots;
 	int dec_tree_result;
+	long fast_left;
+	unsigned short gen0, gen1, gen2;
+	struct shadow_entry* shadow_ext;
 	/*DJL ADD END*/
 	
 	entry.val = 0;
@@ -443,13 +447,8 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 	WARN_ON_ONCE(folio_test_swappriolow(folio) && folio_test_swappriohigh(folio));
 	/*DJL ADD END*/
 #ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP
-	dec_tree_result = 0;
-	// if (is_first == 1){
-	// 	cache->fast_left = 16384;
-	// 	is_first = 0;
-	// 	printk(KERN_INFO "CHANGE IS FIRST\n");
-	// }
 	struct dec_feature features;
+	fast_left = max(cache->fast_left, (long)0);
 	if (entry_is_entry_ext(folio->shadow_ext) == 1){
 		
 		features.pid = 0;
@@ -543,19 +542,12 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 		// dec_tree_result = 1;
 		
 	}else{
-		// default swap out to fast dev
-		count_memcg_folio_events(folio, WO_TREE, 1);
-		if (cache->fast_left >= 819*6){
+		if (fast_left > 16384){
 			dec_tree_result = 1;
-		}else{
+		}
+		else{
 			dec_tree_result = 0;
 		}
-		if(is_first == 1){
-			dec_tree_result = 1;
-			is_first = 0;
-		}
-		dec_tree_result = 0;
-		force_slow = 1;
 	}
 #endif
 #ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP
