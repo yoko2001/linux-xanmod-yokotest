@@ -506,7 +506,7 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 			}
 			avg_seq = seq_sum / useful_seq_num;
 		}
-		if(avg_seq <= 15){
+		if(avg_seq <= 8){
 			dec_tree_result = 1;
 		} else{
 			dec_tree_result = 0;
@@ -540,7 +540,7 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 		// 	printk(KERN_INFO "Tree predict ok in kernel 2024-3-15, result:%d\n",dec_tree_result);
 		// 	printk(KERN_INFO "\n");
 		// }
-		dec_tree_result = 1;
+		// dec_tree_result = 1;
 		
 	}else{
 		// default swap out to fast dev
@@ -561,7 +561,8 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 #ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP
 	if (force_slow)
 		dec_tree_result = 0;
-	// dec_tree_result = 1;
+	dec_tree_result = 1;
+	// if (cache->fast_left > 117187/2) dec_tree_result = 1;
 	if (dec_tree_result == 0){
 #else
 	if (folio_test_swappriolow(folio)){

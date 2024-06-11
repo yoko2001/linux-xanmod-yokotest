@@ -850,7 +850,7 @@ void __delete_from_swap_cache(struct folio *folio,
 		// 	pr_info("[TRANSFER]__delete_s$ folio[%p]->entry[%lx] shadow[%p]", folio, entry, shadow);
 		VM_BUG_ON_PAGE(entry_ != folio, entry_);
 
-		if (unlikely(entry_ != folio)) {
+		if (unlikely(entry_ && entry_ != folio)) {
 			pr_err("__delete_sc_mig mismatch entry[%lx]->[%p]<>folio[%p]", 
 					entry.val, entry_, folio);
 			BUG();
