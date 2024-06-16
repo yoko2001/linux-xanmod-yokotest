@@ -1431,7 +1431,7 @@ static int shmem_writepage(struct page *page, struct writeback_control *wbc)
 	mutex_lock(&shmem_swaplist_mutex);
 	if (list_empty(&info->swaplist))
 		list_add(&info->swaplist, &shmem_swaplist);
-	pr_err("add_to_swap_cache shmem folio[%pK], swap[%lx]", folio, swap.val);
+
 	if (add_to_swap_cache(folio, swap,
 			__GFP_HIGH | __GFP_NOMEMALLOC | __GFP_NOWARN,
 			NULL) == 0) {
@@ -1786,6 +1786,10 @@ static int shmem_swapin_folio(struct inode *inode, pgoff_t index,
 			error = -ENOMEM;
 			goto failed;
 		}
+		if (unlikely(entry_is_entry_ext(folio->shadow_ext)==1)){
+			pr_err("a shmem_swapin folio[%p] should have valid shadow_ext[%p]", folio, folio->shadow_ext);
+			BUG();
+		}
 	}
 
 	/* We have to do this with folio locked to prevent races */
@@ -1832,7 +1836,9 @@ static int shmem_swapin_folio(struct inode *inode, pgoff_t index,
 	folio_mark_dirty(folio);
 	swap_free(swap);
 	if (unlikely(entry_is_entry_ext(folio->shadow_ext)==1)){
-		pr_err("failing 2");
+		pr_info("skip shadow_ext[%p], folio[%p]", folio->shadow_ext, folio);
+		shadow_entry_free(folio->shadow_ext);
+		folio->shadow_ext = NULL;
 	}
 	put_swap_device(si);
 
