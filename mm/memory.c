@@ -4055,6 +4055,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 						else{
 							folio->shadow_ext = NULL;
 							shadow_entry_free(shadow);
+							trace_shadow_entry_free(shadow, 2);	
 						}
 						// if (swp_entry_test_special(entry))
 						// 	pr_info("[TRANSFER]do_swap_page  entry[%lx]->folio[%p] ext[%p]", entry.val, folio, shadow);

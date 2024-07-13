@@ -41,6 +41,7 @@
 #include <linux/swapfile.h>
 #include <linux/iversion.h>
 #include "swap.h"
+#include <trace/events/lru_gen.h>
 
 static struct vfsmount *shm_mnt;
 
@@ -1838,6 +1839,7 @@ static int shmem_swapin_folio(struct inode *inode, pgoff_t index,
 	if (unlikely(entry_is_entry_ext(folio->shadow_ext)==1)){
 		pr_info("skip shadow_ext[%p], folio[%p]", folio->shadow_ext, folio);
 		shadow_entry_free(folio->shadow_ext);
+		trace_shadow_entry_free(folio->shadow_ext, 5);	
 		folio->shadow_ext = NULL;
 	}
 	put_swap_device(si);

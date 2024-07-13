@@ -1262,6 +1262,7 @@ void clear_shadow_from_swap_cache(int type, unsigned long begin,
 				if (old != _entry)
 					BUG();
 				shadow_entry_free(old);
+				trace_shadow_entry_free(old, 6);	
 				continue;
 			}
 			else if (entry_is_entry_ext(old) == 1){
@@ -1790,6 +1791,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 			pr_info("[FREE]folio[%p]->shadowext[%p] shadow[%p]", 
 			folio, folio->shadow_ext, shadow);
 			shadow_entry_free(folio->shadow_ext);
+			trace_shadow_entry_free(folio->shadow_ext, 7);	
 		}
 	}
 	folio->shadow_ext = NULL;
@@ -1800,6 +1802,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 		}
 		else{
 			shadow_entry_free(shadow);
+			trace_shadow_entry_free(shadow, 8);	
 			pr_info("[ABANDON]read_cache entry[%lx]=>folio[%p] stale free ext[%p]", 
 					entry.val, folio, shadow);
 		}

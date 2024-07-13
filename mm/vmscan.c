@@ -1659,6 +1659,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 				pr_info("[FREE]__remove_mapping free folioshadow[%p]->[%p]", 
 						folio, folio->shadow_ext);
 				shadow_entry_free(folio->shadow_ext);
+				trace_shadow_entry_free(folio->shadow_ext, 9);	
 				folio->shadow_ext = NULL;
 			}
 			free_folio(folio);
@@ -1689,6 +1690,7 @@ cannot_free:
 		// 			folio, folio->shadow_ext, shadow_ext);		
 
 		shadow_entry_free(shadow_ext);
+		trace_shadow_entry_free(shadow_ext, 10);	
 	}
 	
 	return 0;

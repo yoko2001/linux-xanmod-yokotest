@@ -1710,7 +1710,8 @@ void swapcache_free_entries(swp_entry_t *entries, int n, int free)
 	for (i = 0; i < n; ++i) {
 		p = swap_info_get_cont(entries[i], prev);
 		if (p){
-			swap_entry_free(p, entries[i], free);
+			// swap_entry_free(p, entries[i], free);
+			swap_entry_free(p, entries[i], 0);
 			// if (__si_can_version(p) && swp_entry_test_special(entries[i]))
 			// 	pr_err("swapcache_free_entries entry[%lx], cnt[%d]", 
 			// 			entries[i].val, swap_swapcount(p, entries[i]));

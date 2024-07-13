@@ -479,6 +479,7 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 					dec_tree_result = 0;
 			}
 		}
+		count_memcg_folio_events(folio, WI_TREE, 1);
 	}else{
 		if (fast_left > 16384){
 			dec_tree_result = 1;
@@ -486,6 +487,7 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 		else{
 			dec_tree_result = 0;
 		}
+		count_memcg_folio_events(folio, WO_TREE, 1);
 	}
 #endif
 #ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP
