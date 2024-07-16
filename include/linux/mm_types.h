@@ -1026,12 +1026,14 @@ typedef struct {
 } swp_entry_t;
 
 #define SE_HIST_SIZE	3
-#define SHADOW_EXT_FLAG_STALE_SAVED 0x1	
+#define SHADOW_EXT_FLAG_STALE_SAVED 0x1
 typedef struct shadow_entry{
 	unsigned short magic;
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 	unsigned short hist_ts[SE_HIST_SIZE]; 
-	// unsigned short flag;
+#endif
+#ifdef CONFIG_LRU_GEN_SHADOW_ENTRY_REF_CTRL
+	unsigned short ref; //if this shadow_entry is currently owned by a folio
 #endif
 	void* shadow;//original shadow
 }__aligned(sizeof(unsigned short)) shadow_entry_t;

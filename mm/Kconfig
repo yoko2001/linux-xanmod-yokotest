@@ -1187,7 +1187,7 @@ config LRU_GEN
 	  Documentation/admin-guide/mm/multigen_lru.rst for details.
 
 config LRU_GEN_ENABLED
-	bool "Enable by default"
+	bool "enables the multi-gen LRU by default"
 	depends on LRU_GEN
 	help
 	  This option enables the multi-gen LRU by default.
@@ -1218,6 +1218,13 @@ config LRU_GEN_KEEP_REFAULT_HISTORY
 	  This option enables shadow_ext to keep 3 timestamp for 
 	  history refualt recds
 
+config LRU_GEN_SHADOW_ENTRY_REF_CTRL
+	bool "[DEBUG] make sure shadow entry are freed validly"
+	depends on LRU_GEN_KEEP_REFAULT_HISTORY
+	help
+	  This option enbles a check on shadow entry ref control, 
+	  for better lifetime control 
+
 config LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
 	bool "Punish false fast swap assignment"
 	depends on LRU_GEN
@@ -1226,7 +1233,7 @@ config LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
 	  spare, as well as letting the good ones stay. (same as to slow entry)
 
 config LRU_DEC_TREE_FOR_SWAP
-	bool "Enable by default"
+	bool "enables decision tree for folio swap."
 	depends on LRU_GEN
 	help
 	  This option enables decision tree for folio swap.

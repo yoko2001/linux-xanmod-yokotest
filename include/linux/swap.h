@@ -401,6 +401,9 @@ static inline struct shadow_entry* shadow_entry_alloc(void){
 		}
 		// entry_ext->flag = 0;
 #endif
+#ifdef CONFIG_LRU_GEN_SHADOW_ENTRY_REF_CTRL
+		entry_ext->ref = 0;
+#endif
 	}
 	return entry_ext;
 }
@@ -412,6 +415,13 @@ static inline void shadow_entry_free(struct shadow_entry* entry_ext){
 			pr_err("shadow_entry_free refreed[%lx]", (unsigned long)entry_ext);
 			return;
 		}
+#ifdef CONFIG_LRU_GEN_SHADOW_ENTRY_REF_CTRL
+		if (entry_ext->ref > 0) {
+			pr_err("shadow_entry_free still got ref[%d] freed[%lx]", entry_ext->ref, (unsigned long)entry_ext);
+			BUG();
+			return;
+		}
+#endif
 		WRITE_ONCE(entry_ext->magic, 0xFFFF);
 		if (((unsigned long)entry_ext & 0xFFFF) == 0xFFFF){
 			pr_err("bad shadow entry addr");
