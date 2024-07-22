@@ -1720,18 +1720,21 @@ static void __free_pages_ok(struct page *page, unsigned int order,
 
 	if (!free_pages_prepare(page, order, true, fpi_flags))
 		return;
+#ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
+	struct shadow_entry* shadow;
 	folio = page_folio(page);
-	if (folio->shadow_ext){
-		if (entry_is_entry_ext_debug(folio->shadow_ext) == 1){
-			shadow_entry_free(folio->shadow_ext);
-			pr_err("[FREE]__free_pages_ok normal free[%p] folio[%p]", folio->shadow_ext, folio);
+	shadow = folio_remove_shadow_entry(folio);
+	if (shadow){
+		if (entry_is_entry_ext_debug(shadow) == 1){
+			shadow_entry_free(shadow);
+			pr_err("[FREE]__free_pages_ok normal free[%p] folio[%p]", shadow, folio);
 		}
-		else if (entry_is_entry_ext(folio->shadow_ext) < 1){
-			pr_err("__free_pages_ok folio[%lx] has broken shadow_ext", (unsigned long)folio->shadow_ext);
+		else if (entry_is_entry_ext(shadow) < 1){
+			pr_err("__free_pages_ok folio[%lx] has broken shadow_ext", (unsigned long)shadow);
 			BUG();
 		}	
 	}
-
+#endif
 	/*
 	 * Calling get_pfnblock_migratetype() without spin_lock_irqsave() here
 	 * is used to avoid calling get_pfnblock_migratetype() under the lock.
@@ -3507,20 +3510,21 @@ void free_unref_page(struct page *page, unsigned int order)
 	if (!free_unref_page_prepare(page, pfn, order))
 		return;
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
+	struct shadow_entry* shadow;
 	folio = page_folio(page);
-	if (folio->shadow_ext){
-		if (entry_is_entry_ext_debug(folio->shadow_ext) == 1){
-			shadow_entry_free(folio->shadow_ext);
-			trace_shadow_entry_free(folio->shadow_ext, 3);	
-			// pr_info("[FREE]free_unref_page normal free[%p] folio[%p]", folio->shadow_ext, folio);
+	shadow = folio_remove_shadow_entry(folio);
+	if (shadow){
+		if (entry_is_entry_ext_debug(shadow) == 1){
+			shadow_entry_free(shadow);
+			trace_shadow_entry_free(shadow, 3);	
+			// pr_info("[FREE]free_unref_page normal free[%p] folio[%p]", shadow, folio);
 		}
-		else if (entry_is_entry_ext(folio->shadow_ext) < 1){
+		else if (entry_is_entry_ext(shadow) < 1){
 			pr_err("free_unref_page folio[%p] has broken shadow_ext [%lx]", 
-					folio,(unsigned long)folio->shadow_ext);
+					folio,(unsigned long)shadow);
 			// BUG();
 		}	
 	}
-	folio->shadow_ext = NULL;
 	folio_clear_stalesaved(folio);
 #endif
 	/*
@@ -3575,20 +3579,21 @@ void free_unref_page_list(struct list_head *list)
 			continue;
 		}
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
+		struct shadow_entry* shadow;
 		folio = page_folio(page);
 		// check_private_debug(folio);
-		if (folio->shadow_ext){
-			if (entry_is_entry_ext_debug(folio->shadow_ext) == 1){
-				shadow_entry_free(folio->shadow_ext);
-				trace_shadow_entry_free(folio->shadow_ext, 4);	
-				// pr_info("[FREE]free_unref_page_list normal free[%p] folio[%p]", folio->shadow_ext, folio);
+		shadow = folio_remove_shadow_entry(folio);
+		if (shadow){
+			if (entry_is_entry_ext_debug(shadow) == 1){
+				shadow_entry_free(shadow);
+				trace_shadow_entry_free(shadow, 4);	
+				// pr_info("[FREE]free_unref_page_list normal free[%p] folio[%p]",shadow, folio);
 			}
-			else if (entry_is_entry_ext(folio->shadow_ext) < 1){
-				pr_err("free_unref_page_list folio[%p] has broken shadow_ext[%p]",folio, folio->shadow_ext);
+			else if (entry_is_entry_ext(shadow) < 1){
+				pr_err("free_unref_page_list folio[%p] has broken shadow_ext[%p]",folio, shadow);
 				// BUG();
 			}	
 		}
-		folio->shadow_ext = NULL;
 		folio_clear_stalesaved(folio);
 #endif
 		/*

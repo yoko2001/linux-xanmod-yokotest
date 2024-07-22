@@ -4020,7 +4020,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				mem_cgroup_swapin_uncharge_swap(entry);
 
 				//erase it or not?
-				shadow = get_shadow_from_swap_cache_erase(entry);//get_shadow_from_swap_cache(entry);
+				shadow = get_shadow_from_swap_cache_erase(entry);//get_shadow_from_swap_cache(entry); 
 				/*DJL ADD BEGIN*/
 				if (swap_info_is_fastest(si))
 					swap_level = 1;
@@ -4030,11 +4030,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 					swap_level = 0;
 				try_free_entry = 0;
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
-				if (folio->shadow_ext){//safety check
-					pr_err("allocated folio has shadow?? folio[%p]", folio);
-					folio->shadow_ext = NULL; // might lost
-					BUG();
-				}
+				ASSERT_FOLIO_NO_SE(folio);
 #endif
 				if (shadow){
  					workingset_refault(folio, shadow, &rf_dist_ts, vmf->real_address,swap_level, entry, &abandon_shadow);
@@ -4050,22 +4046,23 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 					if (entry_is_entry_ext(shadow) == 1){
 						abandon_shadow = false;
 						if (!abandon_shadow){
-							folio->shadow_ext = shadow;
+							folio_add_shadow_entry(folio, shadow);
 						}
 						else{
-							folio->shadow_ext = NULL;
 							shadow_entry_free(shadow);
 							trace_shadow_entry_free(shadow, 2);	
+							BUG();
 						}
 						// if (swp_entry_test_special(entry))
 						// 	pr_info("[TRANSFER]do_swap_page  entry[%lx]->folio[%p] ext[%p]", entry.val, folio, shadow);
 					}
-#endif				
+					count_memcg_event_mm(vma->vm_mm, LEAF5);
+#endif
 				}
 				else{
 					trace_folio_ws_chg(folio, vmf->address, folio_pgdat(folio), -1, 0, 0, 1, swap_level, -2, (unsigned long)entry.val);
 					count_memcg_event_mm(vma->vm_mm, LEAF6);
-					if (folio->shadow_ext) BUG();
+					ASSERT_FOLIO_NO_SE(folio);
 				}
 				/*DJL ADD END*/
 				folio_add_lru(folio);
@@ -4660,8 +4657,11 @@ out:
 	return ret;
 out_nomap:
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
-	if (folio)
+	if (folio){
 		folio->shadow_ext = NULL;
+		pr_err("shouldnt have shadow_ext folio[%lx]", (unsigned long)folio);
+		BUG();
+	}
 #endif
 	pte_unmap_unlock(vmf->pte, vmf->ptl);
 out_page:

@@ -407,6 +407,54 @@ static inline struct shadow_entry* shadow_entry_alloc(void){
 	}
 	return entry_ext;
 }
+static inline void ASSERT_FOLIO_SE(struct folio* folio) {
+	if (unlikely(!folio->shadow_ext)){
+		pr_err("folio_assert_shadow_entry folio[%lx]", (unsigned long)folio);
+		BUG();
+	}
+}
+static inline void ASSERT_FOLIO_NO_SE(struct folio* folio){
+	if (unlikely(folio->shadow_ext)){
+		pr_err("ASSERT_FOLIO_NO_SE folio[%lx]->entry[%lx]", (unsigned long)folio, (unsigned long)folio->shadow_ext);
+		BUG();
+	}
+}
+#ifdef CONFIG_LRU_GEN_SHADOW_ENTRY_REF_CTRL
+static inline void folio_add_shadow_entry(struct folio* folio, struct shadow_entry* entry_ext){
+	if (unlikely(!entry_ext) || unlikely(!folio))
+		return;
+	if (unlikely(entry_ext->ref != 0)) {
+		pr_err("shadow_entry [%lx] already refed[%d], fail add to folio[%lx]", 
+					(unsigned long)entry_ext, entry_ext->ref, (unsigned long)folio);
+		dump_stack();
+	}
+	entry_ext->ref += 1;
+	folio->shadow_ext = entry_ext;
+}
+static inline struct shadow_entry* folio_remove_shadow_entry(struct folio* folio){
+	struct shadow_entry* ret = folio->shadow_ext;
+	if (unlikely(ret == NULL))
+		return NULL;
+	ret->ref -- ;
+	if (unlikely(ret->ref != 0)) {
+		pr_err("shadow_entry [%lx] fail unrefed, fail delete from folio[%lx]", (unsigned long)ret, (unsigned long)folio);
+		dump_stack();
+	}
+	folio->shadow_ext = NULL;
+	return ret;
+}
+#else
+static inline void folio_ref_shadow_entry(struct folio* folio, struct shadow_entry* entry_ext){
+	if (unlikely(!entry_ext) || unlikely(!folio))
+		return;
+	folio->shadow_ext = entry_ext;
+}
+struct shadow_entry* shadow_entry* folio_unref_shadow_entry(struct folio* folio){ 
+	struct shadow_entry* ret = folio->shadow_ext;
+	folio->shadow_ext = NULL;
+	return ret;
+}
+#endif
 static inline void shadow_entry_free(struct shadow_entry* entry_ext){
 	if (unlikely(!entry_ext))
 		return;
@@ -416,7 +464,7 @@ static inline void shadow_entry_free(struct shadow_entry* entry_ext){
 			return;
 		}
 #ifdef CONFIG_LRU_GEN_SHADOW_ENTRY_REF_CTRL
-		if (entry_ext->ref > 0) {
+		if (entry_ext->ref != 0) {
 			pr_err("shadow_entry_free still got ref[%d] freed[%lx]", entry_ext->ref, (unsigned long)entry_ext);
 			BUG();
 			return;

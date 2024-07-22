@@ -265,6 +265,9 @@ int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 						BUG(); // NULL
 					}
 				}
+				count_memcg_folio_events(folio, LEAF7, 1);
+			}else{
+				count_memcg_folio_events(folio, LEAF6, 1);
 			}
 
 			// set_page_private_debug(folio_page(folio, i), entry.val + i, 1);
@@ -921,20 +924,19 @@ void __delete_from_swap_cache_mig(struct folio *folio,
 			// set_page_private_debug(folio_page(folio, i), 0, 4);
 		// }
 		if (shadow_transfer){
-			if (folio->shadow_ext){ //may transfer, check
-				if (entry_is_entry_ext(folio->shadow_ext) == 1){
-					shadow = folio->shadow_ext;
+			shadow = folio_remove_shadow_entry(folio);
+			if (shadow){ //may transfer, check
+				if (entry_is_entry_ext(shadow) == 1){
 					xas_store(&xas, shadow);
 					xas_next(&xas);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 					pr_info("[TRANSFER]__delete_sc_mig folio[%p]->entry[%lx] ext[%p]", 
-								folio, entry.val, folio->shadow_ext);
+								folio, entry.val, shadow);
 #endif
-					folio->shadow_ext = NULL;
 					continue;
 				}
 				else{
-					pr_err("__delete_sc_mig fail transfer folio[%p]->shadow[%p]", folio, folio->shadow_ext);
+					pr_err("__delete_sc_mig fail transfer folio[%p]->shadow[%p]", folio, shadow);
 					BUG();
 				}
 			}
@@ -1262,11 +1264,12 @@ void clear_shadow_from_swap_cache(int type, unsigned long begin,
 				if (old != _entry)
 					BUG();
 				shadow_entry_free(old);
-				trace_shadow_entry_free(old, 6);	
+				// trace_shadow_entry_free(old, 6);	
 				continue;
 			}
 			else if (entry_is_entry_ext(old) == 1){
-				pr_info("entry[%lx]clear_shadow_from_s [%p] lost control", entry.val, old);
+				pr_info("entry[%lx]clear_shadow_from_s [%p]status[%d] lost control", 
+						entry.val, old, entry_is_entry_ext(old));
 			}
 		}
 		xa_unlock_irq(&address_space->i_pages);
@@ -1601,13 +1604,10 @@ struct page*__read_swap_cache_async_save(swp_entry_t entry,
 //	mem_cgroup_swapin_uncharge_swap(entry); //DJL doesn't count this
 	//now shadow has been used
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
-	if(folio && folio->shadow_ext){
-		pr_err("shouldn't have folio[%p]->shadow_ext", folio);
-		folio->shadow_ext = NULL;
-		BUG();
-	}
+	if(folio)
+		ASSERT_FOLIO_NO_SE(folio);
 	if (entry_is_entry_ext(shadow) == 1){
-		folio->shadow_ext = shadow;
+		folio_add_shadow_entry(folio, shadow);
 		// pr_info("[TRANSFER]read_save entry[%lx]=>folio[%p] ext[%p]", 
 		// 			entry.val, folio, folio->shadow_ext);
 	}
@@ -1698,10 +1698,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 			pr_err("__read_swap_cache_async alloc fail addr[%lx] entry[%lx]", addr, entry.val);
 			return NULL;
 		}
-		if (folio->shadow_ext){
-			pr_err("__read_swap_cache_async alloc folio[%p] has shadow[%p]", folio, folio->shadow_ext);
-			BUG();
-		}
+		ASSERT_FOLIO_NO_SE(folio);
 		/*
 		 * Swap entry may have been freed since our caller observed it.
 		 */
@@ -1781,24 +1778,26 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 	}
 	else{
 		trace_folio_ws_chg(folio, addr, folio_pgdat(folio), -1, 0, 0, 1, swap_level, -2, (unsigned long)entry.val);
-		count_memcg_folio_events(folio, LEAF7, 1);
+		count_memcg_folio_events(folio, LEAF5, 1);
 	}
 
 	//now shadow has been used
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 	if (folio->shadow_ext){
 		if (folio->shadow_ext != shadow){
-			pr_info("[FREE]folio[%p]->shadowext[%p] shadow[%p]", 
+			pr_err("[FREE]folio[%p]->shadowext[%p] shadow[%p]", 
 			folio, folio->shadow_ext, shadow);
 			shadow_entry_free(folio->shadow_ext);
 			trace_shadow_entry_free(folio->shadow_ext, 7);	
 		}
+		BUG();
+		folio->shadow_ext = NULL;
 	}
-	folio->shadow_ext = NULL;
+	ASSERT_FOLIO_NO_SE(folio);
 	abandon_shadow = false;
 	if (entry_is_entry_ext(shadow) == 1){
 		if (likely(!abandon_shadow)){
-			folio->shadow_ext = shadow;
+			folio_add_shadow_entry(folio, shadow);
 		}
 		else{
 			shadow_entry_free(shadow);

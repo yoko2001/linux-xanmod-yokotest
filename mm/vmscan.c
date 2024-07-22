@@ -1531,6 +1531,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 				// }
 			}
 			else{
+				count_memcg_folio_events(folio, LEAF2, 1);		
 				shadow = workingset_eviction(folio, target_memcg, swap_level, swap_space_left, shadow_ext, swap);
 				if (shadow_ext && shadow != shadow_ext){
 					pr_err("workingset_eviction fail give shadow_ext [%pKK]", shadow);				
@@ -1546,10 +1547,12 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		if (!folio_test_stalesaved(folio)){
 			if (shadow_ext && shadow == shadow_ext){
 				__delete_from_swap_cache(folio, swap, shadow_ext); //success add
-				shadow_ext = NULL;				
+				shadow_ext = NULL;
+				count_memcg_folio_events(folio, LEAF4, 1);		
 			}
 			else{
 				__delete_from_swap_cache(folio, swap, shadow);
+				count_memcg_folio_events(folio, LEAF3, 1);		
 			}
 			if (shadow_ext){
 				pr_err("shadow_ext no free");
@@ -1655,12 +1658,12 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		spin_unlock(&mapping->host->i_lock);
 
 		if (free_folio){
-			if (folio->shadow_ext){
+			struct shadow_entry* folio_shadow = folio_remove_shadow_entry(folio);
+			if (folio_shadow){
 				pr_info("[FREE]__remove_mapping free folioshadow[%p]->[%p]", 
-						folio, folio->shadow_ext);
-				shadow_entry_free(folio->shadow_ext);
-				trace_shadow_entry_free(folio->shadow_ext, 9);	
-				folio->shadow_ext = NULL;
+						folio, folio_shadow);
+				shadow_entry_free(folio_shadow);
+				trace_shadow_entry_free(folio_shadow, 9);	
 			}
 			free_folio(folio);
 		}
@@ -1671,11 +1674,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		shadow_entry_free(shadow_ext);
 	}
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
-	if (folio->shadow_ext){
-		pr_err("unexpected folio[%p] got shadow_ext stale[%d] ref[%d]", 
-					folio, folio_test_stalesaved(folio), folio_ref_count(folio));
-		BUG();
-	}
+	ASSERT_FOLIO_NO_SE(folio);
 #endif
 	return 1;
 
