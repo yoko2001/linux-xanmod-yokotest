@@ -4047,6 +4047,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 						abandon_shadow = false;
 						if (!abandon_shadow){
 							folio_add_shadow_entry(folio, shadow);
+							count_memcg_folio_events(folio, LEAF1, 1);
 						}
 						else{
 							shadow_entry_free(shadow);
@@ -4657,11 +4658,7 @@ out:
 	return ret;
 out_nomap:
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
-	if (folio){
-		folio->shadow_ext = NULL;
-		pr_err("shouldnt have shadow_ext folio[%lx]", (unsigned long)folio);
-		BUG();
-	}
+	ASSERT_FOLIO_NO_SE(folio);
 #endif
 	pte_unmap_unlock(vmf->pte, vmf->ptl);
 out_page:

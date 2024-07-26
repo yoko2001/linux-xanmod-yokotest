@@ -267,6 +267,8 @@ int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 				}
 				count_memcg_folio_events(folio, LEAF7, 1);
 			}else{
+				if (shadowp)
+					*shadowp = NULL;
 				count_memcg_folio_events(folio, LEAF6, 1);
 			}
 
@@ -858,8 +860,8 @@ void __delete_from_swap_cache(struct folio *folio,
 	}
 	for (i = 0; i < nr; i++) {
 		void *entry_ = xas_store(&xas, shadow);
-		// if (shadow)
-		// 	pr_info("[TRANSFER]__delete_s$ folio[%p]->entry[%lx] shadow[%p]", folio, entry, shadow);
+		if (shadow)
+			pr_info("[TRANSFER]__delete_s$ folio[%p]->entry[%lx] shadow[%p]", folio, entry, shadow);
 		VM_BUG_ON_PAGE(entry_ != folio, entry_);
 
 		if (unlikely(entry_ != folio)) {
@@ -1063,7 +1065,7 @@ bool add_to_swap(struct folio *folio, long* left_space)
 {
 	swp_entry_t entry;
 	int err;
-
+	void* shadow_test = NULL;
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 	VM_BUG_ON_FOLIO(!folio_test_uptodate(folio), folio);
 
@@ -1092,13 +1094,17 @@ bool add_to_swap(struct folio *folio, long* left_space)
 	 * Add it to the swap cache.
 	 */
 	err = add_to_swap_cache(folio, entry,
-			__GFP_HIGH|__GFP_NOMEMALLOC|__GFP_NOWARN, NULL);
+			__GFP_HIGH|__GFP_NOMEMALLOC|__GFP_NOWARN, &shadow_test);
 	if (err)
 		/*
 		 * add_to_swap_cache() doesn't return -EEXIST, so we can safely
 		 * clear SWAP_HAS_CACHE flag.
 		 */
 		goto fail;
+	if (shadow_test){
+		pr_err("add to swap should fail get shadow");
+		BUG();
+	}
 	// pr_err("ckpt2 folio[%p]<-entry[%lx]", folio, entry.val);
 	/*
 	 * Normally the folio will be dirtied in unmap because its
@@ -1259,7 +1265,7 @@ void clear_shadow_from_swap_cache(int type, unsigned long begin,
 			if (!xa_is_value(old) && entry_is_entry_ext(old) < 1)
 				continue;
 			if (free && old && entry_is_entry_ext(old) == 1){
-				// pr_info("clear_shadow_from_s [%p] skipped", old);
+				pr_info("clear_shadow_from_s shadow[%p]", old);
 				_entry = xas_store(&xas, NULL);
 				if (old != _entry)
 					BUG();
@@ -1268,7 +1274,7 @@ void clear_shadow_from_swap_cache(int type, unsigned long begin,
 				continue;
 			}
 			else if (entry_is_entry_ext(old) == 1){
-				pr_info("entry[%lx]clear_shadow_from_s [%p]status[%d] lost control", 
+				pr_err("entry[%lx]clear_shadow_from_s [%p]status[%d] lost control", 
 						entry.val, old, entry_is_entry_ext(old));
 			}
 		}

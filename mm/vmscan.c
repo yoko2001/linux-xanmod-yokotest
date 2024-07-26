@@ -1548,11 +1548,9 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 			if (shadow_ext && shadow == shadow_ext){
 				__delete_from_swap_cache(folio, swap, shadow_ext); //success add
 				shadow_ext = NULL;
-				count_memcg_folio_events(folio, LEAF4, 1);		
 			}
 			else{
 				__delete_from_swap_cache(folio, swap, shadow);
-				count_memcg_folio_events(folio, LEAF3, 1);		
 			}
 			if (shadow_ext){
 				pr_err("shadow_ext no free");
