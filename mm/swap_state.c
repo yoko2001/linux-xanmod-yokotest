@@ -164,10 +164,10 @@ void *get_shadow_from_swap_cache_erase(swp_entry_t entry)
 
 					if (entry_state > 0){ //shadow, erased now
 						xas_store(&xas, NULL);
-						// pr_err("get shadow clean shadow_ext entry[%lx]->shadow_ext[%p]", entry.val, old);
+						pr_info("get shadow clean shadow_ext entry[%lx]->shadow_ext[%lx]", entry.val, old);
 					}
 					else if (-1 == entry_state){ //might be still in swapcache ?
-						pr_err("return a freed entry[%lx]->shadow[%p]", entry.val, old);
+						pr_err("return a freed entry[%lx]->shadow[%lx]", entry.val, old);
 						BUG();
 						old = NULL;
 					}
@@ -179,6 +179,9 @@ void *get_shadow_from_swap_cache_erase(swp_entry_t entry)
 						BUG();
 					}	
 				}
+			}
+			else{
+				pr_info("get shadow clean shadow_ext entry[%lx]->shadow_ext[NULL]", entry.val);
 			}
 			xas_next(&xas);
 		}
@@ -861,7 +864,9 @@ void __delete_from_swap_cache(struct folio *folio,
 	for (i = 0; i < nr; i++) {
 		void *entry_ = xas_store(&xas, shadow);
 		if (shadow)
-			pr_info("[TRANSFER]__delete_s$ folio[%p]->entry[%lx] shadow[%p]", folio, entry, shadow);
+			pr_info("[TRANSFER]__delete_s$ folio[%p]->entry[%lx] shadow[%lx]", folio, entry, (unsigned long)shadow);
+		else
+			pr_info("[NO EXT]__delete_s$ folio[%p]->entry[%lx] shadow[NULL]", folio, entry);
 		VM_BUG_ON_PAGE(entry_ != folio, entry_);
 
 		if (unlikely(entry_ != folio)) {
@@ -872,6 +877,7 @@ void __delete_from_swap_cache(struct folio *folio,
 			if (entry_)
 				BUG();
 			xas_next(&xas);
+			continue;
 		}
 		if (unlikely(page_private(folio_page(folio, i)) != entry.val + i)){
 			pr_err("try delete from s$2 folio[%p] [%lx]<>[%lx]", folio, page_private(folio_page(folio, i)), entry.val + i);
@@ -1614,8 +1620,8 @@ struct page*__read_swap_cache_async_save(swp_entry_t entry,
 		ASSERT_FOLIO_NO_SE(folio);
 	if (entry_is_entry_ext(shadow) == 1){
 		folio_add_shadow_entry(folio, shadow);
-		// pr_info("[TRANSFER]read_save entry[%lx]=>folio[%p] ext[%p]", 
-		// 			entry.val, folio, folio->shadow_ext);
+		pr_info("[TRANSFER]read_save entry[%lx]=>folio[%p] ext[%p]", 
+					entry.val, folio, folio->shadow_ext);
 	}
 #else
 	if (entry_is_entry_ext(shadow) > 0){

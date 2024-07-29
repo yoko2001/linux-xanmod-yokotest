@@ -4054,8 +4054,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 							trace_shadow_entry_free(shadow, 2);	
 							BUG();
 						}
-						// if (swp_entry_test_special(entry))
-						// 	pr_info("[TRANSFER]do_swap_page  entry[%lx]->folio[%p] ext[%p]", entry.val, folio, shadow);
+						if (swp_entry_test_special(entry))
+							pr_info("[TRANSFER]do_swap_page  entry[%lx]->folio[%p] ext[%p]", entry.val, folio, shadow);
 					}
 					count_memcg_event_mm(vma->vm_mm, LEAF5);
 #endif

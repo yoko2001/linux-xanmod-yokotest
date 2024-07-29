@@ -392,7 +392,7 @@ static inline struct shadow_entry* shadow_entry_alloc(void){
 		return entry_ext;
 	}
 	entry_ext = kmem_cache_alloc(get_shadow_entry_cache(), GFP_NOWAIT);// GFP_ATOMIC);
-	if (entry_ext){
+	if (likely(entry_ext)){
 		entry_ext->magic = (unsigned short)((unsigned long)(entry_ext) & 0xFFFF);
 		entry_ext->shadow = NULL;
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
@@ -404,6 +404,9 @@ static inline struct shadow_entry* shadow_entry_alloc(void){
 #ifdef CONFIG_LRU_GEN_SHADOW_ENTRY_REF_CTRL
 		entry_ext->ref = 0;
 #endif
+	}
+	else{
+		pr_err("fail to alloc struct shadow_entry");
 	}
 	return entry_ext;
 }
