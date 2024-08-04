@@ -1788,10 +1788,6 @@ static int shmem_swapin_folio(struct inode *inode, pgoff_t index,
 			goto failed;
 		}
 		ASSERT_FOLIO_NO_SE(folio);
-		// if (unlikely(entry_is_entry_ext(folio->shadow_ext)==1)){
-		// 	pr_err("a shmem_swapin folio[%p] should have valid shadow_ext[%p]", folio, folio->shadow_ext);
-		// 	BUG();
-		// }
 	}
 
 	/* We have to do this with folio locked to prevent races */
