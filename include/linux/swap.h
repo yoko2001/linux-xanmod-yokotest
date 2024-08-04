@@ -447,12 +447,12 @@ static inline struct shadow_entry* folio_remove_shadow_entry(struct folio* folio
 	return ret;
 }
 #else
-static inline void folio_ref_shadow_entry(struct folio* folio, struct shadow_entry* entry_ext){
+static inline void folio_add_shadow_entry(struct folio* folio, struct shadow_entry* entry_ext){
 	if (unlikely(!entry_ext) || unlikely(!folio))
 		return;
 	folio->shadow_ext = entry_ext;
 }
-struct shadow_entry* shadow_entry* folio_unref_shadow_entry(struct folio* folio){ 
+struct shadow_entry* shadow_entry* folio_remove_shadow_entry(struct folio* folio){ 
 	struct shadow_entry* ret = folio->shadow_ext;
 	folio->shadow_ext = NULL;
 	return ret;
