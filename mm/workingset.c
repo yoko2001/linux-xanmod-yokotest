@@ -306,8 +306,8 @@ static void *pack_shadow_ext(int memcgid, pg_data_t *pgdat, unsigned long evicti
 			}
 			trace_shadow_ext_transfer(folio, memcgid, entry_ext, old_entry_ext, entry.val);
 			// if (swp_entry_test_ext(entry))
-			// pr_info("[FREE]workingset_refualt entry[%lx]->folio[%p] ext[%p](free)->[%p] ok", 
-			// 			entry.val, folio, old_entry_ext, entry_ext);
+			pr_info("[FREE]workingset_refualt entry[%lx]->folio[%p] ext[%lx](free)->[%lx] ok", 
+						entry.val, folio, (unsigned long)old_entry_ext, (unsigned long)entry_ext);
 			shadow_entry_free(old_entry_ext);
 			// trace_shadow_entry_free(entry_ext, 12);	
 		}
