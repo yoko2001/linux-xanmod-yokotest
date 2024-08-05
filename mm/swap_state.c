@@ -140,31 +140,31 @@ void *get_shadow_from_swap_cache_erase(swp_entry_t entry)
 {
 	struct address_space *address_space = swap_address_space(entry);
 	pgoff_t idx = swp_offset(entry);
-	XA_STATE_ORDER(xas, &address_space->i_pages, idx, 1);
+	XA_STATE_ORDER(xas, &address_space->i_pages, idx, 0);
 	unsigned long i;
 	int entry_state = 0;
 	void *old;
-	// xas_set_update(&xas, workingset_update_node);
+	xas_set_update(&xas, workingset_update_node);
 	do {
 		xas_lock_irq(&xas);
 		xas_create_range(&xas);
 		if (xas_error(&xas))
 			goto unlock;
 		for (i = 0; i < 1; i++) {
-			old = xas_load(&xas);
+			old = xas_store(&xas, NULL);
 //			pr_err("addr_space[%p]ind[%lx] = [%lx]", address_space, idx, old);
 			if (old){
 				if (xa_is_value(old)) { //files
-					xas_store(&xas, NULL);
-					// pr_err("get shadow clean shadow entry[%lx]->shadow[%p]", entry.val, old);
+					// xas_store(&xas, NULL);
+					// pr_info("get shadow clean shadow entry[%lx]->shadow[%p]", entry.val, old);
 				}
 				else{
 					entry_state = entry_is_entry_ext(old);
 					trace_get_shadow_swcache(entry.val, old, entry_state);
 
 					if (entry_state > 0){ //shadow, erased now
-						xas_store(&xas, NULL);
-						pr_info("get shadow clean shadow_ext entry[%lx]->shadow_ext[%lx]", entry.val, old);
+						//pass
+						// pr_info("get shadow clean shadow_ext entry[%lx]->shadow_ext[%lx]", entry.val, old);
 					}
 					else if (-1 == entry_state){ //might be still in swapcache ?
 						pr_err("return a freed entry[%lx]->shadow[%lx]", entry.val, old);
@@ -172,7 +172,7 @@ void *get_shadow_from_swap_cache_erase(swp_entry_t entry)
 						old = NULL;
 					}
 					else if (0 == entry_state){
-						// pr_err("get_shadow_from_s$ delete origin folio entry[%lx]->folio[%p]", entry.val, old);
+						pr_err("get_shadow_from_s$ delete origin folio entry[%lx]->folio[%p]", entry.val, old);
 						old = NULL;
 					}
 					else{
@@ -181,9 +181,10 @@ void *get_shadow_from_swap_cache_erase(swp_entry_t entry)
 				}
 			}
 			else{
-				pr_info("get shadow clean shadow_ext entry[%lx]->shadow_ext[NULL]", entry.val);
+				//pass
+				// pr_info("get shadow clean shadow_ext entry[%lx]->shadow_ext[%lx]", entry.val, old);
 			}
-			xas_next(&xas);
+			break;
 		}
 unlock:
 		xas_unlock_irq(&xas);
@@ -863,15 +864,15 @@ void __delete_from_swap_cache(struct folio *folio,
 	}
 	for (i = 0; i < nr; i++) {
 		void *entry_ = xas_store(&xas, shadow);
-		if (shadow)
-			pr_info("[TRANSFER]__delete_s$ folio[%p]->entry[%lx] shadow[%lx]", folio, entry, (unsigned long)shadow);
-		else
-			pr_info("[NO EXT]__delete_s$ folio[%p]->entry[%lx] shadow[NULL]", folio, entry);
+		// if (shadow)
+		// 	pr_info("[TRANSFER]__delete_s$ folio[%p]i[%d]->entry[%lx] shadow[%lx] ", folio, i, entry, (unsigned long)shadow);
+		// else
+		// 	pr_info("[NO EXT]__delete_s$ folio[%p]i[%d]->entry[%lx] shadow[NULL]", folio, i,  entry);
 		VM_BUG_ON_PAGE(entry_ != folio, entry_);
 
 		if (unlikely(entry_ != folio)) {
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-			pr_info("__delete_sc mismatch entry[%lx]cnt[%d]->[%p]<>folio[%p] stale[%d]", 
+			pr_err("__delete_sc mismatch entry[%lx]cnt[%d]->[%p]<>folio[%p] stale[%d]", 
 					entry.val, __swap_count(entry), entry_, folio, folio_test_stalesaved(folio));
 #endif
 			if (entry_)
@@ -893,6 +894,11 @@ void __delete_from_swap_cache(struct folio *folio,
 	}
 	folio_clear_swapcache(folio);
 	// check_private_debug(folio);
+	if(unlikely((page_private(folio_page(folio, 0)) != 0))){
+		pr_err("delete $ entry[%lx]->folio[%p]pri[%lx]", entry.val, folio, page_private(folio_page(folio, 0)));
+		BUG();	
+	}
+
 	// if (shadow)
 	// 	pr_err("delete $ entry[%lx]->folio[%p]=>shadow[%p]", entry.val, folio, shadow);
 	address_space->nrpages -= nr;
@@ -922,7 +928,7 @@ void __delete_from_swap_cache_mig(struct folio *folio,
 	for (i = 0; i < nr; i++) {
 		void *entry_ = xas_load(&xas);
 		if (entry_ != folio) {
-			pr_err("__delete_sc_mig mismatch entry[%lx]->folio[%p] [%p]", 
+			pr_err("__delete_sc_mig mismatch entry[%lx]->folio[%p] [%lx]", 
 					swp_offset(entry), folio, entry_);
 			BUG();
 		}
@@ -1271,7 +1277,7 @@ void clear_shadow_from_swap_cache(int type, unsigned long begin,
 			if (!xa_is_value(old) && entry_is_entry_ext(old) < 1)
 				continue;
 			if (free && old && entry_is_entry_ext(old) == 1){
-				pr_info("clear_shadow_from_s shadow[%p]", old);
+				// pr_info("clear_shadow_from_s shadow[%p]", old);
 				_entry = xas_store(&xas, NULL);
 				if (old != _entry)
 					BUG();

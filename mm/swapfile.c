@@ -801,7 +801,6 @@ static void swap_range_free(struct swap_info_struct *si, unsigned long offset,
 			swap_slot_free_notify(si->bdev, offset);
 		offset++;
 	}
-	pr_info("unuse clear_shadow_from_swap_cache type[%d] [%lx-%lx]",si->type,  begin, end);
 	clear_shadow_from_swap_cache(si->type, begin, end, free);
 }
 
@@ -2136,7 +2135,6 @@ setpte:
 	set_pte_at(vma->vm_mm, addr, pte, new_pte);
 	swap_free(entry);
 	if (!__swap_count(entry)){
-		pr_info("unuse clear_shadow_from_swap_cache entry[%lx]", entry.val);
 		clear_shadow_from_swap_cache(swp_swap_info(entry), swp_offset(entry),swp_offset(entry)+1, 1);
 	}
 out:
