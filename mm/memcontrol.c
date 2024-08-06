@@ -8175,6 +8175,25 @@ static int swap_events_show(struct seq_file *m, void *v)
 	return 0;
 }
 
+#ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP
+static ssize_t swap_treeargs_write(struct kernfs_open_file *of,
+			      char *buf, size_t nbytes, loff_t off)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(of_css(of));
+	printk(KERN_INFO "treeargs call ok, nbytes=%d\n", nbytes);
+
+	return nbytes;
+}
+
+static int swap_treeargs_show(struct seq_file *m, void *v)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_seq(m);
+
+	seq_printf(m, "hello_tree\n");
+
+	return 0;
+}
+#endif
 static struct cftype swap_files[] = {
 	{
 		.name = "swap.current",
@@ -8199,6 +8218,14 @@ static struct cftype swap_files[] = {
 		.file_offset = offsetof(struct mem_cgroup, swap_events_file),
 		.seq_show = swap_events_show,
 	},
+#ifdef CONFIG_LRU_DEC_TREE_FOR_SWAP
+	{
+		.name = "swap.treeargs",
+		.flags = CFTYPE_NOT_ON_ROOT,
+		.seq_show = swap_treeargs_show,
+		.write = swap_treeargs_write,
+	},
+#endif
 	{ }	/* terminate */
 };
 

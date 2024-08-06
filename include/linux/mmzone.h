@@ -616,7 +616,7 @@ static inline void lru_gen_soft_reclaim(struct lruvec *lruvec)
 
 struct dec_node
 {
-    short threshold_value;
+    unsigned long threshold_value;
     char* left;
     char* right;
     int label;
@@ -633,15 +633,15 @@ struct dec_tree
 #pragma pack(1)
 struct dec_feature
 {
-    short pid;
-    short space_left;
-    short swapprio_b;
-    short readahead_b;
-    short seq0;
-    short seq1;
-    short seq2;
-    short seq3;
-    short tier;
+    unsigned long pid;
+    unsigned long space_left;
+    unsigned long swapprio_b;
+    unsigned long readahead_b;
+    unsigned long seq0;
+    unsigned long seq1;
+    unsigned long seq2;
+    unsigned long seq3;
+    unsigned long tier;
 };
 #pragma pack()	
 
