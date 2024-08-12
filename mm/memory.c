@@ -1478,7 +1478,7 @@ success_unmap_mig_entry:
 				swp_entry_t migentry;
 				migentry = entry_get_migentry(entry);
 				if (migentry.val && !non_swap_entry(migentry)){
-					pr_info("err free_swap_and_cache entry[%lx]->migentry[%lx]v[%lu]", 
+					pr_info("free_swap_and_cache entry[%lx]->migentry[%lx]v[%lu] still works clear", 
 						entry.val, migentry.val, (unsigned long)swp_entry_test_special(migentry));
 				}
 			}

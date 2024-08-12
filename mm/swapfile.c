@@ -2490,7 +2490,7 @@ retry:
 
 		entry = swp_entry(type, i);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-		pr_info("try_to_unuse test entry[%lx]", entry.val);
+		pr_info("try_to_unuse test entry[%lx] count[%d]", entry.val, __swap_count(entry));
 #endif		
 		folio = filemap_get_folio(swap_address_space(entry), i);
 		if (!folio)
@@ -2504,7 +2504,7 @@ retry:
 		 */
 		folio_lock(folio);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-		pr_info("try_to_unuse wait_writeback[%lx], folio[%p] wb[%p]", 
+		pr_info("try_to_unuse wait_writeback[%lx], folio[%p] wb[%d]", 
 				entry.val, folio, folio_test_writeback(folio));
 #endif
 		folio_wait_writeback(folio);

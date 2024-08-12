@@ -251,12 +251,10 @@ int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 						struct folio* migrating_folio = (struct folio*)old;
 						pr_err("return a folio entry[%lx]->folio[%p], folio[%p] failed add $", entry.val, old, folio);
 						if (shadowp && migrating_folio->shadow_ext){
-							*shadowp = migrating_folio->shadow_ext;
-							migrating_folio->shadow_ext = NULL;
+							*shadowp = folio_remove_shadow_entry(migrating_folio);
 						}
 						else{
-							shadow_entry_free(migrating_folio->shadow_ext);
-							migrating_folio->shadow_ext = NULL;
+							shadow_entry_free(folio_remove_shadow_entry(migrating_folio));
 						}
 						folio_clear_stalesaved(migrating_folio);
 					}
@@ -525,7 +523,7 @@ static int add_to_swap_cache_save_check(struct folio *folio, swp_entry_t entry,
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 						pr_info("got shadow entry [%p], transfer to folio[%p] ", _entry, folio);
 #endif
-						folio->shadow_ext = _entry;						
+						folio_add_shadow_entry(folio, _entry);
 					}
 					else{
 						pr_err("got shadow entry [%lx], in mig[%lx]", (unsigned long)_entry, entry.val);
@@ -2440,7 +2438,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 			if (!mig_entry.val || (mig_entry.val > LONG_MAX) 
 					|| !data_race(p->flags & SWP_SYNCHRONOUS_IO) 
 					|| (swp_swap_info(mig_entry)->flags & SWP_SYNCHRONOUS_IO)){ //have to xa_mk_value
-				pr_err("invalide mig_entry[%lx] alloc swap", mig_entry.val);
+				pr_err("invalid mig_entry[%lx] alloc swap", mig_entry.val);
 				goto fail_page_out;
 			}
 			if (swap_duplicate(mig_entry) < 0){

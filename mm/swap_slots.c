@@ -497,9 +497,9 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 	// else if (folio_test_swappriolow(folio))
 	// 	dec_tree_result = 0;
 	// //stale-saved page force goto slow
-	// if (force_slow)
-	// 	dec_tree_result = 0;
 	dec_tree_result = 1;
+	if (force_slow)
+		dec_tree_result = 0;
 	if (dec_tree_result == 0){
 #else
 	if (folio_test_swappriolow(folio)){
