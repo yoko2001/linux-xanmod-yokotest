@@ -8045,7 +8045,8 @@ static ssize_t swap_treeargs_write(struct kernfs_open_file *of,
 		node_lruvec = &(memcg->nodeinfo[node]->lruvec);
 		struct dec_node* root;
 		root = (struct dec_node*)(node_lruvec->lru_dec_tree->root);
-		char** position = &(buf);
+		char* buf_temp = buf;
+		char** position = &(buf_temp);
 		// *position = buf;
 		update_dec_tree_args(root, buf, position);
 		printk(KERN_INFO "treeargs update ok on numa node:%d\n", node);
