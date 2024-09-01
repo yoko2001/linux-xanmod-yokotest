@@ -3594,7 +3594,6 @@ void free_unref_page_list(struct list_head *list)
 				// BUG();
 			}	
 		}
-		folio_clear_stalesaved(folio);
 #endif
 		/*
 		 * Free isolated pages directly to the allocator, see
@@ -3611,9 +3610,9 @@ void free_unref_page_list(struct list_head *list)
 	list_for_each_entry_safe(page, next, list, lru) {
 		struct zone *zone = page_zone(page);
 		if (PageStaleSaved(page)){
-			pr_err("free_unref_page_list page[%p]{p[%p]n[%p]}", 
-					page, page->lru.prev, page->lru.next);
-			BUG();
+			pr_info("free_unref_page_list page[%p]{p[%p]n[%p] zone[%p]}", 
+					page, page->lru.prev, page->lru.next, zone);
+			folio_clear_stalesaved(folio);
 		}
 		list_del(&page->lru);
 		migratetype = get_pcppage_migratetype(page);

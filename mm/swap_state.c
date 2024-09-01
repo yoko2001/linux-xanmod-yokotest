@@ -267,11 +267,9 @@ int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 						BUG(); // NULL
 					}
 				}
-				count_memcg_folio_events(folio, LEAF7, 1);
 			}else{
 				if (shadowp)
 					*shadowp = NULL;
-				count_memcg_folio_events(folio, LEAF6, 1);
 			}
 
 			// set_page_private_debug(folio_page(folio, i), entry.val + i, 1);
@@ -1209,7 +1207,11 @@ void delete_from_swap_remap_get_mig(struct folio* folio, swp_entry_t entry_from,
 	__delete_from_swap_remap_get_mig(folio, entry_from, entry_to);
 	xa_unlock_irq(&address_space->i_pages);
 	swp_entry_clear_ext(entry_to, 0x3); 
-	// folio_ref_sub(folio, folio_nr_pages(folio));
+	folio_ref_sub(folio, folio_nr_pages(folio));
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+	pr_info("delete_from_swap_remap_get_mig folio[%p]ref[%d] [%lx]->[%lx]", 
+			folio, folio_ref_count(folio), entry_from.val, entry_to->val);
+#endif
 }
 /*
  * This must be called only on folios that have
@@ -1636,8 +1638,7 @@ struct page*__read_swap_cache_async_save(swp_entry_t entry,
 	/*DJL ADD END*/
 
 	/* Caller will initiate read into locked folio */
-
-	//folio_add_lru_save(folio);
+	folio_add_lru(folio);
 
 	if (new_page_allocated)
 		*new_page_allocated = true;
@@ -1794,7 +1795,6 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 	}
 	else{
 		trace_folio_ws_chg(folio, addr, folio_pgdat(folio), -1, 0, 0, 1, swap_level, -2, (unsigned long)entry.val);
-		count_memcg_folio_events(folio, LEAF5, 1);
 	}
 
 	//now shadow has been used
@@ -2262,8 +2262,12 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 	lrugen = NULL;
 	if (ra_info.win == 1)
 		goto skip;
-	if (swp_entry_test_special(fentry))
+	if (swp_entry_test_special(fentry)){
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+		pr_info("vma_readahead saved entry[%lx], skip", fentry.val);
+#endif
 		goto skip;
+	}
 	blk_start_plug(&plug);
 	for (i = 0, pte = ra_info.ptes; i < ra_info.nr_pte;
 	     i++, pte++) {
@@ -2399,6 +2403,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 			if (!folio) {
 				pr_err("saved_entry[%lx] fail alloc folio", saved_entry.val);
 				entry_retry_putback = true;
+				no_space_force_stop = true;
 				goto skip_this_save;
 			}
 			page = &folio->page;
@@ -2642,8 +2647,10 @@ skip_this_save:
 			//get next
 			if (entry_saved >= SWAP_SLOTS_SCAN_SAVE_ONCE)
 				break;
-			if (no_space_force_stop)
+			if (no_space_force_stop){
+				pr_info("stopped by no_space_force_stop");
 				break;		
+			}
 			saved_entry = get_next_saved_entry(&save_slot_finish);
 		} while (!save_slot_finish);
 

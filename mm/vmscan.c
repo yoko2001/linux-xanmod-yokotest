@@ -1498,8 +1498,10 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 #endif
 	}
 
-	if (!folio_ref_freeze(folio, refcount))
+	if (!folio_ref_freeze(folio, refcount)){
+		pr_info("folio[%p], fail ref_freeze refcount[%d]", folio, refcount);
 		goto cannot_free;
+	}
 	/* note: atomic_cmpxchg in folio_ref_freeze provides the smp_rmb */
 	if (unlikely(folio_test_dirty(folio))) {
 		folio_ref_unfreeze(folio, refcount);
@@ -1531,7 +1533,6 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 				// }
 			}
 			else{
-				count_memcg_folio_events(folio, LEAF2, 1);		
 				shadow = workingset_eviction(folio, target_memcg, swap_level, swap_space_left, shadow_ext, swap);
 				if (unlikely(shadow_ext && shadow != shadow_ext)){
 					pr_err("workingset_eviction fail give shadow_ext [%pKK]", shadow);				
@@ -1660,7 +1661,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		if (free_folio){
 			struct shadow_entry* folio_shadow = folio_remove_shadow_entry(folio);
 			if (folio_shadow){
-				pr_info("[FREE]__remove_mapping free folioshadow[%p]->[%p]", 
+				pr_info("[FREE2]__remove_mapping free folio shadow[%p]->[%p]", 
 						folio, folio_shadow);
 				shadow_entry_free(folio_shadow);
 				trace_shadow_entry_free(folio_shadow, 9);	
@@ -1685,8 +1686,9 @@ cannot_free:
 		spin_unlock(&mapping->host->i_lock);
 	if (unlikely(shadow_ext)){
 		// if (folio->shadow_ext)
-		pr_info("[FREE]__remove_mapping free folio shadow[%p]->[%p] free[%p]", 
-					folio, folio->shadow_ext, shadow_ext);		
+		pr_info("[FREE]__remove_mapping free folio[%p]stale[%d]ref[%d]d[%d]wb[%d] folio->shadowext[%p] shadowext[%p]", 
+					folio, folio_test_stalesaved(folio), folio_ref_count(folio), 
+					folio_test_dirty(folio), folio_test_writeback(folio), folio->shadow_ext, shadow_ext);		
 
 		shadow_entry_free(shadow_ext);
 		trace_shadow_entry_free(shadow_ext, 10);	
@@ -2025,12 +2027,9 @@ keep_next_time:
 				// 		folio,	folio_ref_count(folio), folio_test_swapcache(folio));
 				// //we need to handle the remap & mig cache clean up part
 
-				// delete_from_swap_remap_get_mig(folio, entry, &migentry);
-				// delete_from_swap_cache_mig(folio, migentry, true, false);
-				// swap_free(migentry);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 				if (__swap_count(migentry) != 0){
-					pr_err("folio[%p]$[%d]private[%lx]cnt[%d]map[%d] remap deleted add to lru, swap freed", 
+					pr_err("folio[%p]$[%d]private[%lx]ref[%d]map[%d] remap deleted add to lru, swap freed", 
 						folio,	folio_test_swapcache(folio), 
 						page_private(folio_page(folio, 0)), folio_ref_count(folio), __swap_count(migentry));					
 					// BUG();
@@ -2046,6 +2045,17 @@ keep_next_time:
 				
 				// folio_add_lru(folio); //this should be ok, because lru is protected by folio_lock
 				// //do_swap will not map to it, it should get freed normally
+				delete_from_swap_remap_get_mig(folio, entry, &migentry);
+				delete_from_swap_cache_mig(folio, migentry, true, false);
+				swap_free(migentry);
+				if (!folio_test_ksm(folio) && folio_ref_count(folio) == 2){
+					swap_free(entry);
+					delete_from_swap_cache(folio);
+				}
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+				pr_err("folio[%p]ref[%d] migentry[%lx]cnt[%d] clear now", 
+					folio,	folio_ref_count(folio), migentry.val, __swap_count(migentry));					
+#endif
 				folio_unlock(folio);
 				continue;
 			} 
@@ -2084,6 +2094,7 @@ keep_next_time:
 			}
 			count_memcg_events(lruvec_memcg(lruvec), PGSWAPPED_MIG_SAVED, folio_nr_pages(folio));
 			folio_add_lru_save(folio);
+			pr_info("folio[%p] succeed enable, lruadded ref[%d]", folio, folio_ref_count(folio));
 			folio_unlock(folio);
 		}
 	}
@@ -7347,7 +7358,10 @@ static void shrink_zones(struct zonelist *zonelist, struct scan_control *sc)
 			continue;
 		last_pgdat = zone->zone_pgdat;
 		shrink_node(zone->zone_pgdat, sc);
-
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+		// pr_info("shrink_node[%d] target memcg[%d]zone[%p] wp[%d] swap[%u] unmap[%u]", sc->nr_reclaimed,
+		// 		mem_cgroup_id(sc->target_mem_cgroup), zone, sc->may_writepage, sc->may_swap, sc->may_unmap);
+#endif
 		zone->zone_pgdat->prio_lruvec = mem_cgroup_lruvec(sc->target_mem_cgroup, zone->zone_pgdat);
 		// pr_info("3 pgdat[%p]'s prio_lruvec => memcg[%d]", zone->zone_pgdat, mem_cgroup_id(sc->target_mem_cgroup));
 	}

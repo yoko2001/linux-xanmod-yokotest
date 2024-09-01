@@ -1902,12 +1902,7 @@ bool folio_free_swap(struct folio *folio)
 		return false;
 
 	delete_from_swap_cache(folio);
-	if (folio->shadow_ext) {
-		count_memcg_folio_events(folio, LEAF4, 1);		
-	}
-	else{
-		count_memcg_folio_events(folio, LEAF3, 1);		
-	}
+	
 	folio_set_dirty(folio);
 	return true;
 }

@@ -2194,6 +2194,10 @@ unsigned swap_scan_entries_savior(struct address_space *mapping,
 				}
 			}
 		}
+		else{
+			if (!xa_is_value(folio) && entry_is_entry_ext(folio) != 1)  //folio
+				folio_put(folio);
+		}
 	}
 	rcu_read_unlock();
 

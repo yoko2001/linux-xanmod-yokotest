@@ -203,11 +203,8 @@ swp_entry_t get_next_saved_entry(bool* finished){
 	if (non_swap_entry(entry)){
 		pr_err("returning bad entry [%d/%d]", cache->cur, cache->nr);
 		BUG();
-	}else{
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-		pr_info("get_next_saved_entry return entry[%lx]", entry.val);
-#endif
 	}
+
 	return entry;
 } 
 
