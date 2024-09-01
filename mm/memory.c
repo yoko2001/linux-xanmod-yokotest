@@ -4143,7 +4143,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				else if (unlikely(!page)){
 					pr_err("__read_swap_cache_async_save fail entry[%lx]", entry.val);
 				}
-				else{ //in this case swapcache is ref_added by once for no mean
+				else{ //in this case swapcache is ref_added, because we get it from a lru
 					if (unlikely(invalid_remap)){ //safe checks
 						if (!folio_test_stalesaved(folio)){
 							pr_err("impossible branch");
@@ -4240,8 +4240,9 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		// ret = VM_FAULT_SIGBUS;
 		// goto out_nomap;
 	}
-	// if (ref_sub && folio)
-	// 	folio_ref_sub(folio, folio_nr_pages(folio));
+	if (ref_sub && folio)
+		folio_ref_sub(folio, folio_nr_pages(folio));
+
 	if (swapcache) { //we do the clean
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
 		if (unlikely(folio_test_stalesaved(folio) && folio == swapcache)){ 
