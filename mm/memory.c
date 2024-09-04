@@ -1469,12 +1469,13 @@ success_unmap_mig_entry:
 				;
 				delete_from_swap_remap_raw(entry, migentry);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-				pr_info("free_swap_and_cache entry[%lx]->migentry[%lx]v[%lu]", 
-						entry.val, migentry.val, (unsigned long)swp_entry_test_special(migentry));
+				pr_info("free_swap_and_cache entry[%lx][%d]->migentry[%lx][%d]v[%lu]", 
+						entry.val, __swap_count(entry), migentry.val, 
+						__swap_count(migentry), (unsigned long)swp_entry_test_special(migentry));
 #endif
 			}
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-			else{
+			else {
 				swp_entry_t migentry;
 				migentry = entry_get_migentry(entry);
 				if (migentry.val && !non_swap_entry(migentry)){
@@ -1483,6 +1484,19 @@ success_unmap_mig_entry:
 						(unsigned long)swp_entry_test_special(migentry));
 					// if (unlikely(!free_swap_and_cache(migentry)))
 					// 	print_bad_pte(vma, addr, ptent, NULL);
+					if (0 == (swp_entry_test_ext(migentry) & 0x3)){
+						if (unlikely(!free_swap_and_cache(migentry)))
+							print_bad_pte(vma, addr, ptent, NULL);
+						pr_info("free_swap_and_cache entry[%lx][%d]->migentry[%lx][%d]v[%lu] enabled in cache clear", 
+							entry.val, __swap_count(entry), migentry.val, __swap_count(migentry),
+							(unsigned long)swp_entry_test_special(migentry));
+						delete_from_swap_remap_raw(entry, migentry);
+					}
+					else{
+						pr_info("free_swap_and_cache entry[%lx][%d]->migentry[%lx][%d]v[%lu] still works skip clear", 
+							entry.val, __swap_count(entry), migentry.val, __swap_count(migentry),
+							(unsigned long)swp_entry_test_special(migentry));
+					}
 				}
 			}
 #endif
@@ -4134,10 +4148,10 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				page = __read_swap_cache_async_save(entry, GFP_HIGHUSER_MOVABLE, vma, 
 							vmf->address, &page_allocated, false, &try_free_entry, false);
 				if (page_allocated){
-// #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-// 					pr_info("__read_swap_cache_async_save folio[%p] remapped entry[%lx] refcount[%d]", 
-// 								page_folio(page), entry.val, folio_ref_count(page_folio(page)));
-// #endif
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+					pr_info("__read_swap_cache_async_save folio[%p] remapped entry[%lx] refcount[%d]", 
+								page_folio(page), entry.val, folio_ref_count(page_folio(page)));
+#endif
 					swap_readpage(page, true, plug);
 				}
 				else if (unlikely(!page)){
@@ -4150,7 +4164,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 							BUG();
 						}
 					}
-					ref_sub = true;
+					if (vmf->flags & FAULT_FLAG_WRITE)
+						ref_sub = true;
 					// if (folio_ref_count(page_folio(page)) > 3)
 					// 	pr_info("__read_swap_cache_async_save folio[%p] ref drop ", page);
 					// folio_ref_sub(page_folio(page), folio_nr_pages(page_folio(page)));
@@ -4504,10 +4519,10 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 			} 
 			else{
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-				pr_info("do_swap skip folio_free_swap valid vmf[%d] vmaflag[%lx]folio[%p]ref[%d]entry[%lx]migen[%lx]ksm[%d]$[%d]wb[%d]", 
+				pr_info("do_swap skip folio_free_swap valid vmf[%d] vmaflag[%lx]folio[%p]ref[%d]oricnt[%d]entry[%lx]migen[%lx]ksm[%d]$[%d]wb[%d]", 
 						vmf->flags & FAULT_FLAG_WRITE, vma->vm_flags,
-						folio, folio_ref_count(folio), entry.val,  migentry.val, folio_test_ksm(folio), 
-						folio_test_swapcache(folio), folio_test_writeback(folio));
+						folio, folio_ref_count(folio),  __swap_count(orientry) ,entry.val,  migentry.val, 
+						folio_test_ksm(folio), folio_test_swapcache(folio), folio_test_writeback(folio));
 #endif
 			}
 		}else{ //invalid remap case
@@ -4587,10 +4602,10 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 
 	if (unlikely(migentry.val && need_unlock)){ 
 		entry_get_migentry_unlock(orientry, migentry);
-		// pr_err("do_swap unlock reamp ori[%lx]cnt[%d]->mig[%lx]cnt[%d] folio[%p]ref[%d]", 
-		// 			orientry.val, __swp_swapcount(orientry),
-		// 			migentry.val, __swp_swapcount(migentry), 
-		// 			folio, folio_ref_count(folio));			
+		pr_info("do_swap unlock reamp ori[%lx]cnt[%d]->mig[%lx]cnt[%d] folio[%p]ref[%d]", 
+					orientry.val, __swp_swapcount(orientry),
+					migentry.val, __swp_swapcount(migentry), 
+					folio, folio_ref_count(folio));			
 	}
 
 	inc_mm_counter(vma->vm_mm, MM_ANONPAGES);

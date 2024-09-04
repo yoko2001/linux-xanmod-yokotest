@@ -519,7 +519,7 @@ static int add_to_swap_cache_save_check(struct folio *folio, swp_entry_t entry,
 				else if (entry_is_entry_ext(_entry) == 1){
 					if (saved){
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-						pr_info("got shadow entry [%p], transfer to folio[%p] ", _entry, folio);
+						//pr_info("got shadow entry [%p], transfer to folio[%p] ", _entry, folio);
 #endif
 						folio_add_shadow_entry(folio, _entry);
 					}
@@ -666,22 +666,28 @@ swp_entry_t entry_get_migentry_unlock(swp_entry_t ori_swap, swp_entry_t _mig_swa
 	address_space_remap = swap_address_space_remap(ori_swap);
 	if (!address_space_remap) 
 		return mig_swap;
-	long nr = 1, i;
+	long i;
 	pgoff_t idx = swp_offset(ori_swap);
 	XA_STATE(xas, &address_space_remap->i_pages, idx);
 
 	xa_lock_irq(&address_space_remap->i_pages);
-	for (i = 0; i < nr; i++) {
+	for (i = 0; i < 1; i++) {
 		void *entry = xas_load(&xas);
-		if (xa_is_value(entry)){
+		if (likely(xa_is_value(entry))){
 			mig_swap.val = xa_to_value(entry);
-			if (mig_swap.val && non_swap_entry(mig_swap) || !swp_entry_physical_same(mig_swap, _mig_swap)){
+			if (mig_swap.val && non_swap_entry(mig_swap) 
+				|| !swp_entry_physical_same(mig_swap, _mig_swap)
+				|| !(swp_entry_test_ext(mig_swap)& 0x2))
+			{
 				pr_err("remap err [%lx]->[%lx] <> [%lx]", ori_swap.val, mig_swap.val, _mig_swap.val);
 				BUG();
 			}
 			locked_mig.val = mig_swap.val;
 			swp_entry_clear_ext(&locked_mig,  0x2);
 			xas_store(&xas, xa_mk_value(locked_mig.val));
+		} else {
+			pr_err("remap err [%lx]->[%lx] <> [%lx]", ori_swap.val, mig_swap.val, _mig_swap.val);
+			BUG();
 		}
 		xas_next(&xas);
 	}
@@ -1152,6 +1158,62 @@ void delete_from_swap_remap(struct folio *folio, swp_entry_t entry_from, swp_ent
 	__delete_from_swap_remap(folio, entry_from, entry_to, delete_unpepared);
 	xa_unlock_irq(&address_space->i_pages);
 	// folio_ref_sub(folio, folio_nr_pages(folio));
+}
+static void __clear_swap_remap_range(swp_entry_t entry_start, int order)
+{
+	swp_entry_t tmp;
+	long i;
+	struct address_space *address_space = swap_address_space_remap(entry_start);
+	pgoff_t idx = swp_offset(entry_start);
+	XA_STATE_ORDER(xas, &address_space->i_pages, idx, order);
+	do {
+		xas_lock_irq(&xas);
+		xas_create_range(&xas);
+		if (xas_error(&xas))
+			goto unlock;
+		for (i = 0; i < (1 << order); i++) {
+			void *entry = xas_store(&xas, NULL); //clear
+			tmp.val = xa_to_value(entry);
+			
+			if (tmp.val && !non_swap_entry(tmp)){ //entry_to.val != 0
+				if (swp_entry_test_ext(tmp) & 0x3){
+					pr_err("__clear_swap_remap_range[%lx]->[%lx] locked/inprocess? store back", 
+							swp_entry(swp_type(entry_start), idx++).val,  tmp.val);	
+					xas_store(&xas, xa_mk_value(tmp.val));	
+				}
+				else{
+					pr_info("__clear_swap_remap_range[%lx]->[%lx]", 
+							swp_entry(swp_type(entry_start), idx++).val,  tmp.val);					
+					swap_free(tmp);
+				}
+			}
+			address_space->nrpages -= 1;
+			xas_next(&xas);
+		}
+unlock:
+		xas_unlock_irq(&xas);
+	} while (xas_nomem(&xas, GFP_KERNEL));
+	if (!xas_error(&xas))
+		return;
+	BUG();
+}
+static void clear_swap_remap_range(struct swap_info_struct *si, int start, int end)
+{
+	swp_entry_t entry_start = swp_entry(si->type, start);
+	struct address_space *address_space = swap_address_space_remap(entry_start);
+	__clear_swap_remap_range(entry_start, SWAP_ADDRESS_SPACE_REMAP_SHIFT);
+	pr_info("clear_swap_remap_range type[%d][%d-%d] left[%d]", 
+			si->type, start, end, address_space->nrpages);
+}
+
+void clear_swap_remap_entire(struct swap_info_struct *si)
+{
+	int maxpages = si->max;
+	int start = 0;
+	for(; start < maxpages; start += SWAP_ADDRESS_SPACE_REMAP_PAGES)
+	{
+		clear_swap_remap_range(si, start, start + SWAP_ADDRESS_SPACE_REMAP_PAGES);
+	}
 }
 
 void swap_remap_unlock(struct folio *folio, swp_entry_t ori_swap, swp_entry_t mig_swap){

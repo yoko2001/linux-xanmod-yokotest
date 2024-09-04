@@ -53,6 +53,7 @@ void delete_from_swap_remap_raw(swp_entry_t entry_from, swp_entry_t entry_to);
 void __delete_from_swap_cache_mig(struct folio *folio,
 			swp_entry_t entry, bool shadow_transfer);
 void swap_remap_unlock(struct folio *folio, swp_entry_t ori_swap, swp_entry_t mig_swap);
+void clear_swap_remap_entire(struct swap_info_struct *si);
 bool folio_swapped(struct folio *folio);
 swp_entry_t folio_get_migentry(struct folio* folio, swp_entry_t ori);
 int entry_remap_usable_version(swp_entry_t entry);

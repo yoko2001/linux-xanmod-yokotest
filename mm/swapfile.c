@@ -2499,11 +2499,13 @@ retry:
 		 */
 		folio_lock(folio);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-		pr_info("try_to_unuse wait_writeback[%lx], folio[%p] wb[%d]", 
-				entry.val, folio, folio_test_writeback(folio));
+		pr_info("try_to_unuse wait_writeback[%lx], folio[%p]private[%lx] wb[%d]", 
+				entry.val, folio, page_private(folio_page(folio, 0)), folio_test_writeback(folio));
 #endif
 		folio_wait_writeback(folio);
-		folio_free_swap(folio);
+		if (entry.val == page_private(folio_page(folio, 0))){
+			folio_free_swap(folio);
+		}
 		folio_unlock(folio);
 		folio_put(folio);
 	}
@@ -2875,6 +2877,10 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 		reenable_swap_slots_cache_unlock();
 		reenable_swap_scan_slot_unlock();
 		goto out_dput;
+	}
+	
+	if (p->flags & SWP_SYNCHRONOUS_IO){
+		clear_swap_remap_entire(p);
 	}
 
 	reenable_swap_slots_cache_unlock();
