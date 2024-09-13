@@ -410,15 +410,16 @@ static inline struct shadow_entry* shadow_entry_alloc(void){
 	}
 	return entry_ext;
 }
-static inline void ASSERT_FOLIO_SE(struct folio* folio) {
+static inline void ASSERT_FOLIO_SE(struct folio* folio, const char* file, const int line) {
 	if (unlikely(!folio->shadow_ext)){
-		pr_err("folio_assert_shadow_entry folio[%lx]", (unsigned long)folio);
+		pr_err("folio_assert_shadow_entry folio[%p] %s:%d", folio,  file, line);
 		BUG();
 	}
 }
-static inline void ASSERT_FOLIO_NO_SE(struct folio* folio){
+static inline void ASSERT_FOLIO_NO_SE(struct folio* folio, const char* file, const int line){
 	if (unlikely(folio->shadow_ext)){
-		pr_err("ASSERT_FOLIO_NO_SE folio[%lx]->entry[%lx]", (unsigned long)folio, (unsigned long)folio->shadow_ext);
+		pr_err("ASSERT_FOLIO_NO_SE folio[%p]->entry[%lx] %s:%d", folio, 
+		(unsigned long)folio->shadow_ext, file, line);
 		BUG();
 	}
 }

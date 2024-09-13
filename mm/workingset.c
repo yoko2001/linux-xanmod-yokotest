@@ -440,7 +440,7 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, long swap_spa
 			BUG();
 		}
 		// folio->shadow_ext = NULL;
-		ASSERT_FOLIO_NO_SE(folio);
+		ASSERT_FOLIO_NO_SE(folio, __FILE__, __LINE__);
 #endif
 	}
 	else{
@@ -490,7 +490,7 @@ static void *lru_gen_eviction(struct folio *folio, int swap_level, long swap_spa
 		trace_folio_ws_chg(folio, 0, pgdat, (unsigned short)mem_cgroup_id(memcg), token, refs, 0, swap_level, swap_space_left, (unsigned long)entry.val);
 #endif
 	}
-	ASSERT_FOLIO_NO_SE(folio);
+	ASSERT_FOLIO_NO_SE(folio, __FILE__, __LINE__);
 	if (se){
 		if (ret != se || entry_is_entry_ext_debug(se) < 1){
 			pr_err("ret[%p] se[%p]", ret, se);
