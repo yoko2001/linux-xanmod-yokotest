@@ -1597,11 +1597,11 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 					folio->shadow_ext = NULL;
 					BUG();
 				}
+				put_swap_folio(folio, mig_entry_phy);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 				pr_info("after clear folio[%p]ref[%d] private[%lx]found mig_entry[%lx] count %d", 
 							folio, folio_ref_count(folio), page_private(folio_page(folio, 0)), mig_entry_phy.val, __swp_swapcount(mig_entry_phy));
 #endif
-				put_swap_folio(folio, mig_entry_phy);
 			}
 			else{
 				pr_err("folio[%p] lost its mig_entry", folio);
@@ -1613,8 +1613,14 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		// 			swap.val, swp_entry_test_special(swap),  __swp_swapcount(swap));
 		// }
 		put_swap_folio(folio, swap);
-		// if (folio_test_stalesaved(folio)){
-		// }
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+		if (folio_test_stalesaved(folio)){
+			pr_info("after clear folio[%p]ref[%d] private[%lx]found entry->[%lx]cnt[%d] mig_entry[%lx]cnt[%d]", 
+							folio, folio_ref_count(folio), page_private(folio_page(folio, 0)), 
+							swap.val, __swp_swapcount(swap),
+							mig_entry.val, __swp_swapcount(mig_entry));
+		}
+#endif
 	} else {
 		swp_entry_t swap;
 		swap.val = -1;
@@ -1675,7 +1681,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		shadow_entry_free(shadow_ext);
 	}
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
-	ASSERT_FOLIO_NO_SE(folio);
+	ASSERT_FOLIO_NO_SE(folio, __FILE__, __LINE__);
 #endif
 	return 1;
 
@@ -2049,12 +2055,15 @@ keep_next_time:
 				delete_from_swap_cache_mig(folio, migentry, true, false);
 				swap_free(migentry);
 				if (!folio_test_ksm(folio) && folio_ref_count(folio) == 2){
+					pr_err("do refree swap folio[%p]ref[%d] entry[%lx]cnt[%d] clear now", 
+						folio,	folio_ref_count(folio), entry.val, __swap_count(entry));	
 					swap_free(entry);
-					delete_from_swap_cache(folio);
+					folio_free_swap(folio);
 				}
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-				pr_err("folio[%p]ref[%d] migentry[%lx]cnt[%d] clear now", 
-					folio,	folio_ref_count(folio), migentry.val, __swap_count(migentry));					
+				pr_err("folio[%p]ref[%d] entry[%lx]cnt[%d]migentry[%lx]cnt[%d] clear now", 
+					folio,	folio_ref_count(folio), entry.val, __swap_count(entry),
+					migentry.val, __swap_count(migentry));					
 #endif
 				folio_unlock(folio);
 				continue;

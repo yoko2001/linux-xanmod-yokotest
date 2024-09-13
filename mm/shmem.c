@@ -1787,7 +1787,7 @@ static int shmem_swapin_folio(struct inode *inode, pgoff_t index,
 			error = -ENOMEM;
 			goto failed;
 		}
-		ASSERT_FOLIO_NO_SE(folio);
+		ASSERT_FOLIO_NO_SE(folio, __FILE__, __LINE__);
 	}
 
 	/* We have to do this with folio locked to prevent races */

@@ -1700,7 +1700,7 @@ static bool try_to_unmap_one(struct folio *folio, struct vm_area_struct *vma,
 			// }			
 			if (arch_unmap_one(mm, vma, address, pteval) < 0) {
 				swap_free(entry);
-				ASSERT_FOLIO_NO_SE(folio);
+				ASSERT_FOLIO_NO_SE(folio, __FILE__, __LINE__);
 				set_pte_at(mm, address, pvmw.pte, pteval);
 				ret = false;
 				page_vma_mapped_walk_done(&pvmw);
@@ -1711,7 +1711,7 @@ static bool try_to_unmap_one(struct folio *folio, struct vm_area_struct *vma,
 			if (anon_exclusive &&
 			    page_try_share_anon_rmap(subpage)) {
 				swap_free(entry);
-				ASSERT_FOLIO_NO_SE(folio);
+				ASSERT_FOLIO_NO_SE(folio, __FILE__, __LINE__);
 				set_pte_at(mm, address, pvmw.pte, pteval);
 				ret = false;
 				page_vma_mapped_walk_done(&pvmw);
