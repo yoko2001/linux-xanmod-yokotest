@@ -419,6 +419,12 @@ static inline void set_page_private(struct page *page, unsigned long private)
 	page->private = private;
 }
 
+static inline void set_page_private_debug(struct page *page, unsigned long private, char* file, int line)
+{
+	pr_info("page[%p]->pri[%lx] clear %s:%d", page, page_private(page), file, line);
+	page->private = private;
+}
+
 static inline void *folio_get_private(struct folio *folio)
 {
 	return folio->private;

@@ -717,7 +717,7 @@ static void del_from_avail_list(struct swap_info_struct *p)
 }
 
 static void swap_range_alloc(struct swap_info_struct *si, unsigned long offset,
-			     unsigned int nr_entries)
+			     unsigned int nr_entries, int version)
 {
 	unsigned int end = offset + nr_entries - 1;
 
@@ -725,6 +725,12 @@ static void swap_range_alloc(struct swap_info_struct *si, unsigned long offset,
 		si->lowest_bit += nr_entries;
 	if (end == si->highest_bit)
 		WRITE_ONCE(si->highest_bit, si->highest_bit - nr_entries);
+	// if (si->type == 1 && version > 0){
+	// 	swp_entry_t swap = swp_entry_version(si->type, offset , version);
+	// 	pr_info("swap type[%d]entry[%lx] inc [%d]->[%d]", 
+	// 			si->type, swap.val, si->inuse_pages, si->inuse_pages+nr_entries);
+	// }
+		
 	WRITE_ONCE(si->inuse_pages, si->inuse_pages + nr_entries);
 	if (si->inuse_pages == si->pages) {
 		si->lowest_bit = si->max;
@@ -772,7 +778,7 @@ static void update_swap_prio_mark(void){
 /*DJL ADD END*/
 
 static void swap_range_free(struct swap_info_struct *si, unsigned long offset,
-			    unsigned int nr_entries, int free)
+			    unsigned int nr_entries, int free, int version)
 {
 	unsigned long begin = offset;
 	unsigned long end = offset + nr_entries - 1;
@@ -788,6 +794,11 @@ static void swap_range_free(struct swap_info_struct *si, unsigned long offset,
 			add_to_avail_list(si);
 	}
 	atomic_long_add(nr_entries, &nr_swap_pages);
+	// if (si->type == 1 && version > 0){
+	// 	swp_entry_t swap = swp_entry_version(si->type, offset , version);
+	// 	pr_info("swap type[%d]entry[%lx] dec [%d]->[%d]", 
+	// 			si->type, swap.val, si->inuse_pages, si->inuse_pages-nr_entries);
+	// }	
 	WRITE_ONCE(si->inuse_pages, si->inuse_pages - nr_entries);
 	if (si->flags & SWP_BLKDEV)
 		swap_slot_free_notify =
@@ -1074,17 +1085,19 @@ checks:
 	inc_cluster_info_page(si, si->cluster_info, offset);
 	unlock_cluster(ci);
 
-	swap_range_alloc(si, offset, 1); //needs only physical message
+	swap_range_alloc(si, offset, 1, version); //needs only physical message
 	if (version > 0){
 		slots[n_ret++] = swp_entry_version(si->type, offset, version);
-		if (usage == SWAP_HAS_CACHE)
+		if (usage == SWAP_HAS_CACHE){
 			if (unlikely(version > 1))
 				pr_info("version[%d]entry[%lx] offset[%lx] added to slots SWAP_HAS_CACHE", 
-					version, slots[n_ret-1].val, offset);
-		else
+					version, slots[n_ret-1].val, offset);			
+		}
+		else{
 			if (unlikely(version > 1))
 				pr_info("version[%d]entry[%lx] offset[%lx] added to slots[%x]", 
-					version, slots[n_ret-1].val, offset, usage);
+					version, slots[n_ret-1].val, offset, usage);			
+		}
 	} else {
 		slots[n_ret++] = swp_entry(si->type, offset);
 		if 	(__si_can_version(si)) {
@@ -1225,7 +1238,7 @@ static int swap_alloc_cluster(struct swap_info_struct *si, swp_entry_t *slot)
 
 	memset(si->swap_map + offset, SWAP_HAS_CACHE, SWAPFILE_CLUSTER);
 	unlock_cluster(ci);
-	swap_range_alloc(si, offset, SWAPFILE_CLUSTER);
+	swap_range_alloc(si, offset, SWAPFILE_CLUSTER, 0);
 	*slot = swp_entry(si->type, offset);
 
 	return 1;
@@ -1241,7 +1254,7 @@ static void swap_free_cluster(struct swap_info_struct *si, unsigned long idx)
 	cluster_set_count_flag(ci, 0, 0);
 	free_cluster(si, idx);
 	unlock_cluster(ci);
-	swap_range_free(si, offset, SWAPFILE_CLUSTER, 1);
+	swap_range_free(si, offset, SWAPFILE_CLUSTER, 1, 0);
 	BUG();
 }
 
@@ -1313,6 +1326,7 @@ start_over:
 		if (size == SWAPFILE_CLUSTER) {
 			if (si->flags & SWP_BLKDEV)
 				n_ret = swap_alloc_cluster(si, swp_entries);
+			BUG();
 			//it's ok, because usually we don't use a blk dev
 		} else
 			n_ret = scan_swap_map_slots(si, SWAP_HAS_CACHE,
@@ -1394,12 +1408,12 @@ static struct swap_info_struct *_swap_info_get(swp_entry_t entry, bool allow_unu
 		}
 		goto bad_free;
 	}
-	if (data_race(!p->swap_map[offset_v])) //use raw
+	else if (data_race(!p->swap_map[offset_v])) //use raw
 		goto bad_free;
 	return p;
 
 bad_free:
-	if (unlikely(allow_unused))
+	if (!unlikely(allow_unused))
 		pr_err("%s: %s%08lx\n", __func__, Unused_offset, entry.val);
 	goto out;
 bad_offset:
@@ -1587,7 +1601,7 @@ static void swap_entry_free(struct swap_info_struct *p, swp_entry_t entry, int f
 	unlock_cluster(ci);
 
 	mem_cgroup_uncharge_swap(entry, 1);
-	swap_range_free(p, offset, 1, free);
+	swap_range_free(p, offset, 1, free, version);
 }
 static int swap_swapcount(struct swap_info_struct *si, swp_entry_t entry);
 /*
@@ -1875,6 +1889,10 @@ bool folio_swapped(struct folio *folio)
 bool folio_free_swap(struct folio *folio)
 {
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
+	if (folio_test_swappriohigh(folio) || folio_test_swappriolow(folio)){
+		pr_err("folio_free_swap folio[%p]pri[%lx] blocked", folio, page_private(folio_page(folio, 0)));
+		BUG();
+	}
 
 	if (!folio_test_swapcache(folio))
 		return false;
@@ -1927,8 +1945,27 @@ int free_swap_and_cache(swp_entry_t entry)
 					      TTRS_UNMAPPED | TTRS_FULL);
 	}
 	// else {
-	// 	// pr_err("free_s&$ err swap_info[%p], count[%d], entry[%lx]", p, count, entry.val);
+	// 	pr_info("free_s&$ err swap_info[%p], count[%d], entry[%lx]", p, count, entry.val);
 	// }
+	return p != NULL;
+}
+
+int force_free_swap_cache(swp_entry_t entry)
+{
+	struct swap_info_struct *p;
+	unsigned char count;
+	if (non_swap_entry(entry))
+		return 1;
+
+	p = _swap_info_get(entry, false);
+	if (p) {
+		count = __swap_entry_free(p, entry);
+		__try_to_reclaim_swap(p, swp_offset(entry),
+					      TTRS_UNMAPPED | TTRS_FULL);
+	}
+	else {
+		BUG();
+	}
 	return p != NULL;
 }
 
@@ -2130,7 +2167,7 @@ setpte:
 	set_pte_at(vma->vm_mm, addr, pte, new_pte);
 	swap_free(entry);
 	if (!__swap_count(entry)){
-		clear_shadow_from_swap_cache(swp_swap_info(entry), swp_offset(entry),swp_offset(entry)+1, 1);
+		clear_shadow_from_swap_cache(swp_swap_info(entry)->type, swp_offset(entry),swp_offset(entry)+1, 1);
 	}
 out:
 	pte_unmap_unlock(pte, ptl);
@@ -2361,17 +2398,43 @@ static unsigned int find_next_to_unuse(struct swap_info_struct *si,
 	 * hits are okay, and sys_swapoff() has already prevented new
 	 * allocations from this area (while holding swap_lock).
 	 */
-	for (i = prev + 1; i < si->max; i++) {
-		count = READ_ONCE(si->swap_map[i]);
-		if (count && swap_count(count) != SWAP_MAP_BAD)
-			break;
+	if (__si_can_version(si)){
+		unsigned long offset_v;
+		int v;
+		bool found = false;
+		for (i = prev + 1; i < si->max; i++) {
+			for (v = 0; v <= SWP_ENTRY_ALIVE_VERSION_SPEC; v++){
+				offset_v =  i + v * si->max;
+				count = READ_ONCE(si->swap_map[offset_v]);
+				if (count && swap_count(count) != SWAP_MAP_BAD){
+					found = true;
+					i = offset_v;
+					break;
+				}
+			}		
+			if (found)
+				break;	
+		}
 		if ((i % LATENCY_LIMIT) == 0)
 			cond_resched();
+		if ((i % si->max) == 0 && i > 0)
+			i = 0;
+		if (i == 16384){
+			pr_info("i[%d] max[%d] i mod si->max[%d]", i, si->max, (i % si->max) );
+			BUG();
+		}
 	}
-
-	if (i == si->max)
-		i = 0;
-
+	else{
+		for (i = prev + 1; i < si->max; i++) {
+			count = READ_ONCE(si->swap_map[i]);
+			if (count && swap_count(count) != SWAP_MAP_BAD)
+				break;
+			if ((i % LATENCY_LIMIT) == 0)
+				cond_resched();
+			if (i == si->max)
+				i = 0;
+		}
+	}		
 	return i;
 }
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
@@ -2482,8 +2545,20 @@ retry:
 	while (READ_ONCE(si->inuse_pages) &&
 	       !signal_pending(current) &&
 	       (i = find_next_to_unuse(si, i)) != 0) {
-
-		entry = swp_entry(type, i);
+		if (__si_can_version(si)){
+			int version = i / si->max;
+			if (version > 0){
+				pr_info("try_to_unuse test v[%d]i[%d]", version, i);
+			}
+			i = i - version * si->max;
+			entry = swp_entry_version(type, i, version);
+			if (version > 0){
+				pr_info("try_to_unuse test entry[%lx] v[%d]i[%d]", entry.val, version, i);
+			}
+		}
+		else{
+			entry = swp_entry(type, i);
+		}
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 		pr_info("try_to_unuse test entry[%lx] count[%d]", entry.val, __swap_count(entry));
 #endif		

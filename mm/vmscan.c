@@ -2035,9 +2035,9 @@ keep_next_time:
 
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 				if (__swap_count(migentry) != 0){
-					pr_err("folio[%p]$[%d]private[%lx]ref[%d]map[%d] remap deleted add to lru, swap freed", 
-						folio,	folio_test_swapcache(folio), 
-						page_private(folio_page(folio, 0)), folio_ref_count(folio), __swap_count(migentry));					
+					pr_err("folio[%p]ref[%d]$[%d]pri[%lx] mig[%lx]cnt[%d] remap deleted add to lru, swap freed", 
+						folio,	folio_ref_count(folio), folio_test_swapcache(folio), 
+						page_private(folio_page(folio, 0)), migentry.val, __swap_count(migentry));					
 					// BUG();
 				}
 #endif
@@ -2058,6 +2058,8 @@ keep_next_time:
 					pr_err("do refree swap folio[%p]ref[%d] entry[%lx]cnt[%d] clear now", 
 						folio,	folio_ref_count(folio), entry.val, __swap_count(entry));	
 					swap_free(entry);
+					folio_clear_swappriohigh(folio);
+					folio_clear_swappriolow(folio);
 					folio_free_swap(folio);
 				}
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG

@@ -173,6 +173,7 @@ void *get_shadow_from_swap_cache_erase(swp_entry_t entry)
 					}
 					else if (0 == entry_state){
 						pr_err("get_shadow_from_s$ delete origin folio entry[%lx]->folio[%p]", entry.val, old);
+						xas_store(&xas, old);
 						old = NULL;
 					}
 					else{
@@ -886,7 +887,7 @@ void __delete_from_swap_cache(struct folio *folio,
 			pr_err("try delete from s$2 folio[%p] [%lx]<>[%lx]", folio, page_private(folio_page(folio, i)), entry.val + i);
 			BUG();
 		}
-		// set_page_private_debug(folio_page(folio, i), 0, 3);
+		// set_page_private_debug(folio_page(folio, i), 0, __FILE__, __LINE__);
 		set_page_private(folio_page(folio, i), 0);
 		// if (unlikely(swp_entry_test_special(entry) > 0))
 		// 	pr_info("__delete_from_swap_cache folio[%p]stale[%d]->shadow[%p] entry[%lx]->ext[%p]", 
@@ -962,10 +963,10 @@ void __delete_from_swap_cache_mig(struct folio *folio,
 		xas_next(&xas);
 	}
 	address_space->nrpages -= nr;
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-	pr_info("delete mig $ entry[%lx]->folio[%p] shadow[%p] ref[%d]", 
-				entry.val, folio, shadow, folio_ref_count(folio));
-#endif
+// #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+// 	pr_info("delete mig $ entry[%lx]->folio[%p] shadow[%p] ref[%d]", 
+// 				entry.val, folio, shadow, folio_ref_count(folio));
+// #endif
 	__node_stat_mod_folio(folio, NR_FILE_PAGES, -nr);
 	__lruvec_stat_mod_folio(folio, NR_SWAPCACHE, -nr);
 }
@@ -1285,7 +1286,10 @@ void delete_from_swap_cache(struct folio *folio)
 {
 	swp_entry_t entry = folio_swap_entry(folio);
 	struct address_space *address_space = swap_address_space(entry);
-
+	if (folio_test_swappriohigh(folio) || folio_test_swappriolow(folio)){
+		pr_err("delete_s$ folio[%p]->ext[%p] pri[%lx], BUG", folio, folio->shadow_ext, entry.val);
+		BUG();
+	}
 	xa_lock_irq(&address_space->i_pages);
 	__delete_from_swap_cache(folio, entry, NULL);
 	xa_unlock_irq(&address_space->i_pages);
@@ -1609,8 +1613,8 @@ struct page*__read_swap_cache_async_save(swp_entry_t entry,
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 		if (folio){
 			// folio_put(folio);
-			pr_info("found already in swap_cache[%lx] -> folio[%p] ref[%d] stale[%d] update[%d]", 
-						entry.val, folio, folio_ref_count(folio), 
+			pr_info("found already in swap_cache[%lx] -> folio[%p]pri[%lx] ref[%d] stale[%d] update[%d]", 
+						entry.val, folio, page_private(folio_page(folio, 0)), folio_ref_count(folio), 
 						folio_test_stalesaved(folio), folio_test_uptodate(folio));
 		}
 #endif
@@ -1685,7 +1689,7 @@ struct page*__read_swap_cache_async_save(swp_entry_t entry,
 	//now shadow has been used
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 	if(folio)
-		ASSERT_FOLIO_NO_SE(folio);
+		ASSERT_FOLIO_NO_SE(folio, __FILE__, __LINE__);
 	if (entry_is_entry_ext(shadow) == 1){
 		folio_add_shadow_entry(folio, shadow);
 		pr_info("[TRANSFER]read_save entry[%lx]=>folio[%p] ext[%p]", 
@@ -1700,7 +1704,7 @@ struct page*__read_swap_cache_async_save(swp_entry_t entry,
 	/*DJL ADD END*/
 
 	/* Caller will initiate read into locked folio */
-	folio_add_lru(folio);
+	// folio_add_lru(folio);
 
 	if (new_page_allocated)
 		*new_page_allocated = true;
@@ -1777,7 +1781,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 			pr_err("__read_swap_cache_async alloc fail addr[%lx] entry[%lx]", addr, entry.val);
 			return NULL;
 		}
-		ASSERT_FOLIO_NO_SE(folio);
+		ASSERT_FOLIO_NO_SE(folio, __FILE__, __LINE__);
 		/*
 		 * Swap entry may have been freed since our caller observed it.
 		 */
@@ -1824,12 +1828,12 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 
 	mem_cgroup_swapin_uncharge_swap(entry);
 	si = swp_swap_info(entry);
-#ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC
-	folio_clear_swappriohigh(folio); //clear here
-	folio_set_swappriolow(folio);  //set here so that only those got promoted again can go to fast
-	if (si->prio == get_fastest_swap_prio()){
-		folio_swapprio_promote(folio);
-	}
+#ifdef CONFIG_LRU_GEN_PASSIVE_SWAP_ALLOC //decomment all below to enable
+	// folio_clear_swappriohigh(folio); //clear here
+	// folio_set_swappriolow(folio);  //set here so that only those got promoted again can go to fast
+	// if (si->prio == get_fastest_swap_prio()){
+	// 	folio_swapprio_promote(folio);
+	// }
 #endif
 	if (si->prio == get_fastest_swap_prio()){
 		swap_level = 1;
@@ -1871,7 +1875,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 		BUG();
 		folio->shadow_ext = NULL;
 	}
-	ASSERT_FOLIO_NO_SE(folio);
+	ASSERT_FOLIO_NO_SE(folio, __FILE__, __LINE__);
 	abandon_shadow = false;
 	if (entry_is_entry_ext(shadow) == 1){
 		if (likely(!abandon_shadow)){
@@ -2508,6 +2512,10 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				pr_err("invalid mig_entry[%lx] alloc swap", mig_entry.val);
 				goto fail_page_out;
 			}
+			//clear after use
+			folio_clear_swappriolow(folio);
+			folio_clear_swappriohigh(folio);
+
 			if (swap_duplicate(mig_entry) < 0){
 				pr_err("fail dup mig_entry[%lx]", mig_entry.val);
 				goto fail_page_out;
@@ -2694,9 +2702,9 @@ skip_this_save:
 				//we can change it back , to maintain correctness befor bio complete, 
 				// because bio has been submitted, doesn't need it(private = migentry) anymore
 				set_page_private(folio_page(folio, 0), ori_pri_entry.val);
-				// pr_err("reset folio[%p]lru[%d] ori[%lx]cnt[%d] pri[%lx]", 
-				// 			folio, folio_test_lru(folio), ori_pri_entry.val, 
-				// 			__swap_count(ori_pri_entry), page_private(folio_page(folio, 0)));
+				pr_info("reset folio[%p]lru[%d] ori[%lx]cnt[%d] pri[%lx]", 
+							folio, folio_test_lru(folio), ori_pri_entry.val, 
+							__swap_count(ori_pri_entry), page_private(folio_page(folio, 0)));
 			}
 			if (entry_retry_putback){
 				putback_last_saved_entry(saved_entry);

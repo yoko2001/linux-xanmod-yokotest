@@ -1046,6 +1046,10 @@ static inline void del_page_from_free_list(struct page *page, struct zone *zone,
 	list_del(&page->buddy_list);
 	__ClearPageBuddy(page);
 	set_page_private(page, 0);
+	// if ((0!=(unsigned long)page_private(page)) && PageSwapBacked(page) && (PageSwapPrioHigh(page) || PageSwapPrioLow(page)) )
+	// 	set_page_private_debug(page, 0, __FILE__, __LINE__);
+	// else
+	// 	set_page_private(page, 0);
 	zone->free_area[order].nr_free--;
 }
 
@@ -3587,7 +3591,7 @@ void free_unref_page_list(struct list_head *list)
 			if (entry_is_entry_ext_debug(shadow) == 1){
 				shadow_entry_free(shadow);
 				// trace_shadow_entry_free(shadow, 4);	
-				// pr_info("[FREE]free_unref_page_list normal free[%p] folio[%p]",shadow, folio);
+				pr_info("[FREE]free_unref_page_list normal free[%p] folio[%p]",shadow, folio);
 			}
 			else if (entry_is_entry_ext(shadow) < 1){
 				pr_err("free_unref_page_list folio[%p] has broken shadow_ext[%p]",folio, shadow);

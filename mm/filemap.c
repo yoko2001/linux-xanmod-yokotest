@@ -147,7 +147,7 @@ static void page_cache_delete(struct address_space *mapping,
 	}
 	xas_init_marks(&xas);
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
-	ASSERT_FOLIO_NO_SE(folio);
+	ASSERT_FOLIO_NO_SE(folio, __FILE__, __LINE__);
 #endif
 	folio->mapping = NULL;
 	/* Leave page->index set: truncation lookup relies upon it */
