@@ -902,8 +902,9 @@ void __delete_from_swap_cache(struct folio *folio,
 		BUG();	
 	}
 
-	// if (shadow)
-	// 	pr_err("delete $ entry[%lx]->folio[%p]=>shadow[%p]", entry.val, folio, shadow);
+	// if (shadow && swp_entry_test_special(entry) > 0)
+	// 	pr_info("delete $ entry[%lx]->folio[%p]=>shadow[%p]", entry.val, folio, shadow);
+
 	address_space->nrpages -= nr;
 	__node_stat_mod_folio(folio, NR_FILE_PAGES, -nr);
 	__lruvec_stat_mod_folio(folio, NR_SWAPCACHE, -nr);
@@ -1117,8 +1118,9 @@ bool add_to_swap(struct folio *folio, long* left_space)
 		 */
 		goto fail;
 	if (shadow_test){
-		pr_err("add to swap should fail get shadow");
-		BUG();
+		pr_err("add to swap should fail get shadow folio[%p] entry[%lx]cnt[%d] shadow[%p]", 
+				folio, entry.val, __swap_count(entry), shadow_test);
+		shadow_entry_free(shadow_test);
 	}
 	// pr_err("ckpt2 folio[%p]<-entry[%lx]", folio, entry.val);
 	/*
@@ -1295,6 +1297,9 @@ void delete_from_swap_cache(struct folio *folio)
 	xa_unlock_irq(&address_space->i_pages);
 
 	put_swap_folio(folio, entry);
+	if (swp_entry_test_special(entry) > 0){
+		pr_info("delete_s$ folio[%p]->ext[%p]", folio, folio->shadow_ext);
+	}
 	// if (swp_entry_test_special(entry))
 	// 	pr_err("after delete_s$ folio[%p]->ext[%p]", folio, folio->shadow_ext);
 	folio_ref_sub(folio, folio_nr_pages(folio));
@@ -1381,6 +1386,11 @@ void free_swap_cache(struct page *page)
 
 	if (folio_test_swapcache(folio) && !folio_mapped(folio) &&
 	    folio_trylock(folio)) {
+		if(unlikely(folio_test_swappriohigh(folio) || folio_test_swappriolow(folio))){
+			folio_clear_swappriohigh(folio);
+			folio_clear_swappriolow(folio);
+			pr_err("free_swap_cache folio[%p] force frees_swap pass", folio);			
+		}
 		folio_free_swap(folio);
 		folio_unlock(folio);
 	}

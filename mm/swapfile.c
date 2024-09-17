@@ -848,18 +848,25 @@ static bool swap_offset_any_version_occupied(struct swap_info_struct* si,
 {
 	int v;
 	unsigned long offset_v;
+	bool ret = false;
 	if (__si_can_version(si)){ //FAST, we support multiversion
 		for (v = 0; v <= SWP_ENTRY_ALIVE_VERSION_SPEC; v++){
 			offset_v = offset + v * si->max;
 			if (data_race(si->swap_map[offset_v])) {
 				// pr_err("swap_offset_occupied prio[%d]offset[%lx]v[%d]=[%d] occupied", 
 				// 	si->prio, offset, v, data_race(si->swap_map[offset_v]));
-				return true;
+				if (!ret) {
+					ret = true;
+				}
+				else{
+					pr_err("swap_offset_occupied err type[%d] offset[%d] occupied", si->type, offset);
+					BUG();
+				}
 			}
 		}
 		// pr_err("swap_offset_occupied offset[%lx]=[0x%x] all vfree", 
 		// 			offset, data_race(si->swap_map[offset]));
-		return false;		
+		return ret;		
 	}
 	else{ //SLOW, we grants only one version
 		if (data_race(si->swap_map[offset])) {
@@ -1611,13 +1618,14 @@ static int swap_swapcount(struct swap_info_struct *si, swp_entry_t entry);
 void swap_free(swp_entry_t entry)
 {
 	struct swap_info_struct *p;
-
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+		if (swp_entry_test_special(entry) > 0){
+			pr_info("swap_free entry[%lx]v[%d] cnt[%d]", entry.val, swp_entry_test_special(entry), __swap_count(entry));
+		}
+#endif
 	p = _swap_info_get(entry, false);
 	if (p){
 		__swap_entry_free(p, entry);
-		// if (__si_can_version(p) && swp_entry_test_special(entry) > 0){
-		// 	pr_err("swap_free entry[%lx]v[%d] cnt[%d]", entry.val, swp_entry_test_special(entry), __swap_count(entry));
-		// }
 	}
 }
 
@@ -1891,6 +1899,7 @@ bool folio_free_swap(struct folio *folio)
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 	if (folio_test_swappriohigh(folio) || folio_test_swappriolow(folio)){
 		pr_err("folio_free_swap folio[%p]pri[%lx] blocked", folio, page_private(folio_page(folio, 0)));
+		return false;
 		BUG();
 	}
 

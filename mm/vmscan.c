@@ -1548,12 +1548,14 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		if (!folio_test_stalesaved(folio)){
 			if (shadow_ext && shadow == shadow_ext){
 				__delete_from_swap_cache(folio, swap, shadow_ext); //success add
+				if (swp_entry_test_special(swap) > 0)
+					pr_info("remove_mapping folio[%p]->swap[%lx]cnt[%d] delete $", folio, swap.val, __swap_count(swap));
 				shadow_ext = NULL;
 			}
 			else{
 				__delete_from_swap_cache(folio, swap, shadow);
-				pr_err("__delete_from_s$ folio[%d] no ext[%lx] shadow[%lx]", 
-							folio, (unsigned long)shadow_ext, (unsigned long)shadow);
+				pr_err("__delete_from_s$ folio[%d] no ext[%p] shadow[%lx]", 
+							folio, shadow_ext, (unsigned long)shadow);
 			}
 			if (shadow_ext){
 				pr_err("shadow_ext no free");
