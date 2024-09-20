@@ -1702,8 +1702,10 @@ struct page*__read_swap_cache_async_save(swp_entry_t entry,
 		ASSERT_FOLIO_NO_SE(folio, __FILE__, __LINE__);
 	if (entry_is_entry_ext(shadow) == 1){
 		folio_add_shadow_entry(folio, shadow);
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 		pr_info("[TRANSFER]read_save entry[%lx]=>folio[%p] ext[%p]", 
 					entry.val, folio, folio->shadow_ext);
+#endif
 	}
 #else
 	if (entry_is_entry_ext(shadow) > 0){
@@ -2712,9 +2714,11 @@ skip_this_save:
 				//we can change it back , to maintain correctness befor bio complete, 
 				// because bio has been submitted, doesn't need it(private = migentry) anymore
 				set_page_private(folio_page(folio, 0), ori_pri_entry.val);
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 				pr_info("reset folio[%p]lru[%d] ori[%lx]cnt[%d] pri[%lx]", 
 							folio, folio_test_lru(folio), ori_pri_entry.val, 
 							__swap_count(ori_pri_entry), page_private(folio_page(folio, 0)));
+#endif
 			}
 			if (entry_retry_putback){
 				putback_last_saved_entry(saved_entry);

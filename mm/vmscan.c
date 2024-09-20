@@ -1548,8 +1548,10 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		if (!folio_test_stalesaved(folio)){
 			if (shadow_ext && shadow == shadow_ext){
 				__delete_from_swap_cache(folio, swap, shadow_ext); //success add
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 				if (swp_entry_test_special(swap) > 0)
 					pr_info("remove_mapping folio[%p]->swap[%lx]cnt[%d] delete $", folio, swap.val, __swap_count(swap));
+#endif
 				shadow_ext = NULL;
 			}
 			else{
@@ -1694,9 +1696,11 @@ cannot_free:
 		spin_unlock(&mapping->host->i_lock);
 	if (unlikely(shadow_ext)){
 		// if (folio->shadow_ext)
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 		pr_info("[FREE]__remove_mapping free folio[%p]stale[%d]ref[%d]d[%d]wb[%d] folio->shadowext[%p] shadowext[%p]", 
 					folio, folio_test_stalesaved(folio), folio_ref_count(folio), 
 					folio_test_dirty(folio), folio_test_writeback(folio), folio->shadow_ext, shadow_ext);		
+#endif
 
 		shadow_entry_free(shadow_ext);
 		trace_shadow_entry_free(shadow_ext, 10);	

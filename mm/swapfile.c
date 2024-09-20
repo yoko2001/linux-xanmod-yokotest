@@ -841,7 +841,34 @@ static void set_cluster_next(struct swap_info_struct *si, unsigned long next)
 	}
 	this_cpu_write(*si->cluster_next_cpu, next);
 }
-
+static void swap_offset_assert_one_version_occupied(struct swap_info_struct* si,
+						 unsigned long offset)
+{
+	int v;
+	unsigned long offset_v;
+	bool find = false;
+	if (__si_can_version(si)){ //FAST, we support multiversion
+		for (v = 0; v <= SWP_ENTRY_ALIVE_VERSION_SPEC; v++){
+			offset_v = offset + v * si->max;
+			if (data_race(si->swap_map[offset_v])) {
+				if (!find) {
+					find = true;
+				}
+				else{
+					pr_err("assert_one_version_occupied err entry[%lx] occupied", swp_entry_version( si->type, offset, v).val);
+					BUG();
+				}
+			}
+		}
+	}
+	else{ //SLOW, we grants only one version
+		return;
+	}
+	if (!find){
+		pr_err("assert_one_version_occupied fail find entry[%lx] occupied", swp_entry_version( si->type, offset, 0).val);
+		BUG();
+	}
+}
 //called with ci / si locked, to protect all version of this offset
 static bool swap_offset_any_version_occupied(struct swap_info_struct* si,
 						 unsigned long offset)
@@ -859,7 +886,7 @@ static bool swap_offset_any_version_occupied(struct swap_info_struct* si,
 					ret = true;
 				}
 				else{
-					pr_err("swap_offset_occupied err type[%d] offset[%d] occupied", si->type, offset);
+					pr_err("swap_offset_occupied err type[%d] offset[%lu] occupied", si->type, offset);
 					BUG();
 				}
 			}
@@ -1011,6 +1038,8 @@ checks:
 	ci = lock_cluster(si, offset);
 	/* reuse swap entry of cache-only swap if not busy. */
 	if (vm_swap_full() && si->swap_map[offset] == SWAP_HAS_CACHE) {
+		pr_err("unexpected vm_swap_full");
+		BUG();
 		int swap_was_freed;
 		unlock_cluster(ci);
 		spin_unlock(&si->lock);
@@ -1085,10 +1114,8 @@ checks:
 	// 		BUG();
 	// 	}
 	// }
-	if (!swap_offset_any_version_occupied(si, offset)){
-		pr_err("manually occupied offset[%lx] v[%d] but fail", offset, version);
-		BUG();
-	}
+	swap_offset_assert_one_version_occupied(si, offset);
+
 	inc_cluster_info_page(si, si->cluster_info, offset);
 	unlock_cluster(ci);
 
@@ -1507,6 +1534,8 @@ static unsigned char __swap_entry_free_locked(struct swap_info_struct *p,
 		WRITE_ONCE(p->swap_map[offset_v], usage);
 	else
 		WRITE_ONCE(p->swap_map[offset_v], SWAP_HAS_CACHE);
+
+	swap_offset_assert_one_version_occupied(p, offset);
 
 	return usage;
 }
