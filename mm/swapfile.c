@@ -1493,6 +1493,7 @@ static unsigned char __swap_entry_free_locked(struct swap_info_struct *p,
 {
 	unsigned char count;
 	unsigned char has_cache;
+	bool check_occupied = true;
 	unsigned long offset_v = offset + p->max * version* __si_can_version(p);
 	count = p->swap_map[offset_v];
 
@@ -1508,6 +1509,7 @@ static unsigned char __swap_entry_free_locked(struct swap_info_struct *p,
 		 * swap_shmem_free() and free_shmem_swap_and_cache()...
 		 */
 		count = 0;
+		check_occupied = false;
 	} else if ((count & ~COUNT_CONTINUED) <= SWAP_MAP_MAX) {
 		if (count == COUNT_CONTINUED) {
 			pr_err("using swap_count_continued");
@@ -1535,7 +1537,8 @@ static unsigned char __swap_entry_free_locked(struct swap_info_struct *p,
 	else
 		WRITE_ONCE(p->swap_map[offset_v], SWAP_HAS_CACHE);
 
-	swap_offset_assert_one_version_occupied(p, offset);
+	if (check_occupied)
+		swap_offset_assert_one_version_occupied(p, offset);
 
 	return usage;
 }
