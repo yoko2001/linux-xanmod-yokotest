@@ -3841,7 +3841,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	int rf_dist_ts;
 	int try_free_entry;
 	struct address_space *address_space;
-	bool need_unlock= false, valid_remap = false, invalid_remap = false, mig_loss = false;
+	bool need_unlock= false, valid_remap = false, invalid_remap = false;
 	/*DJL ADD END*/
 	if (!pte_unmap_same(vmf))
 		goto out;
@@ -3904,9 +3904,6 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		// 			folio, folio_test_stalesaved(folio),  
 		// 			page_private(page), entry.val, folio_test_swapcache(folio));
 		// }
-		if (unlikely(folio_test_stalesaved(folio))){
-			pr_info("in process folio[%p]", folio);
-		}
 #endif
 	}
 	/*DJL ADD END*/
@@ -3920,10 +3917,16 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		if (swp_entry_test_ext(migentry) & 0x2) //locked, wait for the other to finish
 		{
 			ret |= VM_FAULT_RETRY;
-// #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-// 			pr_info("[IOing]sw$ mapped but intercepting stalesaved entry[%lx] mig[%lx][%d] ", 
-// 						orientry.val, migentry.val, swp_entry_test_ext(migentry));
-// #endif
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+			pr_info("[IOing]sw$ mapped but intercepting stalesaved entry[%lx] mig[%lx][%d] ", 
+						orientry.val, migentry.val, swp_entry_test_ext(migentry));
+#endif
+			if (unlikely(folio && folio_test_stalesaved(folio))){
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+				pr_info("in process folio[%p]ref[%d], need ref_sub", folio, folio_ref_count(folio));
+#endif
+				folio_ref_sub(folio, folio_nr_pages(folio));
+			}
 			// if (likely(pte_same(*vmf->pte, vmf->orig_pte)))
 			// 	ret = VM_FAULT_RETRY;
 			// if (folio)
@@ -3955,7 +3958,6 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				pr_info("swapcache caught invalid & !stale folio[%p] ", swapcache);
 				// BUG();
 			}
-			mig_loss = true;
 		}
 
 		// if (unlikely(!folio_test_uptodate(folio)) && __si_can_version(si)) { //stale saving right now
@@ -4245,7 +4247,6 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		if (unlikely(folio_test_stalesaved(folio) || valid_remap || invalid_remap))
 			pr_info("folio[%p] entry[%lx] st[%d] retry locked", folio, orientry.val, folio_test_stalesaved(folio));
 		ret |= VM_FAULT_RETRY;
-		// need_unlock = true;
 		goto out_release;
 	}
 	if (unlikely(!folio_test_uptodate(folio))){
@@ -4482,10 +4483,10 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		swap_free(entry);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 	if (unlikely(valid_remap))
-		pr_info("do_swap valid_remap swap_free entry[%lx], count %d, folio[%p]->pri[%lx] ref[%d]", 
+		pr_info("do_swap valid skip swap_free entry[%lx], count %d, folio[%p]->pri[%lx] ref[%d]", 
 					entry.val, __swp_swapcount(entry), folio, page_private(folio_page(folio, 0)) ,folio_ref_count(folio));		
 	else if (unlikely(invalid_remap)){
-		pr_info("do_swap invalid_remap swap_free entry[%lx], count %d, folio[%p] ref[%d]", 
+		pr_info("do_swap invalid skip swap_free entry[%lx], count %d, folio[%p] ref[%d]", 
 					entry.val, __swp_swapcount(entry), folio, folio_ref_count(folio));			
 	}
 #endif
