@@ -3952,6 +3952,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				pr_err("swapcache migentry[%lx] before enable, invalid", migentry.val);
 #endif
 				invalid_remap = true;
+				ref_sub = true;
 			}
 			if (!folio_test_stalesaved(swapcache) && invalid_remap) //safety
 			{
@@ -4482,13 +4483,13 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	if (likely(!valid_remap && !invalid_remap))
 		swap_free(entry);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-	if (unlikely(valid_remap))
-		pr_info("do_swap valid skip swap_free entry[%lx], count %d, folio[%p]->pri[%lx] ref[%d]", 
-					entry.val, __swp_swapcount(entry), folio, page_private(folio_page(folio, 0)) ,folio_ref_count(folio));		
-	else if (unlikely(invalid_remap)){
-		pr_info("do_swap invalid skip swap_free entry[%lx], count %d, folio[%p] ref[%d]", 
-					entry.val, __swp_swapcount(entry), folio, folio_ref_count(folio));			
-	}
+	// if (unlikely(valid_remap))
+	// 	pr_info("do_swap valid skip swap_free entry[%lx], count %d, folio[%p]->pri[%lx] ref[%d]", 
+	// 				entry.val, __swp_swapcount(entry), folio, page_private(folio_page(folio, 0)) ,folio_ref_count(folio));		
+	// else if (unlikely(invalid_remap)){
+	// 	pr_info("do_swap invalid skip swap_free entry[%lx], count %d, folio[%p] ref[%d]", 
+	// 				entry.val, __swp_swapcount(entry), folio, folio_ref_count(folio));			
+	// }
 #endif
 	// if (swp_entry_test_special(entry)){
 	// 	pr_err("do_swap swap_free[%lx] folio[%p]", entry.val, folio);
@@ -4523,6 +4524,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 						folio_test_ksm(folio), folio_test_swapcache(folio), folio_test_writeback(folio));
 #endif
 				folio_set_swappriohigh(folio);
+				folio_add_lru(folio);
 			}
 		}else{ //invalid remap case
 			if (should_try_to_free_swap(folio, vma, vmf->flags, 2)){ //invalid / normal
@@ -4544,7 +4546,6 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				folio_free_swap(folio);
 
 				delete_from_swap_remap(folio, orientry, migentry, true);
-				folio_ref_sub(folio, folio_nr_pages(folio));
 				delete_from_swap_cache_mig(folio, migentry, true, false);
 
 				pr_info("invalid_remap after delete2$ folio[%p] pri[%lx] orientry[%lx]  $[%d]", 
