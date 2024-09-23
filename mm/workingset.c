@@ -200,14 +200,15 @@ int entry_is_entry_ext(const void *entry){
 		return -2;
 	if (unlikely(xa_is_value(entry)))
 		return 0;
-	if (((struct shadow_entry*)entry)->magic != (unsigned short)((shadow_entry_magic) ^ ((unsigned long)entry & 0xFFFF))){
+	unsigned short magic = READ_ONCE(((struct shadow_entry*)entry)->magic);
+	if (magic != (unsigned short)((shadow_entry_magic) ^ ((unsigned long)entry & 0xFFFF))){
 		// if (((struct shadow_entry*)entry)->magic == shadow_entry_invalidmagic)
 		// 	pr_err("entry was invalied ext[%lx]",entry);
-		if (((struct shadow_entry*)entry)->magic == 0xFFFF){
+		if (magic == 0xFFFF){
 			// pr_err("entry_is_entry_ext ext[%lx] has been freed", entry);
 			return -1;
 		}
-		else if (((struct shadow_entry*)entry)->magic != (unsigned short)((unsigned long)entry & 0xFFFF)){
+		else if (magic != (unsigned short)((unsigned long)entry & 0xFFFF)){
 			return 0;
 		} else {
 			// pr_err("entry was poisoned ext[%lx] magic[%lx]",entry, ((struct shadow_entry*)entry)->magic);

@@ -1499,7 +1499,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	}
 
 	if (!folio_ref_freeze(folio, refcount)){
-		pr_info("folio[%p], fail ref_freeze refcount[%d]", folio, refcount);
+		// pr_info("folio[%p], fail ref_freeze refcount[%d]", folio, refcount);
 		goto cannot_free;
 	}
 	/* note: atomic_cmpxchg in folio_ref_freeze provides the smp_rmb */
@@ -1603,8 +1603,9 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 				}
 				put_swap_folio(folio, mig_entry_phy);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-				pr_info("after clear folio[%p]ref[%d] private[%lx]found mig_entry[%lx] count %d", 
-							folio, folio_ref_count(folio), page_private(folio_page(folio, 0)), mig_entry_phy.val, __swp_swapcount(mig_entry_phy));
+				pr_info("after clear folio[%p]ref[%d] mmecg[%d]private[%lx]found mig_entry[%lx] count %d", 
+							folio, folio_ref_count(folio), mem_cgroup_id(folio_memcg(folio)),
+							page_private(folio_page(folio, 0)), mig_entry_phy.val, __swp_swapcount(mig_entry_phy));
 #endif
 			}
 			else{
@@ -1697,7 +1698,7 @@ cannot_free:
 	if (unlikely(shadow_ext)){
 		// if (folio->shadow_ext)
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-		pr_info("[FREE]__remove_mapping free folio[%p]stale[%d]ref[%d]d[%d]wb[%d] folio->shadowext[%p] shadowext[%p]", 
+		pr_info("[FAIL FREE] folio[%p]stale[%d]ref[%d]d[%d]wb[%d] folio->shadowext[%p] shadowext[%p]", 
 					folio, folio_test_stalesaved(folio), folio_ref_count(folio), 
 					folio_test_dirty(folio), folio_test_writeback(folio), folio->shadow_ext, shadow_ext);		
 #endif
@@ -2040,13 +2041,18 @@ keep_next_time:
 				// //we need to handle the remap & mig cache clean up part
 
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-				if (__swap_count(migentry) != 0){
-					pr_err("folio[%p]ref[%d]$[%d]pri[%lx] mig[%lx]cnt[%d] remap deleted add to lru, swap freed", 
-						folio,	folio_ref_count(folio), folio_test_swapcache(folio), 
-						page_private(folio_page(folio, 0)), migentry.val, __swap_count(migentry));					
-					// BUG();
-				}
+				// if (__swap_count(migentry) != 0){
+				// 	pr_err("folio[%p]ref[%d]$[%d]pri[%lx] mig[%lx]cnt[%d] remap deleted add to lru, swap freed", 
+				// 		folio,	folio_ref_count(folio), folio_test_swapcache(folio), 
+				// 		page_private(folio_page(folio, 0)), migentry.val, __swap_count(migentry));					
+				// 	// BUG();
+				// }
 #endif
+				if (unlikely(entry.val == 0 || non_swap_entry(entry))){
+					pr_err("do skip cleanup folio[%p]ref[%d] entry[%lx]cnt[%d", 
+						folio,	folio_ref_count(folio), entry.val, __swap_count(entry));	
+					goto pass_cleanup;
+				}
 				// //try clear original entry before unlock
 				// if (!folio_test_ksm(folio)){
 				// 	folio_free_swap(folio);
@@ -2073,6 +2079,7 @@ keep_next_time:
 					folio,	folio_ref_count(folio), entry.val, __swap_count(entry),
 					migentry.val, __swap_count(migentry));					
 #endif
+pass_cleanup:
 				folio_unlock(folio);
 				continue;
 			} 

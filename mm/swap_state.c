@@ -1160,7 +1160,6 @@ void delete_from_swap_remap(struct folio *folio, swp_entry_t entry_from, swp_ent
 	xa_lock_irq(&address_space->i_pages);
 	__delete_from_swap_remap(folio, entry_from, entry_to, delete_unpepared);
 	xa_unlock_irq(&address_space->i_pages);
-	// folio_ref_sub(folio, folio_nr_pages(folio));
 }
 static void __clear_swap_remap_range(swp_entry_t entry_start, int order)
 {
@@ -1325,7 +1324,7 @@ void delete_from_swap_cache_mig(struct folio* folio, swp_entry_t entry, bool dec
 	if (!dec_count && __swap_count(entry_) != 1){
 		pr_err("folio[%p] ref[%d]entry get out of cache mig[%lx]cnt[%d] lock[%d]", 
 				folio, folio_ref_count(folio), entry_.val, __swap_count(entry_), folio_test_locked(folio));	
-		BUG();	
+		// BUG();	
 	}
 	folio_ref_sub(folio, folio_nr_pages(folio));
 }
@@ -1801,8 +1800,8 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 		if (!err)
 			break;
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-		pr_info("swapcache_prepare fail[%d] addr[%lx] entry[%lx]",
-					err, addr, entry.val);
+		pr_info("swapcache_prepare fail[%d][%s] addr[%lx] entry[%lx]",
+					err, err == -EINVAL ? "EINVAL" : (err == -EEXIST ? "EEXIST" : "?"), addr, entry.val);
 #endif
 		folio_put(folio);
 		if (err != -EEXIST)
@@ -2491,7 +2490,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 			SetPageStaleSaved(page);
 			__folio_set_swapbacked(folio);
 			if (mem_cgroup_swapin_charge_folio(folio,
-						vma->vm_mm, GFP_NOWAIT,
+						NULL, gfp_mask,
 						saved_entry)) {
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 				pr_info("mem_cgroup_swapin_charge_folio fail folio[%p] ref[%d]", folio, folio_ref_count(folio));
@@ -2507,10 +2506,6 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 #endif
 			count_memcg_event_mm(vma->vm_mm, SWAPIN_FAST_SAVE);
 
-			//page was ok now
-			folio_set_swappriolow(folio);
-			folio_clear_swappriohigh(folio);
-
 			//deal with page private
 			if (!(page_private(folio_page(folio, 0)) == saved_entry.val)){
 				pr_err("page pri mismatch");
@@ -2524,9 +2519,6 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				pr_err("invalid mig_entry[%lx] alloc swap", mig_entry.val);
 				goto fail_page_out;
 			}
-			//clear after use
-			folio_clear_swappriolow(folio);
-			folio_clear_swappriohigh(folio);
 
 			if (swap_duplicate(mig_entry) < 0){
 				pr_err("fail dup mig_entry[%lx]", mig_entry.val);

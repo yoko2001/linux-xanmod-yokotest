@@ -131,7 +131,7 @@ static inline unsigned char swap_count(unsigned char ent)
 #define TTRS_FULL		0x4
 
 int __si_can_version(struct swap_info_struct *si){
-	if (si->flags & SWP_SYNCHRONOUS_IO)
+	if (si && (si->flags & SWP_SYNCHRONOUS_IO))
 		return 1;
 	return 0;
 }
@@ -850,13 +850,19 @@ static void swap_offset_assert_one_version_occupied(struct swap_info_struct* si,
 	if (__si_can_version(si)){ //FAST, we support multiversion
 		for (v = 0; v <= SWP_ENTRY_ALIVE_VERSION_SPEC; v++){
 			offset_v = offset + v * si->max;
-			if (data_race(si->swap_map[offset_v])) {
+			if (READ_ONCE(si->swap_map[offset_v] )) {
 				if (!find) {
 					find = true;
 				}
 				else{
-					pr_err("assert_one_version_occupied err entry[%lx] occupied", swp_entry_version( si->type, offset, v).val);
-					BUG();
+					pr_err("assert_one_version err entry[%lx] occupied multi", swp_entry_version( si->type, offset, v).val);
+					for(int i = 0; i <= SWP_ENTRY_ALIVE_VERSION_SPEC; i++){
+						unsigned long offset_i;
+						offset_i = offset + i * si->max;
+						if (READ_ONCE(si->swap_map[offset_i]))
+							pr_err("entry[%lx] test[%lx]", swp_entry_version( si->type, offset, i).val, si->swap_map[offset_i]);
+					}
+					// BUG();
 				}
 			}
 		}
@@ -865,8 +871,13 @@ static void swap_offset_assert_one_version_occupied(struct swap_info_struct* si,
 		return;
 	}
 	if (!find){
-		pr_err("assert_one_version_occupied fail find entry[%lx] occupied", swp_entry_version( si->type, offset, 0).val);
+		pr_err("assert_one_version fail find entry[%lx] occupied nobody", swp_entry_version( si->type, offset, 0).val);
 		BUG();
+	}
+	else{
+// #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+// 		pr_info("swap_one_version_assert true entry[%lx]",  swp_entry_version( si->type, offset, 0).val);
+// #endif
 	}
 }
 //called with ci / si locked, to protect all version of this offset
@@ -887,7 +898,7 @@ static bool swap_offset_any_version_occupied(struct swap_info_struct* si,
 				}
 				else{
 					pr_err("swap_offset_occupied err type[%d] offset[%lu] occupied", si->type, offset);
-					BUG();
+					// BUG();
 				}
 			}
 		}
@@ -1332,13 +1343,17 @@ start_over:
 		/*DJL ADD BEGIN*/
 		//if folio/page's low priority is set, we go straight to the next si
 		//until prio is lower than this one
-		if (tier == 1){
+		if ((tier == 1) && (si->prio != get_slowest_swap_prio())){
 			if (highprio < 0 || highprio <= si->prio){
 				spin_lock(&swap_avail_lock);
 				highprio = si->prio;
+				pr_info("get_swap_pages second leval, pass type[%d]prio[%d]", si->type, si->prio);
 				spin_unlock(&si->lock);
 				goto nextsi;
-			}	
+			}
+			else{
+				pr_info("get_swap_pages now try type[%d]prio[%d]", si->type, si->prio);
+			}
 		}	
 		/*DJL ADD END*/
 		if (!si->highest_bit || !(si->flags & SWP_WRITEOK)) {
@@ -1396,6 +1411,9 @@ nextsi:
 
 		if (plist_node_empty(&next->avail_lists[node]))
 			goto start_over;
+		if (tier == 1){
+			pr_info("get_swap_pages debug si[%d]", si->type);
+		}
 	}
 
 	spin_unlock(&swap_avail_lock);
@@ -1408,6 +1426,17 @@ check_out:
 		for (int i = 0; i < n_ret; i++){
 			if (swp_entry_test_special(swp_entries[i])){
 				pr_err("shouldn't sopport version in none sync devices entry[%lx]", swp_entries[i].val);
+				BUG();
+			}
+		}
+	}
+	int typecheck = -1;
+	for (int i = 0; i < n_ret; i++){
+		if (typecheck == -1)
+			typecheck = swp_type(swp_entries[i]);
+		else{
+			if (typecheck != swp_type(swp_entries[i])){
+				pr_err("get_swap_pages type miss, entry[%lx] <> type[%d]", swp_entries[i].val, typecheck);
 				BUG();
 			}
 		}
@@ -1491,11 +1520,11 @@ static unsigned char __swap_entry_free_locked(struct swap_info_struct *p,
 					      unsigned long offset, int version,
 					      unsigned char usage)
 {
-	unsigned char count;
+	unsigned char count, oricount;
 	unsigned char has_cache;
 	bool check_occupied = true;
 	unsigned long offset_v = offset + p->max * version* __si_can_version(p);
-	count = p->swap_map[offset_v];
+	oricount = count = p->swap_map[offset_v];
 
 	has_cache = count & SWAP_HAS_CACHE;
 	count &= ~SWAP_HAS_CACHE;
@@ -1518,14 +1547,18 @@ static unsigned char __swap_entry_free_locked(struct swap_info_struct *p,
 			else
 				count = SWAP_MAP_MAX;
 		} else
-			count--;
+			if (count > 0)
+				count--;
 	}
 
 	usage = count | has_cache;
 	// if (version)
 	// 	pr_err("__SEFL offset_v[%lx] ver[%d] cnt%d;has_cache%d", 
 	// 				offset_v, version, count, has_cache);
-	
+	if (unlikely(usage == 0xff)){
+		pr_err("__swap_entry_free_locked bad usage[%d]count[%u]ori[%u] entry[%lx]", 
+				usage, count, oricount, swp_entry_version(p->type, offset, version).val);
+	}
 	if (usage == SWAP_MAP_BAD || usage ==  COUNT_CONTINUED){
 		pr_err("offset[%lx]v[%d]prio[%d] usage = [%s]", 
 				offset, version, p->prio, usage == SWAP_MAP_BAD ? "SWAP_MAP_BAD" : "COUNT_CONTINUED");
@@ -1651,9 +1684,9 @@ void swap_free(swp_entry_t entry)
 {
 	struct swap_info_struct *p;
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-		if (swp_entry_test_special(entry) > 0){
-			pr_info("swap_free entry[%lx]v[%d] cnt[%d]", entry.val, swp_entry_test_special(entry), __swap_count(entry));
-		}
+		// if (swp_entry_test_special(entry) > 0){
+		// 	pr_info("swap_free entry[%lx]v[%d] cnt[%d]", entry.val, swp_entry_test_special(entry), __swap_count(entry));
+		// }
 #endif
 	p = _swap_info_get(entry, false);
 	if (p){
