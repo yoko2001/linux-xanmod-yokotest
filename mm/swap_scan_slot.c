@@ -212,11 +212,12 @@ int add_to_scan_slot(swp_entry_t entry)
 {
 	struct swap_scan_slot *cache;
 	int cpu;
+	unsigned long flags;
 
 	cache = &global_swp_scan_slot;//raw_cpu_ptr(&swp_scan_slots);
 	cpu = smp_processor_id();
 
-	spin_lock_irq(&cache->scan_lock);
+	spin_lock_irqsave(&cache->scan_lock, flags);
 	if (likely(use_swap_scan_slot && cache->slots && ! cache->scan_stop)){
 		// spin_lock_irq(&cache->scan_lock);
 		if (!use_swap_scan_slot || !cache->slots){
@@ -251,7 +252,7 @@ int add_to_scan_slot(swp_entry_t entry)
 		return 0; //success add
 	}
 fail_add:
-	spin_unlock_irq(&cache->scan_lock);
+	spin_unlock_irqrestore(&cache->scan_lock, flags);
 	return -1;
 }
 
