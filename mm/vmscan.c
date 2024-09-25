@@ -1556,7 +1556,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 			}
 			else{
 				__delete_from_swap_cache(folio, swap, shadow);
-				pr_err("__delete_from_s$ folio[%d] no ext[%p] shadow[%lx]", 
+				pr_err("__delete_from_s$ folio[%p] no ext[%p] shadow[%lx]", 
 							folio, shadow_ext, (unsigned long)shadow);
 			}
 			if (shadow_ext){
@@ -7383,7 +7383,8 @@ static void shrink_zones(struct zonelist *zonelist, struct scan_control *sc)
 		last_pgdat = zone->zone_pgdat;
 		shrink_node(zone->zone_pgdat, sc);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-		// pr_info("shrink_node[%d] target memcg[%d]zone[%p] wp[%d] swap[%u] unmap[%u]", sc->nr_reclaimed,
+		// if (sc->target_mem_cgroup)
+		// 	pr_info("after shrink_node[%lu] target memcg[%d]zone[%p] wp[%d] swap[%u] unmap[%u]", sc->nr_reclaimed,
 		// 		mem_cgroup_id(sc->target_mem_cgroup), zone, sc->may_writepage, sc->may_swap, sc->may_unmap);
 #endif
 		zone->zone_pgdat->prio_lruvec = mem_cgroup_lruvec(sc->target_mem_cgroup, zone->zone_pgdat);
