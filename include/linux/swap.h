@@ -423,6 +423,15 @@ static inline void ASSERT_FOLIO_NO_SE(struct folio* folio, const char* file, con
 		BUG();
 	}
 }
+static inline struct shadow_entry* folio_remove_shadow_entry(struct folio* folio);
+static inline void shadow_entry_free(struct shadow_entry* entry_ext);
+static inline void ASSERT_FOLIO_SE_FREE(struct folio* folio, const char* file, const int line){
+	if (unlikely(folio->shadow_ext)){
+		pr_err("ASSERT_FOLIO_SE_FREE folio[%p]->entry[%lx] %s:%d", folio, 
+		(unsigned long)folio->shadow_ext, file, line);
+		shadow_entry_free(folio_remove_shadow_entry(folio));
+	}
+}
 #ifdef CONFIG_LRU_GEN_SHADOW_ENTRY_REF_CTRL
 static inline void folio_add_shadow_entry(struct folio* folio, struct shadow_entry* entry_ext){
 	if (unlikely(!entry_ext) || unlikely(!folio))
