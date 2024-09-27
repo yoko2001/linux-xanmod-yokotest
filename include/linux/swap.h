@@ -453,7 +453,7 @@ static inline void folio_add_shadow_entry(struct folio* folio, struct shadow_ent
 		return;
 	folio->shadow_ext = entry_ext;
 }
-struct shadow_entry* shadow_entry* folio_remove_shadow_entry(struct folio* folio){ 
+struct shadow_entry* folio_remove_shadow_entry(struct folio* folio){ 
 	struct shadow_entry* ret = folio->shadow_ext;
 	folio->shadow_ext = NULL;
 	return ret;
