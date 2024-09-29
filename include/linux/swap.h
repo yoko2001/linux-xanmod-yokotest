@@ -403,6 +403,7 @@ static inline struct shadow_entry* shadow_entry_alloc(void){
 #endif
 #ifdef CONFIG_LRU_GEN_SHADOW_ENTRY_REF_CTRL
 		entry_ext->ref = 0;
+		entry_ext->processed = 0;
 #endif
 	}
 	else{
@@ -427,7 +428,7 @@ static inline struct shadow_entry* folio_remove_shadow_entry(struct folio* folio
 static inline void shadow_entry_free(struct shadow_entry* entry_ext);
 static inline void ASSERT_FOLIO_SE_FREE(struct folio* folio, const char* file, const int line){
 	if (unlikely(folio->shadow_ext)){
-		pr_err("ASSERT_FOLIO_SE_FREE folio[%p]->entry[%lx] %s:%d", folio, 
+		pr_info("ASSERT_FOLIO_SE_FREE folio[%p]->entry[%lx] %s:%d", folio, 
 		(unsigned long)folio->shadow_ext, file, line);
 		shadow_entry_free(folio_remove_shadow_entry(folio));
 	}
@@ -449,11 +450,17 @@ static inline struct shadow_entry* folio_remove_shadow_entry(struct folio* folio
 	if (unlikely(ret == NULL))
 		return NULL;
 	ret->ref -- ;
-	if (unlikely(ret->ref != 0)) {
+	if (unlikely(ret->ref > 0)) {
 		pr_err("shadow_entry [%lx] fail unrefed, fail delete from folio[%lx]", (unsigned long)ret, (unsigned long)folio);
 		dump_stack();
 	}
-	folio->shadow_ext = NULL;
+	else{
+		folio->shadow_ext = NULL;
+		if (unlikely(ret->ref < 0)){
+			pr_err("shadow_entry [%lx] unrefed, overflow by another thread folio[%lx]", (unsigned long)ret, (unsigned long)folio);
+			ret = NULL;
+		}
+	}
 	return ret;
 }
 #else
@@ -477,8 +484,12 @@ static inline void shadow_entry_free(struct shadow_entry* entry_ext){
 			return;
 		}
 #ifdef CONFIG_LRU_GEN_SHADOW_ENTRY_REF_CTRL
-		if (entry_ext->ref != 0) {
-			pr_err("shadow_entry_free still got ref[%d] freed[%lx]", entry_ext->ref, (unsigned long)entry_ext);
+		if (unlikely(entry_ext->ref < 0)) {
+			pr_err("shadow_entry_free still got ref[%d] skip re freed[%lx]", entry_ext->ref, (unsigned long)entry_ext);
+			return;
+		}
+		else if (unlikely(entry_ext->ref > 0)){
+			pr_err("shadow_entry_free still got ref[%d] already freed[%lx]", entry_ext->ref, (unsigned long)entry_ext);
 			BUG();
 			return;
 		}
@@ -493,6 +504,7 @@ static inline void shadow_entry_free(struct shadow_entry* entry_ext){
 		for (int i = 0; i < SE_HIST_SIZE; i++){
 			entry_ext->hist_ts[i] = 0;
 		}
+		entry_ext->processed = 0;
 		kmem_cache_free(get_shadow_entry_cache(), entry_ext);		
 	}
 }

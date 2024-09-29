@@ -68,9 +68,9 @@ static void __end_swap_bio_write(struct bio *bio)
 		 * Also clear PG_reclaim to avoid folio_rotate_reclaimable()
 		 */
 		set_page_dirty(page);
-		pr_alert_ratelimited("Write-error on swap-device (%u:%u:%llu)\n",
-				     MAJOR(bio_dev(bio)), MINOR(bio_dev(bio)),
-				     (unsigned long long)bio->bi_iter.bi_sector);
+		pr_alert_ratelimited("Write-error[%d] on swap-device (%u:%u:%llu) page[%p]\n",
+				     bio->bi_status, MAJOR(bio_dev(bio)), MINOR(bio_dev(bio)),
+				     (unsigned long long)bio->bi_iter.bi_sector, page);
 		ClearPageReclaim(page);
 	}
 	end_page_writeback(page);

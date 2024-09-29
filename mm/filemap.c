@@ -2172,7 +2172,7 @@ unsigned swap_scan_entries_savior(struct address_space *mapping,
 		if(entry_is_entry_ext(folio) == 1){
 			entry_ext = (struct shadow_entry*)folio;
 			memcg_id = entry_ext_memcg_id(entry_ext);
-			if (target_memcg_id == memcg_id){ //match check it
+			if (target_memcg_id == memcg_id && !entry_ext->processed){ //match check it
 				old_seq = entry_ext->hist_ts[0];
 				if (old_seq == 0) {
 					pr_err("inner swap_address shadow_ext got hist_ts[0] == 0");
@@ -2190,6 +2190,7 @@ unsigned swap_scan_entries_savior(struct address_space *mapping,
 #endif
 						break;
 					}
+					entry_ext->processed = 1;
 					count_choosed ++;
 				}
 			}

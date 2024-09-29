@@ -1039,7 +1039,8 @@ typedef struct shadow_entry{
 	unsigned short hist_ts[SE_HIST_SIZE]; 
 #endif
 #ifdef CONFIG_LRU_GEN_SHADOW_ENTRY_REF_CTRL
-	unsigned short ref; //if this shadow_entry is currently owned by a folio
+	short ref : 7; //  if this shadow_entry is currently owned by a folio
+    unsigned short processed : 1; // dealed with stale saved
 #endif
 	void* shadow;//original shadow
 }__aligned(sizeof(unsigned short)) shadow_entry_t;

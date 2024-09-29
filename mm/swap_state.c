@@ -1296,9 +1296,9 @@ void delete_from_swap_cache(struct folio *folio)
 	xa_unlock_irq(&address_space->i_pages);
 
 	put_swap_folio(folio, entry);
-	if (swp_entry_test_special(entry) > 0){
-		pr_info("delete_s$ folio[%p]->ext[%p]", folio, folio->shadow_ext);
-	}
+	// if (swp_entry_test_special(entry) > 0){
+	// 	pr_info("delete_s$ folio[%p]->ext[%p]", folio, folio->shadow_ext);
+	// }
 	// if (swp_entry_test_special(entry))
 	// 	pr_err("after delete_s$ folio[%p]->ext[%p]", folio, folio->shadow_ext);
 	folio_ref_sub(folio, folio_nr_pages(folio));
@@ -2743,9 +2743,9 @@ skip_this_save:
 			swap_read_unplug(splug_save);
 		//add to lru_gen
 		if (lruvec && lrugen){
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-			pr_info("try get lruvec[%p]->lock[%p]", lruvec, &lruvec->lru_lock);
-#endif
+// #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+// 			pr_info("try get lruvec[%p]->lock[%p]", lruvec, &lruvec->lru_lock);
+// #endif
 			spin_lock_irq(&lruvec->lru_lock);
 			for (int i = 0; i < num_folio_list_wb; i++){
 				struct folio * folio;

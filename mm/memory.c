@@ -3960,15 +3960,6 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				// BUG();
 			}
 		}
-
-		// if (unlikely(!folio_test_uptodate(folio)) && __si_can_version(si)) { //stale saving right now
-		// 	// ret |= VM_FAULT_RETRY;
-		// 	pr_err("[Scanning]intercepting stale saved entry[%lx]->mig[%lx] folio[%p] locked[%d]", 
-		// 				orientry.val, migentry.val,folio, folio_test_locked(folio));
-		// 	if (!folio_test_locked(swapcache))
-		// 		BUG();
-		// 	// goto out_release;
-		// }
 	}
 	else{ //not found in cache (orientry)migentry has to hold the actual page copy
 		if (unlikely(migentry.val)){ //!0
@@ -4024,7 +4015,6 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 			/* skip swapcache */
 			folio = vma_alloc_folio(GFP_HIGHUSER_MOVABLE, 0,
 						vma, vmf->address, false);
-			// check_private_debug(folio);
 			page = &folio->page;
 			if (folio) {
 				__folio_set_locked(folio);
@@ -4131,10 +4121,10 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				bool page_allocated;
 				struct swap_iocb **plug;
 				if (invalid_remap){
-					if (orientry.val != entry.val){
+					if (unlikely(orientry.val != entry.val)){
 						pr_err("__read_swap_cache_async_save try read_$_async entry[%lx] <> ori[%lx]", 
 								entry.val, orientry.val);
-						// BUG();				
+						BUG();				
 					}
 					/*
 				    CPU 1 : delete_from_cache(origin)  (mig still in cache) 
@@ -4280,13 +4270,6 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 							BUG();
 						}
 						//cached in by origin swap$, remap enabled (while read from origin)
-						// if ( __swap_count(orientry) != 1) {
-						// 	pr_err("PF1 ori[%lx]map[%d] folio[%K]", orientry.val, __swap_count(orientry), folio);
-						// 	BUG();
-						// }
-						// else{
-						// 	delete_from_swap_remap(folio, orientry, migentry, false);
-						// 	delete_from_swap_cache_mig(folio, migentry, true, false);
 						pr_info("PF1 entry[%lx]->folio[%p] mig cleared wb[%d]sw$[%d] stale[%d] refcount[%d]", 
 							orientry.val, folio, folio_test_writeback(folio), 
 							folio_test_swapcache(folio), folio_test_stalesaved(folio), folio_ref_count(folio));
@@ -4305,13 +4288,6 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 							BUG();
 						}
 					
-						// if(folio_ref_count(folio) == 3){ // invalid的
-						// 	folio_ref_sub(folio, folio_nr_pages(folio));
-						// }
-						// else{
-						// 	pr_err("PF5 1 bug2 folio[%p] ref[%d]", folio, folio_ref_count(folio)); 
-						// 	BUG();
-						// }
 						pr_info("PF5 2 entry[%lx]->folio[%p] mig cleared wb[%d]sw$[%d] stale[%d] refcount[%d]", 
 							orientry.val, folio, folio_test_writeback(folio), folio_test_swapcache(folio), 
 							folio_test_stalesaved(folio), folio_ref_count(folio));	
