@@ -850,7 +850,7 @@ static void swap_offset_assert_one_version_occupied(struct swap_info_struct* si,
 	if (__si_can_version(si)){ //FAST, we support multiversion
 		for (v = 0; v <= SWP_ENTRY_ALIVE_VERSION_SPEC; v++){
 			offset_v = offset + v * si->max;
-			if (READ_ONCE(si->swap_map[offset_v] )) {
+			if (READ_ONCE(si->swap_map[offset_v]) & ~SWAP_HAS_CACHE) { //allow one occupy
 				if (!find) {
 					find = true;
 				}
@@ -862,7 +862,7 @@ static void swap_offset_assert_one_version_occupied(struct swap_info_struct* si,
 						if (READ_ONCE(si->swap_map[offset_i]))
 							pr_err("entry[%lx] test[%lx]", swp_entry_version( si->type, offset, i).val, si->swap_map[offset_i]);
 					}
-					// BUG();
+					BUG();
 				}
 			}
 		}
@@ -870,15 +870,15 @@ static void swap_offset_assert_one_version_occupied(struct swap_info_struct* si,
 	else{ //SLOW, we grants only one version
 		return;
 	}
-	if (!find){
-		pr_err("assert_one_version fail find entry[%lx] occupied nobody", swp_entry_version( si->type, offset, 0).val);
-		BUG();
-	}
-	else{
-// #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-// 		pr_info("swap_one_version_assert true entry[%lx]",  swp_entry_version( si->type, offset, 0).val);
-// #endif
-	}
+// 	if (!find){
+// 		pr_err("assert_one_version fail find entry[%lx] occupied nobody", swp_entry_version( si->type, offset, 0).val);
+// 		BUG();
+// 	}
+// 	else{
+// // #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+// // 		pr_info("swap_one_version_assert true entry[%lx]",  swp_entry_version( si->type, offset, 0).val);
+// // #endif
+// 	}
 }
 //called with ci / si locked, to protect all version of this offset
 static bool swap_offset_any_version_occupied(struct swap_info_struct* si,
