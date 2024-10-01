@@ -860,7 +860,7 @@ static void swap_offset_assert_one_version_occupied(struct swap_info_struct* si,
 						unsigned long offset_i;
 						offset_i = offset + i * si->max;
 						if (READ_ONCE(si->swap_map[offset_i]))
-							pr_err("entry[%lx] test[%lx]", swp_entry_version( si->type, offset, i).val, si->swap_map[offset_i]);
+							pr_err("entry[%lx] test[%x]", swp_entry_version( si->type, offset, i).val, si->swap_map[offset_i]);
 					}
 					BUG();
 				}
@@ -1963,9 +1963,10 @@ bool folio_free_swap(struct folio *folio)
 {
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 	if (folio_test_swappriohigh(folio) || folio_test_swappriolow(folio)){
-		pr_err("folio_free_swap folio[%p]pri[%lx] blocked", folio, page_private(folio_page(folio, 0)));
-		return false;
-		BUG();
+		pr_err("folio_free_swap folio[%p]pri[%lx] blocked skip", folio, page_private(folio_page(folio, 0)));
+		// dump_stack();
+		// return false;
+		// BUG();
 	}
 
 	if (!folio_test_swapcache(folio))
