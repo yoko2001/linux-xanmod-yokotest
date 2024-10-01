@@ -4875,15 +4875,16 @@ static bool try_to_inc_min_seq(struct lruvec *lruvec, bool can_swap)
 
 			for (zone = 0; zone < MAX_NR_ZONES; zone++) {
 				if (!list_empty(&lrugen->folios[gen][type][zone])){
-					// pr_info("try_to_inc_min_seq lruvec[%p] min_seq[%lu] not empty [%d][%d][%d] num[%lu]", 
-					// 		lruvec, min_seq[type], gen, type, zone, lrugen->nr_pages[gen][type][zone]);
-					// int count = 0;
-					// struct folio* ffolio;
-					// list_for_each_entry(ffolio, &lrugen->folios[gen][type][zone], lru){
-					// 	count++;
-					// 	if (count >=  lrugen->nr_pages[gen][type][zone] || count >= 16) break;
-					// 	pr_info("try_to_inc_min_seq check folio[%p] stale[%d]", ffolio, folio_test_stalesaved(ffolio));
-					// }
+					pr_info("try_to_inc_min_seq lruvec[%p] min_seq[%lu] not empty [%d][%d][%d] num[%lu]", 
+							lruvec, min_seq[type], gen, type, zone, lrugen->nr_pages[gen][type][zone]);
+					int count = 0;
+					struct folio* ffolio;
+					list_for_each_entry_reverse(ffolio, &lrugen->folios[gen][type][zone], lru){
+						count++;
+						if (count >=  lrugen->nr_pages[gen][type][zone] || count >= 4) break;
+						pr_info("try_to_inc_min_seq check folio[%p]pri[%lx] stale[%d]", 
+								ffolio, page_private(folio_page(ffolio, 0)), folio_test_stalesaved(ffolio));
+					}
 					goto next;
 				}
 			}
@@ -5574,7 +5575,7 @@ static int scan_folios(struct lruvec *lruvec, struct scan_control *sc,
 		return 0;
 
 	gen = lru_gen_from_seq(lrugen->min_seq[type]);
-
+	int debug = 3;
 	for (zone = sc->reclaim_idx; zone >= 0; zone--) {
 		LIST_HEAD(moved);
 		int skipped = 0;
@@ -5603,8 +5604,8 @@ static int scan_folios(struct lruvec *lruvec, struct scan_control *sc,
 				skipped += delta;
 			}
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-			if (folio_test_stalesaved(folio) && cause != 100){
-				pr_info("scan_folios sorting stale[%p] cause[%d]", folio, cause);
+			if (debug-- && cause != 100){
+				pr_info("scan_folios sorting [%p] cause[%d]", folio, cause);
 			}
 			switch(cause) {
 				case 0:

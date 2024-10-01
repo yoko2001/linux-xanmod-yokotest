@@ -247,6 +247,18 @@ static void lru_move_tail_fn(struct lruvec *lruvec, struct folio *folio)
 	}
 }
 
+static void lru_add_tail_fn(struct lruvec *lruvec, struct folio *folio)
+{
+	if (!folio_test_unevictable(folio)) {
+		folio_clear_active(folio);
+		lruvec_add_folio_tail(lruvec, folio);
+	}
+	else{
+		pr_info("lru_add_tail_fn folio[%p]", folio);
+		BUG();
+	}
+}
+
 /*
  * Writeback is about to end against a folio which has been marked for
  * immediate reclaim.  If it still appears to be reclaimable, move it
@@ -561,7 +573,7 @@ void folio_add_lru_save(struct folio * folio){
 	folio_get(folio);
 	local_lock(&cpu_fbatches.lock);
 	fbatch = this_cpu_ptr(&cpu_fbatches.lru_add);
-	folio_batch_add_and_move(fbatch, folio, lru_move_tail_fn);
+	folio_batch_add_and_move(fbatch, folio, lru_add_tail_fn);
 	local_unlock(&cpu_fbatches.lock);
 }
 EXPORT_SYMBOL(folio_add_lru_save);

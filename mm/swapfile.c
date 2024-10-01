@@ -1963,9 +1963,9 @@ bool folio_free_swap(struct folio *folio)
 {
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 	if (folio_test_swappriohigh(folio) || folio_test_swappriolow(folio)){
-		pr_err("folio_free_swap folio[%p]pri[%lx] blocked skip", folio, page_private(folio_page(folio, 0)));
+		pr_info("folio_free_swap folio[%p]pri[%lx] blocked skip", folio, page_private(folio_page(folio, 0)));
 		// dump_stack();
-		// return false;
+		return false;
 		// BUG();
 	}
 
@@ -1993,7 +1993,9 @@ bool folio_free_swap(struct folio *folio)
 	 */
 	if (pm_suspended_storage())
 		return false;
-
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+	pr_info("folio_free_swap folio[%p]pri[%lx]", folio, page_private(folio_page(folio, 0)));
+#endif
 	delete_from_swap_cache(folio);
 	
 	folio_set_dirty(folio);

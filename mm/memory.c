@@ -3917,10 +3917,10 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		if (swp_entry_test_ext(migentry) & 0x2) //locked, wait for the other to finish
 		{
 			ret |= VM_FAULT_RETRY;
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-			pr_info("[IOing]sw$ mapped but intercepting stalesaved entry[%lx] mig[%lx][%d] ", 
-						orientry.val, migentry.val, swp_entry_test_ext(migentry));
-#endif
+// #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+// 			pr_info("[IOing]sw$ mapped but intercepting stalesaved entry[%lx] mig[%lx][%d] ", 
+// 						orientry.val, migentry.val, swp_entry_test_ext(migentry));
+// #endif
 			if (unlikely(folio && folio_test_stalesaved(folio))){
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 				pr_info("in process folio[%p]ref[%d], need ref_sub", folio, folio_ref_count(folio));
@@ -4348,11 +4348,12 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 								folio, page_private(page), entry.val, orientry.val, __swap_count(orientry), migentry.val);
 				}
 				else{
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-					pr_info("folio[%p]$[%d]ref[%d] holding bad private[%lx] entry[%lx] orientry[%lx][%d]migentry[%lx]", 
-								folio, folio_test_swapcache(folio), folio_ref_count(folio), page_private(page), 
-								entry.val, orientry.val, __swap_count(orientry), migentry.val);
-#endif
+// #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+// 					pr_info("folio[%p]$[%d]ref[%d] holding bad private[%lx] entry[%lx] orientry[%lx][%d]migentry[%lx]", 
+// 								folio, folio_test_swapcache(folio), folio_ref_count(folio), page_private(page), 
+// 								entry.val, orientry.val, __swap_count(orientry), migentry.val);
+// #endif
+// 					BUG();
 					goto out_page;					
 				}
 		}
