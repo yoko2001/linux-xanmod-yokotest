@@ -259,11 +259,25 @@ static inline bool lru_gen_add_folio(struct lruvec *lruvec, struct folio *folio,
 	set_mask_bits(&folio->flags, LRU_GEN_MASK | BIT(PG_active), flags);
 
 	lru_gen_update_size(lruvec, folio, -1, gen);
-	/* for folio_rotate_reclaimable() */
-	if (reclaiming)
+	/* for folio_rotate_reclaimable() */		
+	if (reclaiming){
 		list_add_tail(&folio->lru, &lrugen->folios[gen][type][zone]);
-	else
-		list_add(&folio->lru, &lrugen->folios[gen][type][zone]);
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+		if (folio_test_stalesaved(folio)){
+			pr_info("[rclm]folio[%p] add to lrugen[%p]->[%d][%d][%d]", 
+			folio, lruvec, gen, type, zone);
+		}
+#endif
+	}
+	else{
+		list_add_tail(&folio->lru, &lrugen->folios[gen][type][zone]);
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+		if (folio_test_stalesaved(folio)){
+			pr_info("folio[%p] add to lrugen[%p]->[%d][%d][%d]", 
+			folio, lruvec, gen, type, zone);
+		}
+#endif
+	}
 
 	return true;
 }

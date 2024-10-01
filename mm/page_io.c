@@ -215,7 +215,7 @@ int swap_writepage(struct page *page, struct writeback_control *wbc)
 	struct folio *folio = page_folio(page);
 	int ret;
 	if (folio_test_stalesaved(folio)){//skip folio_free_swap for staled folio
-		// pr_err("swap_writepage on staled folio[%p]", folio);
+		pr_info("swap_writepage on staled folio[%p]", folio);
 		;
 	} 
 	else if (folio_free_swap(folio)) {
