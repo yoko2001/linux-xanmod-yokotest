@@ -5429,9 +5429,9 @@ static bool sort_folio(struct lruvec *lruvec, struct folio *folio, int tier_idx,
 	if (gen != lru_gen_from_seq(lrugen->min_seq[type])) {
 		list_move(&folio->lru, &lrugen->folios[gen][type][zone]);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-		if (folio_test_stalesaved(folio)) {
-			pr_info("folio[%p] promoted?? gen[%d] ", folio, gen);
-		}
+		pr_info("folio[%p] promoted [%d][%d][%d]->[%d][%d][%d] ", 
+		folio, lru_gen_from_seq(lrugen->min_seq[type]), type, zone, 
+		gen, type, zone);
 #endif
 		*cause = 2;
 		return true;
@@ -5581,6 +5581,10 @@ static int scan_folios(struct lruvec *lruvec, struct scan_control *sc,
 		int skipped = 0;
 		struct list_head *head = &lrugen->folios[gen][type][zone];
 		int nUnev = 0, nLzfree = 0, nPromoted = 0, nProteced = 0, nWB = 0;
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+		pr_info("scan_folios from lrugen->folios[%p][%d][%d][%d]" , 
+					head, gen, type, zone);
+#endif
 		while (!list_empty(head)) {
 			struct folio *folio = lru_to_folio(head);
 			int delta = folio_nr_pages(folio);
@@ -5590,7 +5594,7 @@ static int scan_folios(struct lruvec *lruvec, struct scan_control *sc,
 			VM_WARN_ON_ONCE_FOLIO(folio_is_file_lru(folio) != type, folio);
 			VM_WARN_ON_ONCE_FOLIO(folio_zonenum(folio) != zone, folio);
 			if (folio_test_stalesaved(folio)){
-				pr_info("scan_folios sorting stale[%p] scanning", folio, cause);
+				pr_info("scan_folios sorting stale[%p] scanning", folio);
 			}
 			scanned += delta;
 
@@ -5604,7 +5608,7 @@ static int scan_folios(struct lruvec *lruvec, struct scan_control *sc,
 				skipped += delta;
 			}
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-			if (debug-- && cause != 100){
+			if (debug-- && cause != 100 && cause != 2){
 				pr_info("scan_folios sorting [%p] cause[%d]", folio, cause);
 			}
 			switch(cause) {

@@ -4156,11 +4156,13 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 							BUG();
 						}
 					}
-					if (vmf->flags & FAULT_FLAG_WRITE)
-						ref_sub = true;
-					// if (folio_ref_count(page_folio(page)) > 3)
-					// 	pr_info("__read_swap_cache_async_save folio[%p] ref drop ", page);
+					// if (vmf->flags & FAULT_FLAG_WRITE)
+					ref_sub = true;
 					// folio_ref_sub(page_folio(page), folio_nr_pages(page_folio(page)));
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+					pr_info("__read_swap_cache_async_save folio[%p] will triger ref drop [%d] at cleanup", 
+								page, folio_ref_count(page_folio(page)));
+#endif
 				}
 
 				if (page) {
@@ -4672,8 +4674,9 @@ out_release:
 					orientry.val, __swp_swapcount(orientry),
 					migentry.val, __swp_swapcount(migentry));
 		if (folio)
-			pr_info("retry do_swap unlock reamp folio[%p]ref[%d]pri[%lx]", 
-					folio, folio_ref_count(folio), page_private(folio_page(folio, 0)));
+			pr_info("retry do_swap unlock reamp folio[%p]st[%d]ref[%d]pri[%lx]", 
+					folio, folio_test_stalesaved(folio), 
+					folio_ref_count(folio), page_private(folio_page(folio, 0)));
 		folio_set_swappriohigh(folio);
 	}
 	if (folio)

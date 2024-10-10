@@ -2448,8 +2448,8 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 			if (!data_race(p->flags & SWP_SYNCHRONOUS_IO) ||
 		    	!(__swap_count(saved_entry) == 1)) {
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-				pr_info("entry[%lx] sync[%lu] cnt[%d] abandoned", 
-							saved_entry.val, data_race(p->flags & SWP_SYNCHRONOUS_IO), __swap_count(saved_entry));
+				pr_info("entry[%lx] sync[%d] cnt[%d] abandoned", 
+							saved_entry.val, data_race(p->flags & SWP_SYNCHRONOUS_IO) > 0, __swap_count(saved_entry));
 #endif
 				goto skip_this_save;
 			}

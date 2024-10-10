@@ -3591,7 +3591,8 @@ void free_unref_page_list(struct list_head *list)
 			if (entry_is_entry_ext_debug(shadow) == 1){
 				shadow_entry_free(shadow);
 				// trace_shadow_entry_free(shadow, 4);	
-				pr_info("[FREE]free_unref_page_list normal free[%p] folio[%p]",shadow, folio);
+				pr_info("[FREE]free_unref_page_list normal free[%p] folio[%p]pri[%lx]",
+						shadow, folio, page_private(folio_page(folio, 0)));
 			}
 			else if (entry_is_entry_ext(shadow) < 1){
 				pr_err("free_unref_page_list folio[%p] has broken shadow_ext[%p]",folio, shadow);
