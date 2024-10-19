@@ -107,6 +107,10 @@ static void __folio_put_small(struct folio *folio)
 	__page_cache_release(folio);
 	mem_cgroup_uncharge(folio);
 	free_unref_page(&folio->page, 0);
+	if (folio_test_swappriohigh(folio)){
+		pr_info("__folio_put_small folio[%p]", folio);
+		dump_stack();
+	}
 }
 
 static void __folio_put_large(struct folio *folio)
@@ -249,7 +253,7 @@ static void lru_move_tail_fn(struct lruvec *lruvec, struct folio *folio)
 
 static void lru_add_tail_fn(struct lruvec *lruvec, struct folio *folio)
 {
-	if (!folio_test_unevictable(folio)) {
+	if (folio_evictable(folio)) {
 		folio_clear_active(folio);
 		lruvec_add_folio_tail(lruvec, folio);
 	}
@@ -566,14 +570,19 @@ void folio_add_lru_save(struct folio * folio){
 
 	VM_BUG_ON_FOLIO(folio_test_active(folio) &&
 			folio_test_unevictable(folio), folio);
-	VM_BUG_ON_FOLIO(folio_test_lru(folio), folio);
+	if (folio_test_lru(folio))
+		return;
+	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 
-	folio_clear_active(folio);
-	//set readahead here
+	// /* see the comment in lru_gen_add_folio() */
+	// if (lru_gen_enabled() && !folio_test_unevictable(folio) &&
+	//     lru_gen_in_fault() && !(current->flags & PF_MEMALLOC))
+	// 	folio_set_active(folio);
+
 	folio_get(folio);
 	local_lock(&cpu_fbatches.lock);
 	fbatch = this_cpu_ptr(&cpu_fbatches.lru_add);
-	folio_batch_add_and_move(fbatch, folio, lru_add_tail_fn);
+	folio_batch_add_and_move(fbatch, folio, lru_add_fn);
 	local_unlock(&cpu_fbatches.lock);
 }
 EXPORT_SYMBOL(folio_add_lru_save);

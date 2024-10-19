@@ -1667,6 +1667,9 @@ static void swap_entry_free(struct swap_info_struct *p, swp_entry_t entry, int f
 	unsigned long offset_v = offset + version * p->max* __si_can_version(p);
 	ci = lock_cluster(p, offset);
 	count = p->swap_map[offset_v];
+	if (!(count == SWAP_HAS_CACHE)){
+		pr_err("entry[%lx] should be at least SWAP_HAS_CACHE, but %d", entry.val, count);
+	}
 	VM_BUG_ON(count != SWAP_HAS_CACHE);
 	p->swap_map[offset_v] = 0;
 	dec_cluster_info_page(p, p->cluster_info, offset);
@@ -1964,7 +1967,7 @@ bool folio_free_swap(struct folio *folio)
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 	if (folio_test_swappriohigh(folio) || folio_test_swappriolow(folio)){
 		pr_info("folio_free_swap folio[%p]pri[%lx] blocked skip", folio, page_private(folio_page(folio, 0)));
-		dump_stack();
+		// dump_stack();
 		return false;
 		// BUG();
 	}
@@ -1993,8 +1996,10 @@ bool folio_free_swap(struct folio *folio)
 	 */
 	if (pm_suspended_storage())
 		return false;
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-	//pr_info("folio_free_swap folio[%p]pri[%lx]", folio, page_private(folio_page(folio, 0)));
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG	
+	if (folio_test_swappriolow(folio))
+		pr_info("folio_free_swap folio[%p]pri[%lx]$[%d]", 
+				folio, page_private(folio_page(folio, 0)), folio_test_swapcache(folio));
 #endif
 	delete_from_swap_cache(folio);
 	

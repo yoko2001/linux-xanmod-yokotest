@@ -272,10 +272,10 @@ static inline bool lru_gen_add_folio(struct lruvec *lruvec, struct folio *folio,
 	else{
 		list_add_tail(&folio->lru, &lrugen->folios[gen][type][zone]);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-		if (folio_test_stalesaved(folio)){
-			pr_info("folio[%p] add to lrugen[%p]->[%d][%d][%d]", 
-			folio, lruvec, gen, type, zone);
-		}
+		// if (folio_test_stalesaved(folio)){
+		// 	pr_info("folio[%p] add to lrugen[%p]->[%d][%d][%d]", 
+		// 	folio, lruvec, gen, type, zone);
+		// }
 #endif
 	}
 

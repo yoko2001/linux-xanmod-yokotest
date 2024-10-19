@@ -3841,7 +3841,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	int rf_dist_ts;
 	int try_free_entry;
 	struct address_space *address_space;
-	bool need_unlock= false, valid_remap = false, invalid_remap = false;
+	bool need_unlock= false, valid_remap = false, invalid_remap = false, filemaphit = false;
+	static int privatebug = 10000;
 	/*DJL ADD END*/
 	if (!pte_unmap_same(vmf))
 		goto out;
@@ -3905,6 +3906,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		// 			page_private(page), entry.val, folio_test_swapcache(folio));
 		// }
 #endif
+		filemaphit = true;
 	}
 	/*DJL ADD END*/
 	swapcache = folio;
@@ -4038,9 +4040,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				else 
 					swap_level = 0;
 				try_free_entry = 0;
-#ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 				ASSERT_FOLIO_NO_SE(folio, __FILE__, __LINE__);
-#endif
 				if (shadow){
  					workingset_refault(folio, shadow, &rf_dist_ts, vmf->real_address,swap_level, entry, &abandon_shadow);
 					if (swap_level==1)
@@ -4160,7 +4160,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 					ref_sub = true;
 					// folio_ref_sub(page_folio(page), folio_nr_pages(page_folio(page)));
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-					pr_info("__read_swap_cache_async_save folio[%p] will triger ref drop [%d] at cleanup", 
+					pr_info("__read_swap_cache_async_save folio[%p] will triger ref drop skip [%d] at cleanup", 
 								page, folio_ref_count(page_folio(page)));
 #endif
 				}
@@ -4168,9 +4168,9 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				if (page) {
 					ClearPageStaleSaved(page);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-					pr_info("__read_swap_cache_async_save complete new/$ folio[%p]pri[%lx]ref[%d]  entry[%lx]", 
+					pr_info("__read_swap_cache_async_save complete new/$ folio[%p]pri[%lx]ref[%d]  entry[%lx]uptodate[%d]", 
 								page_folio(page), page_private(page), folio_ref_count(page_folio(page)),
-								entry.val);
+								entry.val, folio_test_uptodate(page_folio(page)));
 #endif
 				}
 			}
@@ -4344,20 +4344,37 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		 * changed.
 		 */
 		if (unlikely(!folio_test_swapcache(folio) ||
-			    page_private(page) != entry.val)){
-				if (!(page_private(page) == migentry.val)){
-					pr_info("folio[%p] pri[%lx] mis_match entry[%lx] orientry[%lx][%d]migentry[%lx]", 
-								folio, page_private(page), entry.val, orientry.val, __swap_count(orientry), migentry.val);
+			page_private(page) != entry.val)){
+			if (!(page_private(page) == orientry.val)){
+				swp_entry_t rawmigentry;
+				rawmigentry.val = migentry.val;
+				swp_entry_clear_ext(&rawmigentry, 0x3);
+				if (!(page_private(page) == rawmigentry.val)){
+					pr_info("folio[%p] pri[%lx] mis_match entry[%lx] orientry[%lx][%d]migentry[%lx]cached[%d]", 
+							folio, page_private(page), entry.val, orientry.val, 
+							__swap_count(orientry), migentry.val, filemaphit);
+					BUG();					
 				}
 				else{
-// #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-// 					pr_info("folio[%p]$[%d]ref[%d] holding bad private[%lx] entry[%lx] orientry[%lx][%d]migentry[%lx]", 
-// 								folio, folio_test_swapcache(folio), folio_ref_count(folio), page_private(page), 
-// 								entry.val, orientry.val, __swap_count(orientry), migentry.val);
-// #endif
-// 					BUG();
-					goto out_page;					
+					set_page_private(page, orientry.val);
+					pr_info("folio[%p] reset pri[%lx] entry[%lx] orientry[%lx][%d]migentry[%lx]cached[%d]", 
+							folio, page_private(page), entry.val, orientry.val, 
+							__swap_count(orientry), migentry.val, filemaphit);
 				}
+				goto out_page;					
+			}
+			else{
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+				pr_info("folio[%p]$[%d]ref[%d] holding bad private[%lx] entry[%lx] orientry[%lx][%d]migentry[%lx] cached[%d]", 
+							folio, folio_test_swapcache(folio), folio_ref_count(folio), page_private(page), 
+							entry.val, orientry.val, __swap_count(orientry), migentry.val, filemaphit);
+				privatebug--;
+				if (privatebug <= 0){
+					BUG();
+				}
+#endif
+				goto out_page;					
+			}
 		}
 
 		/*
@@ -4503,7 +4520,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 						folio_test_ksm(folio), folio_test_swapcache(folio), folio_test_writeback(folio));
 #endif
 				folio_set_swappriohigh(folio);
-				folio_add_lru(folio);
+				folio_add_lru_save(folio);
 			}
 		}else{ //invalid remap case
 			if (should_try_to_free_swap(folio, vma, vmf->flags, 2)){ //invalid / normal
@@ -4530,9 +4547,9 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				pr_info("invalid_remap after delete2$ folio[%p] pri[%lx] orientry[%lx]  $[%d]", 
 							folio, page_private(folio_page(folio, 0)), orientry.val, folio_test_swapcache(folio));
 				
-				pr_info("do_swap inv after folio_free_swap[%p]->pri[%lx]ref[%d]entry[%lx]migentry[%lx] $[%d] wb[%d]", 
-						folio, page_private(folio_page(folio,0)), folio_ref_count(folio),
-						orientry.val, migentry.val, folio_test_swapcache(folio),folio_test_writeback(folio));			
+				pr_info("do_swap inv after folio_free_swap[%p]->pri[%lx]ref[%d]entry[%lx]migentry[%lx]$[%d]wb[%d]lru[%d]", 
+						folio, page_private(folio_page(folio,0)), folio_ref_count(folio), orientry.val, migentry.val,
+						folio_test_swapcache(folio),folio_test_writeback(folio), folio_test_lru(folio));			
 				migentry.val = 0;
 				need_unlock = false;
 			}
@@ -4574,18 +4591,17 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	if (unlikely(folio_test_stalesaved(folio))){
 		folio_clear_stalesaved(folio);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-		pr_err("do_swap CLEAN STALESAVED entry[%lx] folio[%p] $[%d] ref[%d] cnt[%d] wb[%d]", 
-					entry.val, folio,  folio_test_swapcache(folio),  
-					folio_ref_count(folio), __swp_swapcount(entry), folio_test_writeback(folio));
+		pr_err("do_swap CLEAN STALESAVED entry[%lx] folio[%p] $[%d]ref[%d]cnt[%d]wb[%d]", 
+					entry.val, folio,  folio_test_swapcache(folio),  folio_ref_count(folio), 
+					__swp_swapcount(entry), folio_test_writeback(folio));
 #endif
 	}
 
 	if (unlikely(migentry.val && need_unlock)){ 
 		entry_get_migentry_unlock(orientry, migentry);
-		pr_info("do_swap unlock reamp ori[%lx]cnt[%d]->mig[%lx]cnt[%d] folio[%p]ref[%d]pri[%lx]", 
-					orientry.val, __swp_swapcount(orientry),
-					migentry.val, __swp_swapcount(migentry), 
-					folio, folio_ref_count(folio), page_private(folio_page(folio, 0)));			
+		pr_info("do_swap unlock reamp ori[%lx]cnt[%d]->mig[%lx]cnt[%d] folio[%p]ref[%d]pri[%lx]act[%d]", 
+					orientry.val, __swp_swapcount(orientry),migentry.val, __swp_swapcount(migentry), 
+					folio, folio_ref_count(folio), page_private(folio_page(folio, 0)), folio_test_active(folio));			
 	}
 
 	inc_mm_counter(vma->vm_mm, MM_ANONPAGES);
@@ -4617,6 +4633,10 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	if (unlikely(folio != swapcache && swapcache)) {
 		page_add_new_anon_rmap(page, vma, vmf->address);
 		folio_add_lru_vma(folio, vma);
+		if (invalid_remap || valid_remap){
+			pr_err("ksm folio[%p] add lru might bug", folio);
+			BUG();
+		}
 	} else {
 		page_add_anon_rmap(page, vma, vmf->address, rmap_flags);
 	}
@@ -4661,24 +4681,19 @@ out_nomap:
 // 	// 	ASSERT_FOLIO_NO_SE(folio, __FILE__, __LINE__);
 // #endif
 	pte_unmap_unlock(vmf->pte, vmf->ptl);
+	if (migentry.val && need_unlock){ 
+		pr_info("retry ckpt0 folio[%p]ref[%d]pri[%lx]uptodate[%d]", 
+				folio, folio_ref_count(folio), page_private(folio_page(folio, 0)), folio_test_uptodate(folio));
+		folio_set_swappriolow(folio);
+	}
 out_page:
 	folio_unlock(folio);
 	if (migentry.val && need_unlock){ 
 		pr_info("retry ckpt1 folio[%p]ref[%d]pri[%lx]", 
 				folio, folio_ref_count(folio), page_private(folio_page(folio, 0)));
+		folio_set_swappriolow(folio);
 	}
 out_release:
-	if (migentry.val && need_unlock){ 
-		entry_get_migentry_unlock(orientry, migentry);
-		pr_info("retry do_swap unlock reamp ori[%lx]cnt[%d]->mig[%lx]cnt[%d]", 
-					orientry.val, __swp_swapcount(orientry),
-					migentry.val, __swp_swapcount(migentry));
-		if (folio)
-			pr_info("retry do_swap unlock reamp folio[%p]st[%d]ref[%d]pri[%lx]", 
-					folio, folio_test_stalesaved(folio), 
-					folio_ref_count(folio), page_private(folio_page(folio, 0)));
-		folio_set_swappriohigh(folio);
-	}
 	if (folio)
 		folio_put(folio);
 	if (folio && folio != swapcache && swapcache) {
@@ -4687,6 +4702,21 @@ out_release:
 	}
 	if (si)
 		put_swap_device(si);
+	if (migentry.val && need_unlock){ 
+		entry_get_migentry_unlock(orientry, migentry);
+		folio_get(folio);
+		pr_info("retry do_swap unlock reamp ori[%lx]cnt[%d]->mig[%lx]cnt[%d]", 
+					orientry.val, __swp_swapcount(orientry),
+					migentry.val, __swp_swapcount(migentry));
+		if (folio){
+			// folio_get(folio);
+			pr_info("retry do_swap unlock reamp folio[%p]st[%d]ref[%d]pri[%lx] $[%d]d[%d]", 
+					folio, folio_test_stalesaved(folio), folio_ref_count(folio), 
+					page_private(folio_page(folio, 0)), folio_test_swapcache(folio), folio_test_dirty(folio));
+			folio_set_swappriohigh(folio);
+		}
+	}
+
 	return ret;
 }
 

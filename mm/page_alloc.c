@@ -3591,8 +3591,13 @@ void free_unref_page_list(struct list_head *list)
 			if (entry_is_entry_ext_debug(shadow) == 1){
 				shadow_entry_free(shadow);
 				// trace_shadow_entry_free(shadow, 4);	
-				pr_info("[FREE]free_unref_page_list normal free[%p] folio[%p]pri[%lx]",
-						shadow, folio, page_private(folio_page(folio, 0)));
+				pr_info("[FREE]free_unref_list normal shadow[%p]folio[%p]pri[%lx]ref[%d]$[%d]priolow[%d]",
+						shadow, folio, page_private(folio_page(folio, 0)), 
+						folio_ref_count(folio), folio_test_swapcache(folio), folio_test_swappriolow(folio));
+				if (folio_test_swapcache(folio) && folio_swap_entry(folio).val != 0){
+					__delete_from_swap_cache(folio, folio_swap_entry(folio), shadow);
+					pr_info("folio[%p] delete from swapcache", folio);
+				}
 			}
 			else if (entry_is_entry_ext(shadow) < 1){
 				pr_err("free_unref_page_list folio[%p] has broken shadow_ext[%p]",folio, shadow);
