@@ -1966,7 +1966,9 @@ bool folio_free_swap(struct folio *folio)
 {
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 	if (folio_test_swappriohigh(folio) || folio_test_swappriolow(folio)){
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 		pr_info("folio_free_swap folio[%p]pri[%lx] blocked skip", folio, page_private(folio_page(folio, 0)));
+#endif
 		// dump_stack();
 		return false;
 		// BUG();

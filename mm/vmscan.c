@@ -2121,9 +2121,11 @@ pass_cleanup:
 			}
 			count_memcg_events(lruvec_memcg(lruvec), PGSWAPPED_MIG_SAVED, folio_nr_pages(folio));
 			folio_add_lru(folio);
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 			pr_info("folio[%p] succeed enable, lruadded ref[%d]stale[%d]d[%d]", 
 					folio, folio_ref_count(folio), folio_test_stalesaved(folio), 
 					folio_test_dirty(folio));
+#endif
 			folio_unlock(folio);
 		}
 	}
@@ -2966,12 +2968,14 @@ static unsigned int move_folios_to_lru(struct lruvec *lruvec,
 			spin_lock_irq(&lruvec->lru_lock);
 			continue;
 		}
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 		if (folio_test_swappriohigh(folio)){
 			pr_info("folio[%p]ref[%d] move_folios_to_lru $[%d]act[%d]d[%d]", 
 						folio, folio_ref_count(folio), folio_test_swapcache(folio), 
 						folio_test_active(folio), folio_test_dirty(folio));
 			// dump_stack();
 		}
+#endif
 		/*
 		 * The folio_set_lru needs to be kept here for list integrity.
 		 * Otherwise:
@@ -5822,10 +5826,12 @@ retry:
 			if (folio_test_workingset(folio))
 				folio_set_referenced(folio);
 			
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 			if (folio_test_stalesaved(folio) || folio_test_swappriohigh(folio))
 				pr_info("1 try evict folio[%p] rclm[%d]d[%d]wb[%d]ac[%d]map[%d]lock[%d]", 
 					folio, folio_test_reclaim(folio), folio_test_dirty(folio), folio_test_writeback(folio),
 					folio_test_active(folio), folio_mapped(folio),  folio_test_locked(folio));
+#endif
 			continue;
 		}
 

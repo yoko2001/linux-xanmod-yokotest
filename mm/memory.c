@@ -4599,9 +4599,11 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 
 	if (unlikely(migentry.val && need_unlock)){ 
 		entry_get_migentry_unlock(orientry, migentry);
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 		pr_info("do_swap unlock reamp ori[%lx]cnt[%d]->mig[%lx]cnt[%d] folio[%p]ref[%d]pri[%lx]act[%d]", 
 					orientry.val, __swp_swapcount(orientry),migentry.val, __swp_swapcount(migentry), 
 					folio, folio_ref_count(folio), page_private(folio_page(folio, 0)), folio_test_active(folio));			
+#endif
 	}
 
 	inc_mm_counter(vma->vm_mm, MM_ANONPAGES);
