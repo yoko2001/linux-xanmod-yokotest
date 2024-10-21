@@ -293,7 +293,7 @@ unlock:
 	folio_clear_swapcache(folio);
 	folio_ref_sub(folio, nr);
 	if (folio_test_swappriohigh(folio)){
-		pr_err("folio[%p] ref[%d] subbed", folio, folio_ref_count(folio));
+		pr_err("add_to_swap_cache folio[%p] ref[%d] subbed", folio, folio_ref_count(folio));
 		dump_stack();
 	}
 	return xas_error(&xas);
@@ -1309,7 +1309,7 @@ void delete_from_swap_cache(struct folio *folio)
 	// 	pr_err("after delete_s$ folio[%p]->ext[%p]", folio, folio->shadow_ext);
 	folio_ref_sub(folio, folio_nr_pages(folio));
 	if (folio_test_swappriohigh(folio)){
-		pr_err("folio[%p] ref[%d] subbed", folio, folio_ref_count(folio));
+		pr_err("delete_from_swap_cache folio[%p] ref[%d] subbed", folio, folio_ref_count(folio));
 		dump_stack();
 	}
 }
@@ -1338,7 +1338,7 @@ void delete_from_swap_cache_mig(struct folio* folio, swp_entry_t entry, bool dec
 	}
 	folio_ref_sub(folio, folio_nr_pages(folio));
 	if (folio_test_swappriohigh(folio)){
-		pr_err("folio[%p] ref[%d] subbed", folio, folio_ref_count(folio));
+		pr_err("delete_from_swap_cache_mig folio[%p] ref[%d] subbed", folio, folio_ref_count(folio));
 		dump_stack();
 	}
 }

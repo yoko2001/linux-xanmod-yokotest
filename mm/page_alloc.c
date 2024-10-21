@@ -3588,7 +3588,7 @@ void free_unref_page_list(struct list_head *list)
 		// check_private_debug(folio);
 		shadow = folio_remove_shadow_entry(folio);
 		if (shadow){
-			if (entry_is_entry_ext_debug(shadow) == 1){
+			if (unlikely(entry_is_entry_ext_debug(shadow) == 1)){
 				shadow_entry_free(shadow);
 				// trace_shadow_entry_free(shadow, 4);	
 				pr_info("[FREE]free_unref_list normal shadow[%p]folio[%p]pri[%lx]ref[%d]$[%d]priolow[%d]",
@@ -3599,7 +3599,7 @@ void free_unref_page_list(struct list_head *list)
 					pr_info("folio[%p] delete from swapcache", folio);
 				}
 			}
-			else if (entry_is_entry_ext(shadow) < 1){
+			else if (unlikely(entry_is_entry_ext(shadow) < 1)){
 				pr_err("free_unref_page_list folio[%p] has broken shadow_ext[%p]",folio, shadow);
 				// BUG();
 			}	
