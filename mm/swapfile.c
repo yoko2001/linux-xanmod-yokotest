@@ -897,7 +897,7 @@ static bool swap_offset_any_version_occupied(struct swap_info_struct* si,
 					ret = true;
 				}
 				else{
-					pr_err("swap_offset_occupied err type[%d] offset[%lu] occupied", si->type, offset);
+					pr_err("swap_offset_occupied err type[%d] offset[%lx] occupied", si->type, offset);
 					// BUG();
 				}
 			}
@@ -1347,7 +1347,7 @@ start_over:
 			if (highprio < 0 || highprio <= si->prio){
 				spin_lock(&swap_avail_lock);
 				highprio = si->prio;
-				pr_info("get_swap_pages second leval, pass type[%d]prio[%d]", si->type, si->prio);
+				// pr_info("get_swap_pages second leval, pass type[%d]prio[%d]", si->type, si->prio);
 				spin_unlock(&si->lock);
 				goto nextsi;
 			}
@@ -1411,9 +1411,11 @@ nextsi:
 
 		if (plist_node_empty(&next->avail_lists[node]))
 			goto start_over;
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 		if (tier == 1){
 			pr_info("get_swap_pages debug si[%d]", si->type);
 		}
+#endif
 	}
 
 	spin_unlock(&swap_avail_lock);

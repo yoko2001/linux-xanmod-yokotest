@@ -4980,7 +4980,7 @@ static void inc_max_seq(struct lruvec *lruvec, bool can_swap, bool force_scan)
 	WRITE_ONCE(lrugen->timestamps[next], jiffies);
 	/* make sure preceding modifications appear */
 	smp_store_release(&lrugen->max_seq, lrugen->max_seq + 1);
-	pr_info("inc max_seq[%lu]", lrugen->max_seq);
+	// pr_info("inc max_seq[%lu]", lrugen->max_seq);
 	spin_unlock_irq(&lruvec->lru_lock);
 }
 
@@ -5841,6 +5841,7 @@ retry:
 			/* don't add rejected folios to the oldest generation */
 			set_mask_bits(&folio->flags, LRU_REFS_MASK | LRU_REFS_FLAGS,
 				      BIT(PG_active));
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 			if (folio_test_stalesaved(folio) || folio_test_swappriohigh(folio)){
 				pr_info("2 try evict folio[%p]ref[%d] rclm[%d]d[%d]wb[%d]ac[%d]map[%d]lock[%d]", 
 					folio, folio_ref_count(folio), folio_test_reclaim(folio), 
@@ -5848,7 +5849,7 @@ retry:
 					folio_test_active(folio), folio_mapped(folio),  folio_test_locked(folio));
 				// folio_get(folio);		
 			}
-
+#endif
 			continue;
 		}
 
