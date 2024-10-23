@@ -4356,7 +4356,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 					BUG();					
 				}
 				else{
-					set_page_private(page, orientry.val);
+					// set_page_private(page, orientry.val);
 					pr_info("folio[%p] reset pri[%lx] entry[%lx] orientry[%lx][%d]migentry[%lx]cached[%d]", 
 							folio, page_private(page), entry.val, orientry.val, 
 							__swap_count(orientry), migentry.val, filemaphit);
@@ -4539,7 +4539,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 							folio, entry.val,  migentry.val, folio_test_swapcache(folio), folio_test_writeback(folio));	
 					BUG();		
 				}				
-				folio_free_swap(folio);
+				folio_free_swap_debug(folio);
 
 				delete_from_swap_remap(folio, orientry, migentry, true);
 				delete_from_swap_cache_mig(folio, migentry, true, false);

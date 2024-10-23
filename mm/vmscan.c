@@ -5964,10 +5964,10 @@ static bool should_run_aging(struct lruvec *lruvec, unsigned long max_seq,
 	if (old * (MIN_NR_GENS + 2) < total)
 		return true;
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-	if (sc->target_mem_cgroup){
-		pr_info("memcg[%p] no aging old[%lu] young[%lu] total[%lu]", 
-					sc->target_mem_cgroup, old, young, total);
-	}
+	// if (sc->target_mem_cgroup){
+	// 	pr_info("memcg[%p] no aging old[%lu] young[%lu] total[%lu]", 
+	// 				sc->target_mem_cgroup, old, young, total);
+	// }
 #endif
 	return false;
 }

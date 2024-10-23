@@ -2017,6 +2017,47 @@ bool folio_free_swap(struct folio *folio)
 	return true;
 }
 
+bool folio_free_swap_debug(struct folio *folio)
+{
+	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
+	pr_info("folio_free_swap_debug folio[%p]$[%d]wb[%d]swapped[%d] pri[%lx]", 
+				folio, folio_test_swapcache(folio),folio_test_writeback(folio),
+				folio_swapped(folio), page_private( folio_page(folio, 0)));
+	if (!folio_test_swapcache(folio))
+		return false;
+	if (folio_test_writeback(folio))
+		return false;
+	if (folio_swapped(folio))
+		return false;
+
+	/*
+	 * Once hibernation has begun to create its image of memory,
+	 * there's a danger that one of the calls to folio_free_swap()
+	 * - most probably a call from __try_to_reclaim_swap() while
+	 * hibernation is allocating its own swap pages for the image,
+	 * but conceivably even a call from memory reclaim - will free
+	 * the swap from a folio which has already been recorded in the
+	 * image as a clean swapcache folio, and then reuse its swap for
+	 * another page of the image.  On waking from hibernation, the
+	 * original folio might be freed under memory pressure, then
+	 * later read back in from swap, now with the wrong data.
+	 *
+	 * Hibernation suspends storage while it is writing the image
+	 * to disk so check that here.
+	 */
+	if (pm_suspended_storage())
+		return false;
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG	
+	if (folio_test_swappriolow(folio))
+		pr_info("folio_free_swap folio[%p]pri[%lx]$[%d]", 
+				folio, page_private(folio_page(folio, 0)), folio_test_swapcache(folio));
+#endif
+	delete_from_swap_cache(folio);
+	
+	folio_set_dirty(folio);
+	return true;
+}
+
 /*
  * Free the swap entry like above, but also try to
  * free the page cache entry if it is the last user.

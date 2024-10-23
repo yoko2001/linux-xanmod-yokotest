@@ -682,6 +682,7 @@ extern void si_swapinfo(struct sysinfo *);
 swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_slow);
 void check_swap_scan_active(struct swap_info_struct *si, long left, long total);
 bool folio_free_swap(struct folio *folio);
+bool folio_free_swap_debug(struct folio *folio);
 void put_swap_folio(struct folio *folio, swp_entry_t entry);
 extern swp_entry_t get_swap_page_of_type(int);
 //DJL ADD BEGIN
