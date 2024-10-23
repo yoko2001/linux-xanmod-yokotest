@@ -11,7 +11,7 @@
 #define SWAP_SLOTS_SCAN_SAVE_ONCE		4 
 //load 8 page to slow at most in one attempt
 
-#define SEQ_DIFF_THRESHOLD             20
+#define SEQ_DIFF_THRESHOLD             15
 
 #define THRESHOLD_ACTIVATE_SWAP_SCAN_SLOT  8  //when under 1/8
 #define THRESHOLD_DEACTIVATE_SWAP_SCAN_SLOT 2  //when more than 1/2

@@ -6267,7 +6267,7 @@ static void swap_scan_savior(struct scan_control *sc, struct lruvec * lruvec)
 }
 
 static unsigned int swap_scan_savior_delays = 0;
-static const unsigned int swap_scan_savior_delay_max = 16;
+static const unsigned int swap_scan_savior_delay_max = 8;
 // static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *sc)
 static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *sc, int force)
 {
