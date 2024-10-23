@@ -1658,8 +1658,8 @@ static unsigned char __swap_entry_free(struct swap_info_struct *p,
 	unlock_cluster_or_swap_info(p, ci);
 	if (!usage){
 		free_swap_slot(entry);
-		if (p->prio > 100)
-			pr_info("__swap_entry_free free entry[%lx]", entry);
+		// if (p->prio > 100)
+		// 	pr_info("__swap_entry_free free entry[%lx]", entry);
 	}
 
 	return usage;
