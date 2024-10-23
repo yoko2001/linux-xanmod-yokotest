@@ -1277,7 +1277,7 @@ void delete_from_swap_remap_get_mig(struct folio* folio, swp_entry_t entry_from,
 	__delete_from_swap_remap_get_mig(folio, entry_from, entry_to);
 	xa_unlock_irq(&address_space->i_pages);
 	swp_entry_clear_ext(entry_to, 0x3); 
-	folio_ref_sub(folio, folio_nr_pages(folio));
+	// folio_ref_sub(folio, folio_nr_pages(folio));
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 	pr_info("delete_from_swap_remap_get_mig folio[%p]ref[%d] [%lx]->[%lx]", 
 			folio, folio_ref_count(folio), entry_from.val, entry_to->val);
@@ -2359,6 +2359,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 	if (swp_entry_test_special(fentry)){
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 		pr_info("vma_readahead saved entry[%lx], skip", fentry.val);
+		dump_stack();
 #endif
 		goto skip;
 	}

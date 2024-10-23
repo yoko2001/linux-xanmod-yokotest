@@ -1478,8 +1478,10 @@ static struct swap_info_struct *_swap_info_get(swp_entry_t entry, bool allow_unu
 	return p;
 
 bad_free:
-	if (!unlikely(allow_unused))
+	if (!unlikely(allow_unused)){
 		pr_err("%s: %s%08lx\n", __func__, Unused_offset, entry.val);
+		dump_stack();
+	}
 	goto out;
 bad_offset:
 	pr_err("%s: %s%08lx\n", __func__, Bad_offset, entry.val);
@@ -1654,8 +1656,11 @@ static unsigned char __swap_entry_free(struct swap_info_struct *p,
 	ci = lock_cluster_or_swap_info(p, offset);
 	usage = __swap_entry_free_locked(p, offset, version, 1);
 	unlock_cluster_or_swap_info(p, ci);
-	if (!usage)
+	if (!usage){
 		free_swap_slot(entry);
+		if (p->prio > 100)
+			pr_info("__swap_entry_free free entry[%lx]", entry);
+	}
 
 	return usage;
 }

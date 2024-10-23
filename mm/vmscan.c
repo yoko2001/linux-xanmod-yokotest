@@ -1998,7 +1998,7 @@ collect_fail_lock_keep:
 		VM_BUG_ON_FOLIO(!folio_evictable(folio), folio);
 		// VM_BUG_ON_FOLIO(!folio_test_anon(folio), folio);
 		VM_BUG_ON_FOLIO(!folio_test_swapbacked(folio), folio);
-		VM_WARN_ON_FOLIO(!folio_test_swapcache(folio), folio);
+		// VM_WARN_ON_FOLIO(!folio_test_swapcache(folio), folio); //do_swap_page after folio_free_swap cleanup (invalid)
 		VM_BUG_ON_FOLIO(folio_test_large(folio), folio);
 		// VM_BUG_ON_FOLIO(folio_mapped(folio), folio);
 		VM_BUG_ON_FOLIO(folio_is_file_lru(folio), folio);
@@ -2066,20 +2066,21 @@ keep_next_time:
 				
 				// folio_add_lru(folio); //this should be ok, because lru is protected by folio_lock
 				// //do_swap will not map to it, it should get freed normally
-				delete_from_swap_remap_get_mig(folio, entry, &migentry);
-				delete_from_swap_cache_mig(folio, migentry, true, false);
-				swap_free(migentry);
-				if (!folio_test_ksm(folio) && folio_ref_count(folio) == 2){
-					pr_err("do refree swap folio[%p]ref[%d] entry[%lx]cnt[%d] clear now", 
-						folio,	folio_ref_count(folio), entry.val, __swap_count(entry));	
-					swap_free(entry);
-					folio_clear_swappriohigh(folio);
-					folio_clear_swappriolow(folio);
-					folio_free_swap(folio);
-				}
+				// delete_from_swap_remap_get_mig(folio, entry, &migentry);
+				// delete_from_swap_cache_mig(folio, migentry, true, false);
+				// swap_free(migentry);
+				// if (!folio_test_ksm(folio) && folio_ref_count(folio) == 2){
+				// 	pr_err("do refree swap folio[%p]ref[%d] entry[%lx]cnt[%d] clear now", 
+				// 		folio,	folio_ref_count(folio), entry.val, __swap_count(entry));	
+				// 	swap_free(entry);
+				// 	BUG();
+				// 	folio_clear_swappriohigh(folio);
+				// 	folio_clear_swappriolow(folio);
+				// 	folio_free_swap(folio);
+				// }
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-				pr_err("folio[%p]ref[%d] entry[%lx]cnt[%d]migentry[%lx]cnt[%d] clear now", 
-					folio,	folio_ref_count(folio), entry.val, __swap_count(entry),
+				pr_err("folio[%p]ref[%d]pri[%lx] entry[%lx]cnt[%d]migentry[%lx]cnt[%d] clear now", 
+					folio,	folio_ref_count(folio), page_private(folio_page(folio, 0)), entry.val, __swap_count(entry),
 					migentry.val, __swap_count(migentry));					
 #endif
 pass_cleanup:
