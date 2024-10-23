@@ -2373,10 +2373,11 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 		if (unlikely(non_swap_entry(entry)))
 			continue;
 		// // fast swap device IO-through
-		// si = swp_swap_info(entry);
-		// if (data_race(si->flags & SWP_SYNCHRONOUS_IO)){ // block all IOs
-		// 	continue;
-		// }
+		si = swp_swap_info(entry);
+		if (data_race(si->flags & SWP_SYNCHRONOUS_IO)){ // block all IOs
+			count_memcg_event_mm(vma->vm_mm, SWAPIN_FAST_RA_SKIP);
+			continue;
+		}
 		/*DJL ADD BEGIN*/
 		page = __read_swap_cache_async(entry, gfp_mask, vma,
 					       vmf->address, vmf->real_address, &page_allocated, (!enable_ra_fast_evict) || (i == ra_info.offset), 
