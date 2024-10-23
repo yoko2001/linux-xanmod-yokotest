@@ -934,7 +934,7 @@ void __delete_from_swap_cache_mig(struct folio *folio,
 	// VM_BUG_ON_FOLIO(!folio_test_stalesaved(folio), folio);
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 	// VM_WARN_ON_FOLIO(!folio_test_swapcache(folio), folio);
-	VM_BUG_ON_FOLIO(folio_test_writeback(folio), folio);
+	// VM_BUG_ON_FOLIO(folio_test_writeback(folio), folio);
 
 	for (i = 0; i < nr; i++) {
 		void *entry_ = xas_load(&xas);

@@ -5623,7 +5623,7 @@ static int scan_folios(struct lruvec *lruvec, struct scan_control *sc,
 				skipped += delta;
 			}
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-			if (debug-- && cause != 100 && cause != 2){
+			if (debug-- && cause != 100 && cause != 2 && cause != 4){
 				pr_info("scan_folios sorting [%p] cause[%d]", folio, cause);
 			}
 			switch(cause) {
