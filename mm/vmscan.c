@@ -2010,7 +2010,7 @@ collect_fail_lock_keep:
 		
 		if (folio_test_writeback(folio)) {
 			if (!folio_test_stalesaved(folio)){ //cancelled by do_swap
-				pr_err("folio[%p] taken by do_swap, don't touch it", folio);
+				pr_info("folio[%p] taken by do_swap, don't touch it", folio);
 				folio_unlock(folio);
 				// BUG();
 				continue;
