@@ -895,6 +895,7 @@ static bool swap_offset_any_version_occupied(struct swap_info_struct* si,
 				// 	si->prio, offset, v, data_race(si->swap_map[offset_v]));
 				if (!ret) {
 					ret = true;
+					break;
 				}
 				else{
 					pr_err("swap_offset_occupied err type[%d] offset[%lx] occupied", si->type, offset);
