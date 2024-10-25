@@ -236,7 +236,7 @@ int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 						*shadowp = old;
 				}
 				else{
-					entry_state = entry_is_entry_ext_debug(old);
+					entry_state = entry_is_entry_ext(old);//entry_is_entry_ext_debug(old);
 					if (entry_state == 1){ //swap
 						if (shadowp){
 							*shadowp = old;
@@ -250,14 +250,15 @@ int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 					}
 					else if (old && 0 == entry_state){
 						struct folio* migrating_folio = (struct folio*)old;
-						pr_err("return a folio entry[%lx]->folio[%p], folio[%p] failed add $", entry.val, old, folio);
-						if (shadowp && migrating_folio->shadow_ext){
-							*shadowp = folio_remove_shadow_entry(migrating_folio);
-						}
-						else{
-							shadow_entry_free(folio_remove_shadow_entry(migrating_folio));
-						}
-						folio_clear_stalesaved(migrating_folio);
+						pr_info("return a folio entry[%lx]->folio[%p]st[%d], folio[%p] failed add $", entry.val, old, folio);
+						// if (shadowp && migrating_folio->shadow_ext){
+						// 	*shadowp = folio_remove_shadow_entry(migrating_folio);
+						// 	BUG();
+						// }
+						// else{
+						// 	shadow_entry_free(folio_remove_shadow_entry(migrating_folio));
+						// }
+						shadow_entry_free(folio_remove_shadow_entry(migrating_folio));
 					}
 					else if (-1 == entry_state){
 						pr_err("add_to_swap_cache invalid entry[%lx]->shadow[%p], folio[%p] failed add $", entry.val, old, folio);
@@ -1117,17 +1118,20 @@ bool add_to_swap(struct folio *folio, long* left_space)
 	 */
 	err = add_to_swap_cache(folio, entry,
 			__GFP_HIGH|__GFP_NOMEMALLOC|__GFP_NOWARN, &shadow_test);
-	if (err)
+	if (err){
+		if (shadow_test){
+			pr_err("add to swap should fail get shadow folio[%p] entry[%lx]cnt[%d] shadow[%p]", 
+					folio, entry.val, __swap_count(entry), shadow_test);
+			shadow_entry_free(shadow_test);
+		}		
 		/*
 		 * add_to_swap_cache() doesn't return -EEXIST, so we can safely
 		 * clear SWAP_HAS_CACHE flag.
 		 */
-		goto fail;
-	if (shadow_test){
-		pr_err("add to swap should fail get shadow folio[%p] entry[%lx]cnt[%d] shadow[%p]", 
-				folio, entry.val, __swap_count(entry), shadow_test);
-		shadow_entry_free(shadow_test);
+		goto fail;		
 	}
+
+
 	// pr_err("ckpt2 folio[%p]<-entry[%lx]", folio, entry.val);
 	/*
 	 * Normally the folio will be dirtied in unmap because its

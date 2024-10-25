@@ -1967,7 +1967,7 @@ collect_fail_lock_keep:
 		}
 		fail_locked += 1;
 	}
-	list_splice(&folio_list_fail_lock, saved_folios); //return back, check next time
+	list_splice_init(&folio_list_fail_lock, saved_folios); //return back, check next time
 	spin_unlock_irq(&lruvec->lru_lock);
 	if (fail_locked)
 		pr_err("check_saved_folios_wb lruvec[%p] fail_lock:%d", lruvec, fail_locked);
@@ -1981,7 +1981,7 @@ collect_fail_lock_keep:
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 	pr_info("check_saved_folios_wb, do check [%d] folios", scanned);
 #endif
-
+	VM_BUG_ON(!list_empty(&folio_list_fail_lock));
 	while (!list_empty(&folio_list)) { //all folio in folio_list are locked
 		struct folio *folio;
 		unsigned int nr_pages;

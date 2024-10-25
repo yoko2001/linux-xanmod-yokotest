@@ -4547,7 +4547,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				pr_info("invalid_remap after delete2$ folio[%p] pri[%lx] orientry[%lx]  $[%d]", 
 							folio, page_private(folio_page(folio, 0)), orientry.val, folio_test_swapcache(folio));
 				
-				pr_info("inv after folio_free_swap[%p]->pri[%lx]ref[%d]entry[%lx][%d] migentry[%lx][%d]$[%d]wb[%d]lru[%d]", 
+				pr_info("inv after folio_free_swap[%p]->pri[%lx]ref[%d]entry[%lx][%d] migentry[%lx][%d] $[%d]wb[%d]lru[%d]", 
 						folio, page_private(folio_page(folio,0)), folio_ref_count(folio), 
 						orientry.val, __swap_count(orientry), migentry.val, __swap_count(migentry),	
 						folio_test_swapcache(folio),folio_test_writeback(folio), folio_test_lru(folio));			
