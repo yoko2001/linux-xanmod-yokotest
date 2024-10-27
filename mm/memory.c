@@ -4573,7 +4573,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				pr_err("do_swap folio_free_swap[%lx] ori[%lx] folio[%p] BUG()", entry.val, orientry.val, folio);
 				BUG();
 			}
-			folio_free_swap(folio);
+			folio_free_swap_debug(folio);
 			// if (swp_entry_test_special(entry)){
 			// 	pr_err("do_swap folio_free_swap[%lx] folio[%p]", entry.val, folio);
 			// }
