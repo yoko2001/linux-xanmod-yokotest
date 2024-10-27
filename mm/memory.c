@@ -4323,16 +4323,17 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 				pr_info("PF2 entry[%lx]->folio[%p] mig & remap not cleared wb[%d]sw$[%d] stale[%d] refcount[%d]", 
 					orientry.val, folio, folio_test_writeback(folio), folio_test_swapcache(folio), 
-					folio_test_stalesaved(folio), folio_ref_count(folio));	
+					folio_test_stalesaved(folio), folio_ref_count(folio));
+				folio_clear_stalesaved(folio);	
 #endif
 			}
 			else{ //read from sync IO
-				pr_info("impossible entry[%lx]->folio[%p] stale[%d] wb[%d]sw$[%d]st[%d] ref[%d] dt[%d]sb[%d]", 
+				pr_err("impossible entry[%lx]->folio[%p] stale[%d] wb[%d]sw$[%d]st[%d] ref[%d] dt[%d]sb[%d]", 
 							orientry.val, folio,  folio_test_stalesaved(folio), 
 							folio_test_writeback(folio), folio_test_swapcache(folio), 
 							folio_test_stalesaved(folio), folio_ref_count(folio), 
 							folio_test_dirty(folio), folio_test_swapbacked(folio));
-				// BUG();
+				BUG();
 			}
 		}
 #endif
@@ -4589,12 +4590,15 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		}
 	}
 
+	// if (folio)
+	// 	VM_BUG_ON_FOLIO(folio_test_stalesaved(folio), folio);
 	if (unlikely(folio_test_stalesaved(folio))){
 		folio_clear_stalesaved(folio);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 		pr_err("do_swap CLEAN STALESAVED entry[%lx] folio[%p] $[%d]ref[%d]cnt[%d]wb[%d]", 
 					entry.val, folio,  folio_test_swapcache(folio),  folio_ref_count(folio), 
 					__swp_swapcount(entry), folio_test_writeback(folio));
+		// BUG();
 #endif
 	}
 

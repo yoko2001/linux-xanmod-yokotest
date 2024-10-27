@@ -2120,7 +2120,7 @@ pass_cleanup:
 						entry.val, __swp_swapcount(entry), migentry.val, __swp_swapcount(migentry));
 				// BUG();			
 			}
-			count_memcg_events(lruvec_memcg(lruvec), PGSWAPPED_MIG_SAVED, folio_nr_pages(folio));
+			count_memcg_events(lruvec_memcg(lruvec), SWAP_STALE_SAVE, folio_nr_pages(folio));
 			folio_add_lru(folio);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 			pr_info("folio[%p] succeed enable, lruadded ref[%d]stale[%d]d[%d]", 

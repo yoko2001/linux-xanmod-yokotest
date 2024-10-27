@@ -250,7 +250,8 @@ int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 					}
 					else if (old && 0 == entry_state){
 						struct folio* migrating_folio = (struct folio*)old;
-						pr_info("return a folio entry[%lx]->folio[%p]st[%d], folio[%p] failed add $", entry.val, old, folio);
+						pr_info("return a folio entry[%lx]->folio[%p]st[%d], folio[%p] failed add $", 
+									entry.val, old, folio_test_stalesaved(old), folio);
 						// if (shadowp && migrating_folio->shadow_ext){
 						// 	*shadowp = folio_remove_shadow_entry(migrating_folio);
 						// 	BUG();
