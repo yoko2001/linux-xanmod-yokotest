@@ -301,7 +301,6 @@ struct swap_info_struct * global_fastest_swap_si(void){
 	return fastest_swap_si;
 gfsi_bad_nofile:
 	pr_err("%s gfsi_bad_nofile", __FILE__);
-gfsi_out:
 	return NULL;
 }
 static void update_swap_prio_mark(void);
@@ -1492,6 +1491,7 @@ bad_device:
 	goto out;
 bad_nofile:
 	pr_err("%s: %s%08lx\n", __func__, Bad_file, entry.val);
+	dump_stack();
 out:
 	return NULL;
 }
@@ -1557,13 +1557,7 @@ static unsigned char __swap_entry_free_locked(struct swap_info_struct *p,
 	}
 
 	usage = count | has_cache;
-	// if (version)
-	// 	pr_err("__SEFL offset_v[%lx] ver[%d] cnt%d;has_cache%d", 
-	// 				offset_v, version, count, has_cache);
-	if (unlikely(usage == 0xff)){
-		pr_err("__swap_entry_free_locked bad usage[%d]count[%u]ori[%u] entry[%lx]", 
-				usage, count, oricount, swp_entry_version(p->type, offset, version).val);
-	}
+
 	if (usage == SWAP_MAP_BAD || usage ==  COUNT_CONTINUED){
 		pr_err("offset[%lx]v[%d]prio[%d] usage = [%s]", 
 				offset, version, p->prio, usage == SWAP_MAP_BAD ? "SWAP_MAP_BAD" : "COUNT_CONTINUED");

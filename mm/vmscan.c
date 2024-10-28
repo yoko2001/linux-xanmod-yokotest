@@ -2038,7 +2038,7 @@ keep_next_time:
 			VM_BUG_ON_FOLIO(non_swap_entry(entry), folio);	
 			// VM_BUG_ON_FOLIO(folio_mapped(folio), folio);	
 			if (!folio_test_stalesaved(folio)){
-				// //we're fucked up by do swap turn this page into safe state
+				// //we're interruped by do_swap_page turn this page into safe state
 				// pr_err("intercepted before enable remap folio[%p]cnt[%d]$[%d]", 
 				// 		folio,	folio_ref_count(folio), folio_test_swapcache(folio));
 				// //we need to handle the remap & mig cache clean up part
@@ -2063,12 +2063,12 @@ keep_next_time:
 				// else{
 				// 	BUG();
 				// }
-				
+				VM_BUG_ON_FOLIO(folio_swap_entry(folio).val != entry.val, folio);
 				// folio_add_lru(folio); //this should be ok, because lru is protected by folio_lock
 				// //do_swap will not map to it, it should get freed normally
-				// delete_from_swap_remap_get_mig(folio, entry, &migentry);
-				// delete_from_swap_cache_mig(folio, migentry, true, false);
-				// swap_free(migentry);
+				delete_from_swap_remap_get_mig(folio, entry, &migentry);
+				delete_from_swap_cache_mig(folio, migentry, true, false);
+				swap_free(migentry);
 				// if (!folio_test_ksm(folio) && folio_ref_count(folio) == 2){
 				// 	pr_err("do refree swap folio[%p]ref[%d] entry[%lx]cnt[%d] clear now", 
 				// 		folio,	folio_ref_count(folio), entry.val, __swap_count(entry));	
@@ -2079,9 +2079,9 @@ keep_next_time:
 				// 	folio_free_swap(folio);
 				// }
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-				pr_err("folio[%p]ref[%d]pri[%lx] entry[%lx]cnt[%d]migentry[%lx]cnt[%d] clear now", 
+				pr_err("folio[%p]ref[%d]pri[%lx] entry[%lx]cnt[%d]migentry[%lx]cnt[%d] cleanned mig", 
 					folio,	folio_ref_count(folio), folio_swap_entry(folio).val, entry.val, __swap_count(entry),
-					migentry.val, __swap_count(migentry));					
+					migentry.val, __swap_count(migentry));	
 #endif
 pass_cleanup:
 				folio_unlock(folio);
@@ -5403,7 +5403,6 @@ static bool sort_folio(struct lruvec *lruvec, struct folio *folio, int tier_idx,
 	int refs = folio_lru_refs(folio);
 	int tier = lru_tier_from_refs(refs);
 	struct lru_gen_folio *lrugen = &lruvec->lrugen;
-	static int print_limit = 100000;
 
 	VM_WARN_ON_ONCE_FOLIO(gen >= MAX_NR_GENS, folio);
 

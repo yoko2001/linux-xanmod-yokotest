@@ -1344,7 +1344,7 @@ void delete_from_swap_cache_mig(struct folio* folio, swp_entry_t entry, bool dec
 	folio_ref_sub(folio, folio_nr_pages(folio));
 	if (folio_test_swappriohigh(folio)){
 		pr_err("delete_from_swap_cache_mig folio[%p] ref[%d] subbed", folio, folio_ref_count(folio));
-		dump_stack();
+		// dump_stack();
 	}
 }
 
@@ -1407,7 +1407,8 @@ void free_swap_cache(struct page *page)
 		if(unlikely(folio_test_swappriohigh(folio) || folio_test_swappriolow(folio))){
 			folio_clear_swappriohigh(folio);
 			folio_clear_swappriolow(folio);
-			pr_err("free_swap_cache folio[%p] force frees_swap pass", folio);			
+			pr_err("free_swap_cache folio[%p]wb[%d]$[%d] pri[%lx] force frees_swap pass", 
+					folio, folio_test_writeback(folio), folio_test_swapcache(folio), folio_swap_entry(folio).val);			
 		}
 		folio_free_swap(folio);
 		folio_unlock(folio);

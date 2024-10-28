@@ -4548,7 +4548,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				
 				pr_info("inv after folio_free_swap[%p]->pri[%lx]ref[%d]entry[%lx][%d] migentry[%lx][%d] $[%d]wb[%d]lru[%d]", 
 						folio, folio_swap_entry(folio).val, folio_ref_count(folio), 
-						orientry.val, __swap_count(orientry), migentry.val, __swap_count(migentry),	
+						orientry.val, __swp_swapcount(orientry), migentry.val, __swp_swapcount(migentry),	
 						folio_test_swapcache(folio),folio_test_writeback(folio), folio_test_lru(folio));			
 				migentry.val = 0;
 				need_unlock = false;
@@ -4591,9 +4591,9 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	// if (folio)
 	// 	VM_BUG_ON_FOLIO(folio_test_stalesaved(folio), folio);
 	if (unlikely(folio_test_stalesaved(folio))){
-		folio_clear_stalesaved(folio);
+		// folio_clear_stalesaved(folio);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-		pr_err("do_swap CLEAN STALESAVED entry[%lx] folio[%p] $[%d]ref[%d]cnt[%d]wb[%d]", 
+		pr_err("do_swap still STALESAVED entry[%lx] folio[%p] $[%d]ref[%d]cnt[%d]wb[%d]", 
 					entry.val, folio,  folio_test_swapcache(folio),  folio_ref_count(folio), 
 					__swp_swapcount(entry), folio_test_writeback(folio));
 		// BUG();
