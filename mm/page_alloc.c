@@ -3592,7 +3592,7 @@ void free_unref_page_list(struct list_head *list)
 				shadow_entry_free(shadow);
 				// trace_shadow_entry_free(shadow, 4);	
 				pr_info("[FREE]free_unref_list normal shadow[%p]folio[%p]pri[%lx]ref[%d]$[%d]priolow[%d]",
-						shadow, folio, page_private(folio_page(folio, 0)), 
+						shadow, folio, folio_swap_entry(folio).val, 
 						folio_ref_count(folio), folio_test_swapcache(folio), folio_test_swappriolow(folio));
 				if (folio_test_swapcache(folio) && folio_swap_entry(folio).val != 0){
 					__delete_from_swap_cache(folio, folio_swap_entry(folio), shadow);

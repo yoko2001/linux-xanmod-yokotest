@@ -814,7 +814,7 @@ swp_entry_t folio_get_migentry(struct folio* folio, swp_entry_t ori_swap)
 	int i;
 	long nr;
 	struct address_space *address_space_remap;
-	VM_WARN_ON_FOLIO((page_private(folio_page(folio, 0)) == 0), folio);
+	VM_WARN_ON_FOLIO((folio_swap_entry(folio).val == 0), folio);
 
 	mig_swap.val = 0;
 	address_space_remap = swap_address_space_remap(ori_swap);
@@ -941,8 +941,8 @@ void __delete_from_swap_cache_mig(struct folio *folio,
 	for (i = 0; i < nr; i++) {
 		void *entry_ = xas_load(&xas);
 		if (entry_ != folio) {
-			pr_err("__delete_sc_mig mismatch entry[%lx]->folio[%p] [%lx]", 
-					swp_offset(entry), folio, entry_);
+			pr_err("__delete_sc_mig mismatch entry[%lx]->folio[%p] pri[%lx]", 
+					swp_offset(entry), folio, folio_swap_entry(folio).val);
 			BUG();
 		}
 		// if (page_private(folio_page(folio, i)) != 0){

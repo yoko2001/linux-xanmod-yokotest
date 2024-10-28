@@ -1452,12 +1452,12 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	if (unlikely(folio_test_stalesaved(folio))){
 		mig_entry = folio_swap_entry(folio);//folio_get_migentry(folio, ori_swap);
 		if (!folio_test_active(folio)){
-			ori_swap.val = page_private(folio_page(folio, 0));
+			ori_swap.val = folio_swap_entry(folio).val;
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-			pr_info("__remove_mapping folio[%p]ori[%lx][%d]->mig[%lx][%d]ref[%d]wb[%d]d[%d]$[%d]", 
+			pr_info("__remove_mapping folio[%p]ori[%lx][%d]->mig[%lx][%d]ref[%d]wb[%d]d[%d]$[%d]ac[%d]", 
 						folio, ori_swap.val,__swap_count(ori_swap), mig_entry.val,__swap_count(mig_entry),
 						folio_ref_count(folio), folio_test_writeback(folio),
-						folio_test_dirty(folio), folio_test_swapcache(folio));
+						folio_test_dirty(folio), folio_test_swapcache(folio), folio_test_active(folio));
 #endif
 		}
 	}
@@ -1570,10 +1570,10 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		
 		xa_unlock_irq(&mapping->i_pages);
 		if (!folio_test_stalesaved(folio)){
-			if(unlikely((page_private(folio_page(folio, 0)) != 0) || folio_test_swapcache(folio)))
+			if(unlikely((folio_swap_entry(folio).val != 0) || folio_test_swapcache(folio)))
 			{
 				pr_err("ckpt folio[%p] $[%d], priavte[%lx]", 
-							folio, folio_test_swapcache(folio), page_private(folio_page(folio, 0)));
+							folio, folio_test_swapcache(folio), folio_swap_entry(folio).val);
 				BUG();	
 			}
 		} 
@@ -1607,7 +1607,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 				pr_info("after clear folio[%p]ref[%d] memcg[%d]zone[%p] private[%lx]found mig_entry[%lx] count %d", 
 							folio, folio_ref_count(folio), mem_cgroup_id(folio_memcg(folio)), page_zone(folio_page(folio, 0)),
-							page_private(folio_page(folio, 0)), mig_entry_phy.val, __swp_swapcount(mig_entry_phy));
+							folio_swap_entry(folio).val, mig_entry_phy.val, __swp_swapcount(mig_entry_phy));
 #endif
 			}
 			else{
@@ -1624,7 +1624,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 		if (folio_test_stalesaved(folio)){
 			pr_info("after clear folio[%p]ref[%d] private[%lx]found entry->[%lx]cnt[%d] mig_entry[%lx]cnt[%d]", 
-							folio, folio_ref_count(folio), page_private(folio_page(folio, 0)), 
+							folio, folio_ref_count(folio), folio_swap_entry(folio).val, 
 							swap.val, __swp_swapcount(swap),
 							mig_entry.val, __swp_swapcount(mig_entry));
 		}
@@ -2033,7 +2033,7 @@ keep_next_time:
 		list_for_each_entry_safe(folio, next, &saved_sb_complete_list, lru){
 			//update mig entry state in remap
 			int ret;
-			swp_entry_t migentry, entry = {.val = page_private(folio_page(folio, 0))};
+			swp_entry_t migentry, entry = {.val = folio_swap_entry(folio).val};
 			VM_BUG_ON_FOLIO(folio_nr_pages(folio) > 1, folio);
 			VM_BUG_ON_FOLIO(non_swap_entry(entry), folio);	
 			// VM_BUG_ON_FOLIO(folio_mapped(folio), folio);	
@@ -2047,12 +2047,12 @@ keep_next_time:
 				// if (__swap_count(migentry) != 0){
 				// 	pr_err("folio[%p]ref[%d]$[%d]pri[%lx] mig[%lx]cnt[%d] remap deleted add to lru, swap freed", 
 				// 		folio,	folio_ref_count(folio), folio_test_swapcache(folio), 
-				// 		page_private(folio_page(folio, 0)), migentry.val, __swap_count(migentry));					
+				// 		folio_swap_entry(folio).val, migentry.val, __swap_count(migentry));					
 				// 	// BUG();
 				// }
 #endif
 				if (unlikely(entry.val == 0 || non_swap_entry(entry))){
-					pr_err("do skip cleanup folio[%p]ref[%d] entry[%lx]cnt[%d", 
+					pr_info("do skip cleanup folio[%p]ref[%d] entry[%lx]cnt[%d]", 
 						folio,	folio_ref_count(folio), entry.val, __swap_count(entry));	
 					goto pass_cleanup;
 				}
@@ -2080,7 +2080,7 @@ keep_next_time:
 				// }
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 				pr_err("folio[%p]ref[%d]pri[%lx] entry[%lx]cnt[%d]migentry[%lx]cnt[%d] clear now", 
-					folio,	folio_ref_count(folio), page_private(folio_page(folio, 0)), entry.val, __swap_count(entry),
+					folio,	folio_ref_count(folio), folio_swap_entry(folio).val, entry.val, __swap_count(entry),
 					migentry.val, __swap_count(migentry));					
 #endif
 pass_cleanup:
@@ -4895,7 +4895,7 @@ static bool try_to_inc_min_seq(struct lruvec *lruvec, bool can_swap)
 						count++;
 						if (count >=  lrugen->nr_pages[gen][type][zone] || count >= 4) break;
 						// pr_info("try_to_inc_min_seq check folio[%p]pri[%lx] stale[%d]", 
-						// 		ffolio, page_private(folio_page(ffolio, 0)), folio_test_stalesaved(ffolio));
+						// 		ffolio, folio_swap_entry(folio).val, folio_test_stalesaved(ffolio));
 					}
 					goto next;
 				}

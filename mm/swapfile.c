@@ -1975,7 +1975,7 @@ bool folio_free_swap(struct folio *folio)
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 	if (folio_test_swappriohigh(folio) || folio_test_swappriolow(folio)){
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-		pr_info("folio_free_swap folio[%p]pri[%lx] blocked skip", folio, page_private(folio_page(folio, 0)));
+		pr_info("folio_free_swap folio[%p]pri[%lx] blocked skip", folio, folio_swap_entry(folio).val);
 #endif
 		// dump_stack();
 		return false;
@@ -2009,7 +2009,7 @@ bool folio_free_swap(struct folio *folio)
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG	
 	if (folio_test_swappriolow(folio))
 		pr_info("folio_free_swap folio[%p]pri[%lx]$[%d]", 
-				folio, page_private(folio_page(folio, 0)), folio_test_swapcache(folio));
+				folio, folio_swap_entry(folio).val, folio_test_swapcache(folio));
 #endif
 	delete_from_swap_cache(folio);
 	
@@ -2048,9 +2048,8 @@ bool folio_free_swap_debug(struct folio *folio)
 	if (pm_suspended_storage())
 		return false;
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG	
-	if (folio_test_swappriolow(folio))
-		pr_info("folio_free_swap folio[%p]pri[%lx]$[%d]", 
-				folio, page_private(folio_page(folio, 0)), folio_test_swapcache(folio));
+	pr_info("folio_free_swap folio[%p]pri[%lx]$[%d]", 
+				folio, folio_swap_entry(folio).val, folio_test_swapcache(folio));
 #endif
 	delete_from_swap_cache(folio);
 	
@@ -2708,10 +2707,10 @@ retry:
 		folio_lock(folio);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 		pr_info("try_to_unuse wait_writeback[%lx], folio[%p]private[%lx] wb[%d]", 
-				entry.val, folio, page_private(folio_page(folio, 0)), folio_test_writeback(folio));
+				entry.val, folio, folio_swap_entry(folio).val, folio_test_writeback(folio));
 #endif
 		folio_wait_writeback(folio);
-		if (entry.val == page_private(folio_page(folio, 0))){
+		if (entry.val == folio_swap_entry(folio).val){
 			folio_free_swap(folio);
 		}
 		folio_unlock(folio);
