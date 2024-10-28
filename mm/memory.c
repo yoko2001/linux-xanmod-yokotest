@@ -4524,7 +4524,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				folio_add_lru_save(folio);
 			}
 		}else{ //invalid remap case
-			if (should_try_to_free_swap(folio, vma, vmf->flags, 2)){ //invalid / normal
+			if (should_try_to_free_swap(folio, vma, vmf->flags, 2)){ //invalid
 				swap_free(entry);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 				pr_info("invalid_remap after swap_free folio[%p] pri[%lx] migentry[%lx][%d]orientry[%lx][%d] $[%d]", 
@@ -4566,15 +4566,12 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		}
 	}
 	else{ //normal case
-		if (should_try_to_free_swap(folio, vma, vmf->flags, 0)){ //invalid / normal
-			if (orientry.val != entry.val){
+		if (should_try_to_free_swap(folio, vma, vmf->flags, 0)){ // normal
+			if (unlikely(orientry.val != entry.val)){
 				pr_err("do_swap folio_free_swap[%lx] ori[%lx] folio[%p] BUG()", entry.val, orientry.val, folio);
 				BUG();
 			}
 			folio_free_swap(folio);
-			// if (swp_entry_test_special(entry)){
-			// 	pr_err("do_swap folio_free_swap[%lx] folio[%p]", entry.val, folio);
-			// }
 		}
 		else{
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
