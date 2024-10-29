@@ -1964,9 +1964,9 @@ unsigned int check_saved_folios_wb(struct lruvec *lruvec,
 		scanned++;
 		continue;
 collect_fail_lock_keep:
-		if (folio_test_stalesaved(folio)){ //cancelled by do_swap
-			list_move(&folio->lru, &folio_list_fail_lock);
-		}
+		// if (folio_test_stalesaved(folio)){ //cancelled by do_swap
+		// 	list_move(&folio->lru, &folio_list_fail_lock);
+		// }
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 		pr_info("check fail lock folio[%p] st[%d]", folio, folio_test_stalesaved(folio));
 #endif
