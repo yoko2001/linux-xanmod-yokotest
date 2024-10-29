@@ -1940,6 +1940,7 @@ static bool may_enter_fs(struct folio *folio, gfp_t gfp_mask)
 
 #ifdef CONFIG_LRU_GEN
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
+const int check_saved_scanmax = 1024;
 unsigned int check_saved_folios_wb(struct lruvec *lruvec, 
 		struct pglist_data *pgdat, struct scan_control *sc)
 {
@@ -1955,6 +1956,7 @@ unsigned int check_saved_folios_wb(struct lruvec *lruvec,
 	spin_lock_irq(&lruvec->lru_lock);
 	while (!list_empty_careful(saved_folios)) {
 		struct folio *folio;
+		if (scanned >= check_saved_scanmax) break;
 		folio = lru_to_folio(saved_folios);
 		if (!folio_trylock(folio))
 			goto collect_fail_lock_keep;
@@ -2067,8 +2069,10 @@ keep_next_time:
 				// folio_add_lru(folio); //this should be ok, because lru is protected by folio_lock
 				// //do_swap will not map to it, it should get freed normally
 				delete_from_swap_remap_get_mig(folio, entry, &migentry);
-				delete_from_swap_cache_mig(folio, migentry, true, false);
-				swap_free(migentry);
+				if (migentry.val){
+					delete_from_swap_cache_mig(folio, migentry, true, false);
+					swap_free(migentry);					
+				}
 				// if (!folio_test_ksm(folio) && folio_ref_count(folio) == 2){
 				// 	pr_err("do refree swap folio[%p]ref[%d] entry[%lx]cnt[%d] clear now", 
 				// 		folio,	folio_ref_count(folio), entry.val, __swap_count(entry));	
