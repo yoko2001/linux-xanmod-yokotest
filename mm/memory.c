@@ -4324,8 +4324,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				pr_info("PF2 entry[%lx]->folio[%p] mig & remap not cleared wb[%d]sw$[%d] stale[%d] refcount[%d]", 
 					orientry.val, folio, folio_test_writeback(folio), folio_test_swapcache(folio), 
 					folio_test_stalesaved(folio), folio_ref_count(folio));
-				folio_clear_stalesaved(folio);	
 #endif
+				folio_clear_stalesaved(folio);	
 			}
 			else{ //read from sync IO
 				pr_err("impossible entry[%lx]->folio[%p] stale[%d] wb[%d]sw$[%d]st[%d] ref[%d] dt[%d]sb[%d]", 

@@ -1343,8 +1343,9 @@ void delete_from_swap_cache_mig(struct folio* folio, swp_entry_t entry, bool dec
 	}
 	folio_ref_sub(folio, folio_nr_pages(folio));
 	if (folio_test_swappriohigh(folio)){
-		pr_err("delete_from_swap_cache_mig folio[%p]ref[%d] a[%d]st[%d] subbed", 
-				folio, folio_ref_count(folio), folio_test_active(folio), folio_test_stalesaved(folio));
+		pr_err("delete_from_swap_cache_mig folio[%p] pri[%lx]ref[%d] a[%d]d[%d]st[%d]$[%d] subbed", 
+				folio, folio_swap_entry(folio).val, folio_ref_count(folio), folio_test_active(folio), 
+				folio_test_dirty(folio), folio_test_stalesaved(folio), folio_test_swapcache(folio));
 		// dump_stack();
 	}
 }
