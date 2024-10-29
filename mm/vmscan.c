@@ -1317,12 +1317,6 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 	if (mapping->a_ops->writepage == NULL)
 		return PAGE_ACTIVATE;
 
-	if (unlikely(folio_test_stalesaved(folio))){
-		if (unlikely(folio_test_dirty(folio))){
-			pr_err("stalesaved folio[%p] got dirty again", folio);
-			BUG();
-		}
-	}
 	if (folio_clear_dirty_for_io(folio)) {
 		int res;
 		struct writeback_control wbc = {
@@ -1351,7 +1345,12 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 		node_stat_add_folio(folio, NR_VMSCAN_WRITE);
 		return PAGE_SUCCESS;
 	}
-
+	if (unlikely(folio_test_stalesaved(folio))){
+		if (unlikely(folio_test_dirty(folio))){
+			pr_err("stalesaved folio[%p] got dirty again", folio);
+			BUG();
+		}
+	}
 	return PAGE_CLEAN;
 }
 

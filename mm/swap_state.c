@@ -1343,7 +1343,7 @@ void delete_from_swap_cache_mig(struct folio* folio, swp_entry_t entry, bool dec
 	}
 	folio_ref_sub(folio, folio_nr_pages(folio));
 	if (folio_test_swappriohigh(folio)){
-		pr_err("delete_from_swap_cache_mig folio[%p]a[%d]st[%d] ref[%d] subbed", 
+		pr_err("delete_from_swap_cache_mig folio[%p]ref[%d] a[%d]st[%d] subbed", 
 				folio, folio_ref_count(folio), folio_test_active(folio), folio_test_stalesaved(folio));
 		// dump_stack();
 	}
