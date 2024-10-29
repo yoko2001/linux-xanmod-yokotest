@@ -1967,6 +1967,10 @@ collect_fail_lock_keep:
 		if (folio_test_stalesaved(folio)){ //cancelled by do_swap
 			list_move(&folio->lru, &folio_list_fail_lock);
 		}
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+		pr_info("check fail lock folio[%p] st[%d]", folio, folio_test_stalesaved(folio));
+#endif
+		list_move(&folio->lru, saved_folios);
 		fail_locked += 1;
 	}
 	list_splice_init(&folio_list_fail_lock, saved_folios); //return back, check next time
