@@ -1955,12 +1955,16 @@ unsigned int check_saved_folios_wb(struct lruvec *lruvec,
 	spin_lock_irq(&lruvec->lru_lock);
 	while (!list_empty_careful(saved_folios)) {
 		struct folio *folio;
+		scanned++;
 		if (scanned >= check_saved_scanmax) break;
+
 		folio = lru_to_folio(saved_folios);
+		list_del(&folio->lru);
+
 		if (!folio_trylock(folio))
 			goto collect_fail_lock_keep;
-		list_move(&folio->lru, &folio_list);
-		scanned++;
+
+		list_add(&folio->lru, &folio_list);
 		continue;
 collect_fail_lock_keep:
 		// if (folio_test_stalesaved(folio)){ //cancelled by do_swap
@@ -1969,7 +1973,7 @@ collect_fail_lock_keep:
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 		pr_info("check fail lock folio[%p] st[%d]", folio, folio_test_stalesaved(folio));
 #endif
-		list_move(&folio->lru, saved_folios);
+		list_add(&folio->lru, saved_folios);
 		fail_locked += 1;
 	}
 	list_splice_init(&folio_list_fail_lock, saved_folios); //return back, check next time
