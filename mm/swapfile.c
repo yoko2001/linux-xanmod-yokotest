@@ -2359,6 +2359,9 @@ static int unuse_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 				folio = page_folio(page);
 				//disable migentry
 				if (migentry.val){
+					pr_err("unuse_pte_range free migentry folio[%p]pri[%lx] entry[%lx]cnt[%d] mig[%lx]cnt[%d]", 
+									folio, folio_swap_entry(folio),
+									entry.val, swp_swapcount(entry), migentry.val, swp_swapcount(migentry));
 					swap_free(migentry);
 					if (swp_entry_test_ext(migentry) && swp_swapcount(migentry) == 0){
 						delete_from_swap_remap(folio, entry, migentry, false); //should come with no ref_sub
