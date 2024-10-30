@@ -456,20 +456,20 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 		unsigned short maxgen = gen0;
 		if (gen1 > 0) maxgen = max(gen1, maxgen);
 
-		if (maxgen >= 50){
-			if (fast_left > 16384)
+		if (maxgen >= 36){
+			if (fast_left > 4096)
 				dec_tree_result = 1;
 			else
 				dec_tree_result = 0;
 		}
 		else{ // maxgen < 60
-			if (maxgen >= 36){
-				if (fast_left > 4096)
+			if (maxgen >= 16){
+				if (fast_left > 2048)
 					dec_tree_result = 1;
 				else
 					dec_tree_result = 0;
 			}
-			else if (maxgen < 16) { // 0 -9
+			else if (maxgen < 5) { // 0 -9
 				dec_tree_result = 1;
 			}
 			else{ // 10-44
@@ -481,7 +481,7 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 		}
 		count_memcg_folio_events(folio, WI_TREE, 1);
 	}else{
-		if (fast_left > 16384){
+		if (fast_left > 1024){
 			dec_tree_result = 1;
 		}
 		else{
