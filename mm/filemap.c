@@ -1653,11 +1653,11 @@ void folio_end_writeback(struct folio *folio)
 	 */
 	folio_get(folio);
 	if (folio_test_stalesaved(folio)){
-		if (!__folio_end_writeback_saved(folio))
+		if (unlikely(!__folio_end_writeback_saved(folio)))
 			BUG();		
 	}
 	else{
-		if (!__folio_end_writeback(folio))
+		if (unlikely(!__folio_end_writeback(folio)))
 			BUG();	
 	}
 
@@ -2063,7 +2063,7 @@ struct folio *__syncio_swapcache_get_folio(struct address_space *mapping, pgoff_
 	struct folio *folio;
 	swp_entry_t entry;
 	bool valid_folio = false;
-	if (!mapping)
+	if (unlikely(!mapping))
 		BUG();
 	folio = mapping_get_entry(mapping, index);
 	// pr_err("mapping[%pK]index[%lx] = [%lx]", mapping, index, (unsigned long)folio);
@@ -2071,7 +2071,7 @@ struct folio *__syncio_swapcache_get_folio(struct address_space *mapping, pgoff_
 		goto no_page;	
 	if (xa_is_value(folio)) {
 		entry.val = xa_to_value(folio);
-		if (is_hwpoison_entry(entry)){
+		if (unlikely(is_hwpoison_entry(entry))){
 			pr_err("__syncio_swapcache_get_folio got hwpoinson entry[%lx], two pf happens synmo", entry.val);
 			BUG();
 		}
@@ -2080,33 +2080,22 @@ struct folio *__syncio_swapcache_get_folio(struct address_space *mapping, pgoff_
 		folio = NULL;
 	}
 	else if (entry_is_entry_ext(folio) != 0){ //1 / -1
-		if (fgp_flags & FGP_ENTRY){
-			BUG();
-			return folio;
-		}
-		// pr_err("__syncio_swapcache_get_folio indx[%lx]->[%lx]->NULL", 
-		// 		index, folio);
+		VM_BUG_ON_FOLIO(fgp_flags & FGP_ENTRY, folio);
 		folio = NULL; //this is correct
+		return folio;
 	}
 	else{ // 0 case
 		valid_folio = true;
 		if (folio_test_stalesaved(folio) && is_stale_saved_folio)
 			*is_stale_saved_folio = true;
-		if (!pfn_valid(folio_pfn(folio))){
-			pr_err("__syncio_swapcache_get_folio got invalid entry[%lx], folio[%p]", entry.val, folio);
-			BUG();
-		}
-		// pr_err("__syncio_swapcache_get_folio valid folio[%lx]", folio);
+		VM_BUG_ON_FOLIO(!pfn_valid(folio_pfn(folio)), folio);
 	}
-	if (fgp_flags & FGP_LOCK) {
-		BUG();
-	}
+	VM_BUG_ON_FOLIO((fgp_flags & FGP_LOCK), folio);
+
 	if (is_stale_saved_folio)
 		*is_stale_saved_folio = (valid_folio && (folio_test_stalesaved(folio)));
 no_page:
-	if (!folio && (fgp_flags & FGP_CREAT)) {
-		BUG();
-	}
+	VM_BUG_ON(!folio && (fgp_flags & FGP_CREAT));
 
 	return folio;
 }

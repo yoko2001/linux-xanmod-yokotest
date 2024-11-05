@@ -1235,7 +1235,7 @@ void swap_remap_unlock(struct folio *folio, swp_entry_t ori_swap, swp_entry_t mi
 	long nr = 1, i;
 
 	address_space_remap = swap_address_space_remap(ori_swap);
-	if (!address_space_remap){
+	if (unlikely(!address_space_remap)){
 		BUG();
 	}
 	pgoff_t idx = swp_offset(ori_swap);
@@ -1247,7 +1247,7 @@ void swap_remap_unlock(struct folio *folio, swp_entry_t ori_swap, swp_entry_t mi
 		if (xa_is_value(entry)){
 			_locked_mig_swap.val = xa_to_value(entry);
 			swp_entry_clear_ext(&_locked_mig_swap, 0x3);
-			if (_locked_mig_swap.val && non_swap_entry(_locked_mig_swap)){
+			if (unlikely(_locked_mig_swap.val && non_swap_entry(_locked_mig_swap))){
 				pr_err("remap err [%lx]->[%lx]", ori_swap.val, mig_swap.val);
 				BUG();
 			}
@@ -1258,7 +1258,7 @@ void swap_remap_unlock(struct folio *folio, swp_entry_t ori_swap, swp_entry_t mi
 			xas_store(&xas, xa_mk_value(mig_swap.val));
 			pr_err("remap unlock[%lx]->[%lx]", ori_swap.val, mig_swap.val);
 		}
-		else if (entry){
+		else if (unlikely(entry)){
 			pr_err("remap inner bug [%lx]->[%p]",  ori_swap.val, entry);
 			BUG();
 		}
@@ -1270,11 +1270,11 @@ void swap_remap_unlock(struct folio *folio, swp_entry_t ori_swap, swp_entry_t mi
 void delete_from_swap_remap_get_mig(struct folio* folio, swp_entry_t entry_from, swp_entry_t* entry_to)
 {
 	struct address_space *address_space = swap_address_space_remap(entry_from);
-	if (!address_space){
+	if (unlikely(!address_space)){
 		pr_err("delete_from_swap_remap address space BUG");
 		return;
 	}
-	if (!folio){
+	if (unlikely(!folio)){
 		pr_err("delete_from_swap_remap address no folio");
 		return;
 	}
@@ -1370,7 +1370,7 @@ void clear_shadow_from_swap_cache(int type, unsigned long begin,
 			if (free && old && entry_is_entry_ext(old) == 1){
 				// pr_info("clear_shadow_from_s shadow[%p]", old);
 				_entry = xas_store(&xas, NULL);
-				if (old != _entry)
+				if (unlikely(old != _entry))
 					BUG();
 				shadow_entry_free(old);
 				// trace_shadow_entry_free(old, 6);	
@@ -1469,18 +1469,9 @@ struct folio *swap_cache_get_folio(struct swap_info_struct * si, swp_entry_t ent
 	// }
 	if (data_race(si->flags & SWP_SYNCHRONOUS_IO) && !non_swap_entry(entry)){
 		folio = syncio_swapcache_get_folio(swap_address_space(entry), offset_v ,&is_stale_saved_folio);
-		// if (folio){
-		// 	if (is_stale_saved_folio)
-		// 	// pr_err("scgf si[%d] return entry[%lx]->[%p]", si->prio, entry.val, folio);
-		// }	
-		// pr_err("swap_cache_get_folio si[%d] entry[%lx] offset[%lx]return folio [%p]", 
-		// 					si->prio, entry.val, offset_v, folio);
 	}
 	else{
 		folio = filemap_get_folio(swap_address_space(entry), offset_v);
-		// if (folio){
-		// 	// pr_err("scgf async return entry[%lx]->[%p]", entry.val, folio);
-		// }
 	}
 	if (folio) {
 		bool vma_ra = swap_use_vma_readahead();
@@ -1541,15 +1532,10 @@ static struct folio *raw_swap_cache_get_folio(struct swap_info_struct * si, swp_
 
 	if (data_race(si->flags & SWP_SYNCHRONOUS_IO) && !non_swap_entry(entry)){
 		folio = syncio_swapcache_get_folio(swap_address_space(entry), offset_v ,&is_stale_saved_folio);
-		// if (folio){
-		// 	if (is_stale_saved_folio)
-		// 		pr_err("raw_swap_cache_get_folio si[%d] return stale saved folio [%p]", si->prio, folio);
-		// 	// pr_err("scgf si[%d] return entry[%lx]->[%p]", si->prio, entry.val, folio);
-		// }	
 	}
 	else{
 		folio = filemap_get_folio(swap_address_space(entry), offset_v);
-		if (folio){
+		if (unlikely(folio)){
 			pr_info("scgf async return entry[%lx]->[%p]", entry.val, folio);
 		}
 	}
