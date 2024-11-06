@@ -1412,9 +1412,9 @@ nextsi:
 		if (plist_node_empty(&next->avail_lists[node]))
 			goto start_over;
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-		if (tier == 1){
-			pr_info("get_swap_pages debug si[%d]", si->type);
-		}
+		// if (tier == 1){
+		// 	pr_info("get_swap_pages debug si[%d]", si->type);
+		// }
 #endif
 	}
 

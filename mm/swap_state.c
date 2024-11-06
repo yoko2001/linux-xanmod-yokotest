@@ -1231,13 +1231,8 @@ void clear_swap_remap_entire(struct swap_info_struct *si)
 
 void swap_remap_unlock(struct folio *folio, swp_entry_t ori_swap, swp_entry_t mig_swap){
 	swp_entry_t _locked_mig_swap, locked_mig;
-	struct address_space *address_space_remap;
+	struct address_space *address_space_remap = swap_address_space_remap(ori_swap);
 	long nr = 1, i;
-
-	address_space_remap = swap_address_space_remap(ori_swap);
-	if (unlikely(!address_space_remap)){
-		BUG();
-	}
 	pgoff_t idx = swp_offset(ori_swap);
 	XA_STATE(xas, &address_space_remap->i_pages, idx);
 

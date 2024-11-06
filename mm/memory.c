@@ -4105,11 +4105,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				bool page_allocated;
 				struct swap_iocb **plug;
 				if (invalid_remap){
-					if (unlikely(orientry.val != entry.val)){
-						pr_err("__read_swap_cache_async_save try read_$_async entry[%lx] <> ori[%lx]", 
-								entry.val, orientry.val);
-						BUG();				
-					}
+					VM_BUG_ON_FOLIO(orientry.val != entry.val, folio);
 					/*
 				    CPU 1 : delete_from_cache(origin)  (mig still in cache) 
 							=> so that this mig is freed and usable now
@@ -4134,12 +4130,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 					pr_err("__read_swap_cache_async_save fail entry[%lx]", entry.val);
 				}
 				else{ //in this case swapcache is ref_added, because we get it from a lru
-					if (unlikely(invalid_remap)){ //safe checks
-						if (!folio_test_stalesaved(folio)){
-							pr_err("impossible branch");
-							BUG();
-						}
-					}
+					VM_BUG_ON_FOLIO(invalid_remap && !folio_test_stalesaved(folio), folio);
 					// if (vmf->flags & FAULT_FLAG_WRITE)
 					ref_sub = true;
 					// folio_ref_sub(page_folio(page), folio_nr_pages(page_folio(page)));
@@ -4305,18 +4296,11 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				swp_entry_t rawmigentry;
 				rawmigentry.val = migentry.val;
 				swp_entry_clear_ext(&rawmigentry, 0x3);
-				if (!(page_private(page) == rawmigentry.val)){
-					pr_info("folio[%p] pri[%lx] mis_match entry[%lx] orientry[%lx][%d]migentry[%lx]cached[%d]", 
-							folio, page_private(page), entry.val, orientry.val, 
-							__swap_count(orientry), migentry.val, filemaphit);
-					BUG();					
-				}
-				else{
-					// set_page_private(page, orientry.val);
-					pr_info("folio[%p] reset pri[%lx] entry[%lx] orientry[%lx][%d]migentry[%lx]cached[%d]", 
-							folio, page_private(page), entry.val, orientry.val, 
-							__swap_count(orientry), migentry.val, filemaphit);
-				}
+				VM_BUG_ON_FOLIO(page_private(page) != rawmigentry.val, page_folio(page));
+				// set_page_private(page, orientry.val);
+				pr_info("folio[%p] reset pri[%lx] entry[%lx] orientry[%lx][%d]migentry[%lx]cached[%d]", 
+						folio, page_private(page), entry.val, orientry.val, 
+						__swap_count(orientry), migentry.val, filemaphit);
 				goto out_page;					
 			}
 			else{
@@ -4428,9 +4412,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	 */
 	// if (!valid_remap) //non remap case
 #ifndef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
-	if (unlikely(valid_remap || invalid_remap)){
-		pr_err("bad remap state bug"); BUG();
-	}
+	VM_BUG_ON_FOLIO(valid_remap || invalid_remap, folio);
 #endif
 	if (likely(!valid_remap && !invalid_remap))
 		swap_free(entry);
@@ -4474,13 +4456,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 							folio, folio_swap_entry(folio).val , 	migentry.val, 
 							__swap_count(migentry), orientry.val, __swap_count(orientry),  folio_test_swapcache(folio));
 #endif
-				if (orientry.val != entry.val)
-					BUG();
-				if (!folio_test_swapcache(folio) || valid_remap){
-					pr_err("do_swap folio_free_swap[%p]entry[%lx]migentry[%lx] $[%d]wb[%d]", 
-							folio, entry.val,  migentry.val, folio_test_swapcache(folio), folio_test_writeback(folio));	
-					BUG();		
-				}				
+				VM_BUG_ON_FOLIO(orientry.val != entry.val, folio);
+				VM_BUG_ON_FOLIO(!folio_test_swapcache(folio) || valid_remap, folio);			
 				folio_free_swap_debug(folio);
 
 				delete_from_swap_remap(folio, orientry, migentry, true);
@@ -4510,10 +4487,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	}
 	else{ //normal case
 		if (should_try_to_free_swap(folio, vma, vmf->flags, 0)){ // normal
-			if (unlikely(orientry.val != entry.val)){
-				pr_err("do_swap folio_free_swap[%lx] ori[%lx] folio[%p] BUG()", entry.val, orientry.val, folio);
-				BUG();
-			}
+			VM_BUG_ON_FOLIO(orientry.val != entry.val, folio);
 			folio_free_swap(folio);
 		}
 		else{
@@ -4543,10 +4517,10 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	if (unlikely(migentry.val && need_unlock)){ 
 		entry_get_migentry_unlock(orientry, migentry);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-		pr_info("do_swap unlock reamp ori[%lx]cnt[%d]->mig[%lx]cnt[%d] folio[%p]ref[%d]pri[%lx]a[%d]d[%d]", 
+		pr_info("do_swap unlock reamp ori[%lx]cnt[%d]->mig[%lx]cnt[%d] folio[%p]ref[%d]pri[%lx]a[%d]d[%d]lrup%d[]", 
 					orientry.val, __swp_swapcount(orientry),migentry.val, __swp_swapcount(migentry), 
 					folio, folio_ref_count(folio), folio_swap_entry(folio).val, 
-					folio_test_active(folio), folio_test_dirty(folio));			
+					folio_test_active(folio), folio_test_dirty(folio), folio_test_lru(folio));			
 #endif
 	}
 
@@ -4579,10 +4553,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	if (unlikely(folio != swapcache && swapcache)) {
 		page_add_new_anon_rmap(page, vma, vmf->address);
 		folio_add_lru_vma(folio, vma);
-		if (invalid_remap || valid_remap){
-			pr_err("ksm folio[%p] add lru might bug", folio);
-			BUG();
-		}
+		VM_BUG_ON_FOLIO(invalid_remap || valid_remap, folio);
 	} else {
 		page_add_anon_rmap(page, vma, vmf->address, rmap_flags);
 	}

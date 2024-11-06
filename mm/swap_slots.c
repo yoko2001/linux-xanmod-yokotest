@@ -415,7 +415,7 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 	swp_entry_t* _slots;
 	int dec_tree_result;
 	long fast_left;
-	unsigned short gen0, gen1, gen2;
+	unsigned short gen0, gen1;
 	struct shadow_entry* shadow_ext;
 	/*DJL ADD END*/
 	

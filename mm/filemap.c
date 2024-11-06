@@ -909,7 +909,7 @@ noinline int __filemap_add_folio(struct address_space *mapping,
 				*shadowp = old;
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 			else{
-				if (entry_is_entry_ext(old) == 1){
+				if (unlikely(entry_is_entry_ext(old) == 1)){
 					pr_err("__filemap_add_folio lost shadow_ext");
 					BUG();
 				}
@@ -2063,8 +2063,7 @@ struct folio *__syncio_swapcache_get_folio(struct address_space *mapping, pgoff_
 	struct folio *folio;
 	swp_entry_t entry;
 	bool valid_folio = false;
-	if (unlikely(!mapping))
-		BUG();
+
 	folio = mapping_get_entry(mapping, index);
 	// pr_err("mapping[%pK]index[%lx] = [%lx]", mapping, index, (unsigned long)folio);
 	if (!folio)
