@@ -2041,13 +2041,14 @@ bool folio_free_swap_debug(struct folio *folio)
 	 */
 	if (pm_suspended_storage())
 		return false;
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG	
-	pr_info("folio_free_swap folio[%p]pri[%lx]$[%d]", 
-				folio, folio_swap_entry(folio).val, folio_test_swapcache(folio));
-#endif
+
 	delete_from_swap_cache(folio);
-	
 	folio_set_dirty(folio);
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG	
+	pr_info("after folio_free_swap_debug folio[%p]pri[%lx]$[%d]d[%d]", 
+				folio, folio_swap_entry(folio).val, 
+				folio_test_swapcache(folio), folio_test_dirty(folio));
+#endif
 	return true;
 }
 
@@ -2359,18 +2360,24 @@ static int unuse_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 				folio = page_folio(page);
 				//disable migentry
 				if (migentry.val){
-					pr_err("unuse_pte_range free migentry folio[%p]pri[%lx] entry[%lx]cnt[%d] mig[%lx]cnt[%d]", 
-									folio, folio_swap_entry(folio),
-									entry.val, swp_swapcount(entry), migentry.val, swp_swapcount(migentry));
-					swap_free(migentry);
-					if (swp_entry_test_ext(migentry) && swp_swapcount(migentry) == 0){
-						delete_from_swap_remap(folio, entry, migentry, false); //should come with no ref_sub
-					}
-					else{
-						pr_err("unuse_pte_range fail entry[%lx]cnt[%d] mig[%lx] cnt[%d]", 
-									entry.val, swp_swapcount(entry), migentry.val, swp_swapcount(migentry));
-						BUG();
-					}
+					// pr_err("unuse_pte_range free migentry folio[%p]pri[%lx] entry[%lx]cnt[%d] mig[%lx]cnt[%d]", 
+					// 				folio, folio_swap_entry(folio),
+					// 				entry.val, swp_swapcount(entry), migentry.val, swp_swapcount(migentry));
+					// swap_free(migentry);
+					folio_lock(folio);
+					delete_from_swap_remap(folio, entry, migentry, false); //should come with no ref_sub
+					folio_unlock(folio);
+					pr_err("unuse_pte_range after free migentry folio[%p]pri[%lx] entry[%lx] mig[%lx]cnt[%d]", 
+									folio, folio_swap_entry(folio).val, entry.val, migentry.val, 
+									swp_swapcount(migentry));
+					// if (swp_entry_test_ext(migentry) && swp_swapcount(migentry) == 0){
+					// 	delete_from_swap_remap(folio, entry, migentry, false); //should come with no ref_sub
+					// }
+					// else{
+					// 	pr_err("unuse_pte_range fail entry[%lx]cnt[%d] mig[%lx] cnt[%d]", 
+					// 				entry.val, swp_swapcount(entry), migentry.val, swp_swapcount(migentry));
+					// 	BUG();
+					// }
 				}
 			}
 		}
@@ -2392,7 +2399,7 @@ static int unuse_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 			goto out;
 		}
 
-		folio_free_swap(folio);
+		folio_free_swap_debug(folio);
 		folio_unlock(folio);
 		folio_put(folio);
 try_next:

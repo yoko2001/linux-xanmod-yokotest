@@ -2345,13 +2345,13 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 	lrugen = NULL;
 	if (ra_info.win == 1)
 		goto skip;
-	if (swp_entry_test_special(fentry)){
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-		pr_info("vma_readahead saved entry[%lx], skip", fentry.val);
-		dump_stack();
-#endif
-		goto skip;
-	}
+// 	if (swp_entry_test_special(fentry)){
+// #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+// 		pr_info("vma_readahead saved entry[%lx], skip", fentry.val);
+// 		// dump_stack();
+// #endif
+// 		goto skip;
+// 	}
 	blk_start_plug(&plug);
 	for (i = 0, pte = ra_info.ptes; i < ra_info.nr_pte;
 	     i++, pte++) {

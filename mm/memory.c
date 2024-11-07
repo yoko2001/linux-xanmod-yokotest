@@ -4488,7 +4488,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	else{ //normal case
 		if (should_try_to_free_swap(folio, vma, vmf->flags, 0)){ // normal
 			VM_BUG_ON_FOLIO(orientry.val != entry.val, folio);
-			folio_free_swap(folio);
+			folio_free_swap_debug(folio);
 		}
 		else{
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
