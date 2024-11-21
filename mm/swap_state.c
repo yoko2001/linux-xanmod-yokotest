@@ -288,7 +288,6 @@ unlock:
 		xas_unlock_irq(&xas);
 	} while (xas_nomem(&xas, gfp));
 	// pr_err("set entry[%lx]->folio[%p]", entry.val, folio);
-	// check_private_debug(folio);
 	if (!xas_error(&xas))
 		return 0;
 
@@ -418,7 +417,7 @@ int enable_swp_entry_remap(struct folio* folio, swp_entry_t from_entry, swp_entr
 unlock:
 		xas_unlock_irq(&xas);
 	} while (xas_nomem(&xas, (__GFP_HIGH|__GFP_NOMEMALLOC|__GFP_NOWARN)));
-	// check_private_debug(folio);
+
 	if (locked){
 		swp_entry_clear_ext(&to_entry_enabled, 0x3); //we cannot use 0x3 to test if locked
 		p_to_entry->val = to_entry_enabled.val;
@@ -496,7 +495,7 @@ static int add_to_swap_cache_save_check(struct folio *folio, swp_entry_t entry,
 		return -1;
 	}
 	if (entry_is_entry_ext(folio)){
-		pr_err("a buggy folio[%p] entry[%lx]", folio, entry);
+		pr_err("a buggy folio[%p] entry[%lx]", folio, entry.val);
 		BUG();
 	}
 	XA_STATE_ORDER(xas, &address_space->i_pages, idx, folio_order(folio));
@@ -560,7 +559,6 @@ static int add_to_swap_cache_save_check(struct folio *folio, swp_entry_t entry,
 unlock:
 		xas_unlock_irq(&xas);
 	} while (xas_nomem(&xas, gfp));
-	// check_private_debug(folio);
 
 	if (!xas_error(&xas))
 		return 0;
@@ -905,7 +903,6 @@ void __delete_from_swap_cache(struct folio *folio,
 	// 	pr_err("[ckpt2] delete $ entry[%lx]->folio[%p]pri[%lx]", entry.val, folio, page_private(folio_page(folio, 0)));
 	// 	dump_stack();
 	// }
-	// check_private_debug(folio);
 	if(unlikely((page_private(folio_page(folio, 0)) != 0))){
 		pr_err("delete $ entry[%lx]->folio[%p]pri[%lx]", entry.val, folio, page_private(folio_page(folio, 0)));
 		BUG();	
@@ -1289,7 +1286,7 @@ void delete_from_swap_remap_get_mig(struct folio* folio, swp_entry_t entry_from,
  * It will never put the folio into the free list,
  * the caller has a reference on the folio.
  */
-void delete_from_swap_cache(struct folio *folio)
+swp_entry_t delete_from_swap_cache(struct folio *folio)
 {
 	swp_entry_t entry = folio_swap_entry(folio);
 	struct address_space *address_space = swap_address_space(entry);
@@ -1312,6 +1309,34 @@ void delete_from_swap_cache(struct folio *folio)
 		pr_err("delete_from_swap_cache folio[%p] ref[%d] subbed", folio, folio_ref_count(folio));
 		dump_stack();
 	}
+	return entry;
+}
+
+swp_entry_t delete_from_swap_cache_debug(struct folio *folio, swp_entry_t expected_entry)
+{
+	swp_entry_t entry = folio_swap_entry(folio);
+	VM_BUG_ON(entry.val != expected_entry.val);
+	struct address_space *address_space = swap_address_space(entry);
+	if (folio_test_swappriohigh(folio) || folio_test_swappriolow(folio)){
+		pr_err("delete_s$ folio[%p]->ext[%p] pri[%lx], BUG", folio, folio->shadow_ext, entry.val);
+		BUG();
+	}
+	xa_lock_irq(&address_space->i_pages);
+	__delete_from_swap_cache(folio, entry, NULL);
+	xa_unlock_irq(&address_space->i_pages);
+
+	put_swap_folio(folio, entry);
+	// if (swp_entry_test_special(entry) > 0){
+	// 	pr_info("delete_s$ folio[%p]->ext[%p]", folio, folio->shadow_ext);
+	// }
+	// if (swp_entry_test_special(entry))
+	// 	pr_err("after delete_s$ folio[%p]->ext[%p]", folio, folio->shadow_ext);
+	folio_ref_sub(folio, folio_nr_pages(folio));
+	if (folio_test_swappriohigh(folio)){
+		pr_err("delete_from_swap_cache folio[%p] ref[%d] subbed", folio, folio_ref_count(folio));
+		dump_stack();
+	}
+	return entry;
 }
 
 /*needs put_swap_folio after it*/

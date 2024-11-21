@@ -609,9 +609,9 @@ static void dec_cluster_info_page(struct swap_info_struct *p,
 	if (!cluster_info)
 		return;
 
-	VM_BUG_ON(cluster_count(&cluster_info[idx]) == 0);
+	VM_WARN_ON(cluster_count(&cluster_info[idx]) == 0);
 	cluster_set_count(&cluster_info[idx],
-		cluster_count(&cluster_info[idx]) - 1);
+		cluster_count(&cluster_info[idx]) - 1 >= 0 ? cluster_count(&cluster_info[idx]) - 1 : 0);
 
 	if (cluster_count(&cluster_info[idx]) == 0)
 		free_cluster(p, idx);
@@ -777,7 +777,7 @@ static void update_swap_prio_mark(void){
 /*DJL ADD END*/
 
 static void swap_range_free(struct swap_info_struct *si, unsigned long offset,
-			    unsigned int nr_entries, int free, int version)
+			    unsigned int nr_entries, int free_shadow, int version)
 {
 	unsigned long begin = offset;
 	unsigned long end = offset + nr_entries - 1;
@@ -811,7 +811,7 @@ static void swap_range_free(struct swap_info_struct *si, unsigned long offset,
 			swap_slot_free_notify(si->bdev, offset);
 		offset++;
 	}
-	clear_shadow_from_swap_cache(si->type, begin, end, free);
+	clear_shadow_from_swap_cache(si->type, begin, end, free_shadow);
 }
 
 static void set_cluster_next(struct swap_info_struct *si, unsigned long next)
@@ -1660,7 +1660,7 @@ static unsigned char __swap_entry_free(struct swap_info_struct *p,
 	return usage;
 }
 
-static void swap_entry_free(struct swap_info_struct *p, swp_entry_t entry, int free)
+static void swap_entry_free(struct swap_info_struct *p, swp_entry_t entry, int free_shadow)
 {
 	struct swap_cluster_info *ci;
 	unsigned long offset = swp_raw_offset(entry);
@@ -1678,7 +1678,7 @@ static void swap_entry_free(struct swap_info_struct *p, swp_entry_t entry, int f
 	unlock_cluster(ci);
 
 	mem_cgroup_uncharge_swap(entry, 1);
-	swap_range_free(p, offset, 1, free, version);
+	swap_range_free(p, offset, 1, free_shadow, version);
 }
 static int swap_swapcount(struct swap_info_struct *si, swp_entry_t entry);
 /*
@@ -1716,8 +1716,10 @@ void put_swap_folio(struct folio *folio, swp_entry_t entry)
 	int size = swap_entry_size(folio_nr_pages(folio));
 
 	si = _swap_info_get(entry, false);
-	if (!si)
+	if (!si){
+		pr_info("put_swap_folio entry[%lx] non-used by folio[%p]", entry.val, folio);
 		return;
+	}
 	if (!__si_can_version(si) && version)
 		BUG();
 	offset_v = offset + si->max * version* __si_can_version(si);
@@ -2014,9 +2016,6 @@ bool folio_free_swap(struct folio *folio)
 bool folio_free_swap_debug(struct folio *folio)
 {
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
-	pr_info("folio_free_swap_debug folio[%p]$[%d]wb[%d]swapped[%d] pri[%lx]", 
-				folio, folio_test_swapcache(folio),folio_test_writeback(folio),
-				folio_swapped(folio), page_private( folio_page(folio, 0)));
 	if (!folio_test_swapcache(folio))
 		return false;
 	if (folio_test_writeback(folio))
@@ -2041,14 +2040,18 @@ bool folio_free_swap_debug(struct folio *folio)
 	 */
 	if (pm_suspended_storage())
 		return false;
-
-	delete_from_swap_cache(folio);
+	swp_entry_t before_entry = folio_swap_entry(folio);
+	pr_info("folio_free_swap_debug folio[%p]$[%d]wb[%d]swapped[%d] pri[%lx]", 
+				folio, folio_test_swapcache(folio),folio_test_writeback(folio),
+				folio_swapped(folio), folio_swap_entry(folio).val);
+	swp_entry_t freed_entry = delete_from_swap_cache_debug(folio, before_entry);
+	VM_BUG_ON_FOLIO(freed_entry.val != before_entry.val, folio);
 	folio_set_dirty(folio);
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG	
-	pr_info("after folio_free_swap_debug folio[%p]pri[%lx]$[%d]d[%d]", 
-				folio, folio_swap_entry(folio).val, 
-				folio_test_swapcache(folio), folio_test_dirty(folio));
-#endif
+// #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG	
+// 	pr_info("after folio_free_swap_debug folio[%p]pri[%lx]$[%d]d[%d]", 
+// 				folio, folio_swap_entry(folio).val, 
+// 				folio_test_swapcache(folio), folio_test_dirty(folio));
+// #endif
 	return true;
 }
 
@@ -2056,14 +2059,14 @@ bool folio_free_swap_debug(struct folio *folio)
  * Free the swap entry like above, but also try to
  * free the page cache entry if it is the last user.
  */
-int free_swap_and_cache(swp_entry_t entry)
+int free_swap_and_cache(swp_entry_t entry, bool allowunused)
 {
 	struct swap_info_struct *p;
 	unsigned char count;
 	if (non_swap_entry(entry))
 		return 1;
 
-	p = _swap_info_get(entry, false);
+	p = _swap_info_get(entry, allowunused);
 	if (p) {
 		count = __swap_entry_free(p, entry);
 		if (count == SWAP_HAS_CACHE &&
@@ -2221,7 +2224,7 @@ static inline int pte_same_as_swp(pte_t pte, pte_t swp_pte)
  * force COW, vm_page_prot omits write permission from any private vma.
  */
 static int unuse_pte(struct vm_area_struct *vma, pmd_t *pmd,
-		unsigned long addr, swp_entry_t entry, struct folio *folio)
+		unsigned long addr, swp_entry_t entry, struct folio *folio, bool skip_free_original)
 {
 	struct page *page = folio_file_page(folio, swp_offset(entry));
 	struct page *swapcache;
@@ -2292,7 +2295,8 @@ static int unuse_pte(struct vm_area_struct *vma, pmd_t *pmd,
 		new_pte = pte_mkuffd_wp(new_pte);
 setpte:
 	set_pte_at(vma->vm_mm, addr, pte, new_pte);
-	swap_free(entry);
+	if (!skip_free_original)
+		swap_free(entry);
 	if (!__swap_count(entry)){
 		clear_shadow_from_swap_cache(swp_swap_info(entry)->type, swp_offset(entry),swp_offset(entry)+1, 1);
 	}
@@ -2323,6 +2327,8 @@ static int unuse_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 		unsigned long version;
 		unsigned char swp_count;
 		struct swap_info_struct* si;
+		bool skip_free_original = false;
+
 		if (!is_swap_pte(*pte))
 			continue;
 
@@ -2370,14 +2376,11 @@ static int unuse_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 					pr_err("unuse_pte_range after free migentry folio[%p]pri[%lx] entry[%lx] mig[%lx]cnt[%d]", 
 									folio, folio_swap_entry(folio).val, entry.val, migentry.val, 
 									swp_swapcount(migentry));
-					// if (swp_entry_test_ext(migentry) && swp_swapcount(migentry) == 0){
-					// 	delete_from_swap_remap(folio, entry, migentry, false); //should come with no ref_sub
-					// }
-					// else{
-					// 	pr_err("unuse_pte_range fail entry[%lx]cnt[%d] mig[%lx] cnt[%d]", 
-					// 				entry.val, swp_swapcount(entry), migentry.val, swp_swapcount(migentry));
-					// 	BUG();
-					// }
+					if(!(0x3 & swp_entry_test_ext(migentry))){
+						pr_err("unuse_pte_range after enabled mig entry[%lx] should skip entry[%lx] free", 
+									migentry.val, entry.val);
+						skip_free_original = true;
+					}
 				}
 			}
 		}
@@ -2391,7 +2394,7 @@ static int unuse_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 
 		folio_lock(folio);
 		folio_wait_writeback(folio);
-		ret = unuse_pte(vma, pmd, addr, entry, folio);
+		ret = unuse_pte(vma, pmd, addr, entry, folio, skip_free_original);
 		if (ret < 0) {
 			folio_unlock(folio);
 			folio_put(folio);
@@ -2399,7 +2402,8 @@ static int unuse_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 			goto out;
 		}
 
-		folio_free_swap_debug(folio);
+		if (likely(!skip_free_original))
+			folio_free_swap_debug(folio);
 		folio_unlock(folio);
 		folio_put(folio);
 try_next:

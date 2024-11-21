@@ -1453,10 +1453,10 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		if (!folio_test_active(folio)){
 			ori_swap.val = folio_swap_entry(folio).val;
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-			pr_info("__remove_mapping folio[%p]ori[%lx][%d]->mig[%lx][%d]ref[%d]wb[%d]d[%d]$[%d]ac[%d]", 
-						folio, ori_swap.val,__swap_count(ori_swap), mig_entry.val,__swap_count(mig_entry),
-						folio_ref_count(folio), folio_test_writeback(folio),
-						folio_test_dirty(folio), folio_test_swapcache(folio), folio_test_active(folio));
+			// pr_info("__remove_mapping folio[%p]ori[%lx][%d]->mig[%lx][%d]ref[%d]wb[%d]d[%d]$[%d]ac[%d]", 
+			// 			folio, ori_swap.val,__swap_count(ori_swap), mig_entry.val,__swap_count(mig_entry),
+			// 			folio_ref_count(folio), folio_test_writeback(folio),
+			// 			folio_test_dirty(folio), folio_test_swapcache(folio), folio_test_active(folio));
 #endif
 		}
 	}
@@ -1492,15 +1492,15 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	refcount = 1 + folio_nr_pages(folio);
 	if (folio_test_stalesaved(folio)){
 		refcount += 1; //one for remap, one for swapcache to slow
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-		pr_info("folio[%p] stale ref[%d]sw$[%d]", folio, folio_ref_count(folio), folio_test_swapcache(folio));
-#endif
+// #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+// 		pr_info("folio[%p] stale ref[%d]sw$[%d]", folio, folio_ref_count(folio), folio_test_swapcache(folio));
+// #endif
 	}
 
 	if (!folio_ref_freeze(folio, refcount)){
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-		pr_info("folio[%p], fail ref_freeze refcount[%d]", folio, refcount);
-#endif
+// #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+// 		pr_info("folio[%p], fail ref_freeze refcount[%d]", folio, refcount);
+// #endif
 		goto cannot_free;
 	}
 	/* note: atomic_cmpxchg in folio_ref_freeze provides the smp_rmb */
@@ -2121,11 +2121,14 @@ pass_cleanup:
 				BUG();
 			
 			set_page_private(folio_page(folio, 0), migentry.val);
-			check_private_debug(folio);
+
 			if (unlikely(__swp_swapcount(entry) != 1))
 				pr_info("before swap_free ori_entry[%lx]cnt[%d], mig_entry[%lx]cnt[%d]", 
 						entry.val, __swp_swapcount(entry), migentry.val, __swp_swapcount(migentry));
 			swap_free(entry);
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+			pr_info("folio[%p]after free entry[%lx]", folio, entry.val);
+#endif
 			if (unlikely(__swp_swapcount(entry) != 0)){
 				pr_info("after swap_free ori_entry[%lx]cnt[%d], mig_entry[%lx]cnt[%d]", 
 						entry.val, __swp_swapcount(entry), migentry.val, __swp_swapcount(migentry));

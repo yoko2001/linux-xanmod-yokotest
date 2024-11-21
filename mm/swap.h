@@ -60,7 +60,8 @@ int entry_remap_usable_version(swp_entry_t entry);
 swp_entry_t entry_get_migentry(swp_entry_t ori_swap);
 swp_entry_t entry_get_migentry_lock(swp_entry_t ori_swap);
 swp_entry_t entry_get_migentry_unlock(swp_entry_t ori_swap, swp_entry_t _mig_swap);
-void delete_from_swap_cache(struct folio *folio);
+swp_entry_t delete_from_swap_cache(struct folio *folio);
+swp_entry_t delete_from_swap_cache_debug(struct folio *folio, swp_entry_t expected_entry);
 void delete_from_swap_cache_mig(struct folio* folio, swp_entry_t entry, bool sub_ref, bool transfer_shadow);
 void clear_shadow_from_swap_cache(int type, unsigned long begin,
 				  unsigned long end, int free);
@@ -174,8 +175,11 @@ static inline void __delete_from_swap_cache(struct folio *folio,
 {
 }
 
-static inline void delete_from_swap_cache(struct folio *folio)
+static inline swp_entry_t delete_from_swap_cache(struct folio *folio, swp_entry_t expected_entry)
 {
+	swp_entry_t entry;
+	entry.val = 0;
+	return entry;
 }
 
 static inline void clear_shadow_from_swap_cache(int type, unsigned long begin,

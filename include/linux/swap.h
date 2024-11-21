@@ -353,14 +353,6 @@ static inline swp_entry_t folio_swap_entry(struct folio *folio)
 	return entry;
 }
 
-static inline void check_private_debug(struct folio *folio)
-{
-	swp_entry_t entry = { .val = page_private(&folio->page) };
-	if (unlikely((entry.val & 0xffffffff00000000) == 0xffffffff00000000)){
-		dump_stack();
-		BUG();
-	}
-}
 static inline void check_page_private_debug(struct page *page)
 {
 	swp_entry_t entry = { .val = page_private(page) };
@@ -372,7 +364,6 @@ static inline void check_page_private_debug(struct page *page)
 static inline void folio_set_swap_entry(struct folio *folio, swp_entry_t entry)
 {
 	folio->private = (void *)entry.val;
-	// check_private_debug(folio);
 }
 
 /* linux/mm/workingset.c */
@@ -697,7 +688,7 @@ extern int swapcache_prepare(swp_entry_t);
 extern void swap_free(swp_entry_t);
 extern void swapcache_free_entries(swp_entry_t *entries, int n,  int free);
 extern void swap_scan_save_entries(swp_entry_t *entries, int n);
-extern int free_swap_and_cache(swp_entry_t);
+extern int free_swap_and_cache(swp_entry_t entry, bool allow_unused);
 int swap_type_of(dev_t device, sector_t offset);
 int find_first_swap(dev_t *device);
 extern unsigned int count_swap_pages(int, int);
@@ -750,7 +741,7 @@ static inline void put_swap_device(struct swap_info_struct *si)
 	release_pages((pages), (nr));
 
 /* used to sanity check ptes in zap_pte_range when CONFIG_SWAP=0 */
-#define free_swap_and_cache(e) is_pfn_swap_entry(e)
+#define free_swap_and_cache(e, flag) is_pfn_swap_entry(e)
 
 static inline void free_swap_cache(struct page *page)
 {

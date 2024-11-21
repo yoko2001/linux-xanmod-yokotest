@@ -734,7 +734,7 @@ static void ptep_zap_swap_entry(struct mm_struct *mm, swp_entry_t entry)
 
 		dec_mm_counter(mm, mm_counter(page));
 	}
-	free_swap_and_cache(entry);
+	free_swap_and_cache(entry, false);
 }
 
 void ptep_zap_unused(struct mm_struct *mm, unsigned long addr,

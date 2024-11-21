@@ -831,7 +831,7 @@ static int madvise_free_pte_range(pmd_t *pmd, unsigned long addr,
 			entry = pte_to_swp_entry(ptent);
 			if (!non_swap_entry(entry)) {
 				nr_swap--;
-				free_swap_and_cache(entry);
+				free_swap_and_cache(entry, false);
 				pte_clear_not_present_full(mm, addr, pte, tlb->fullmm);
 			} else if (is_hwpoison_entry(entry) ||
 				   is_swapin_error_entry(entry)) {

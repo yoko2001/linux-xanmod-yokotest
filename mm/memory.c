@@ -969,7 +969,6 @@ static inline struct folio *page_copy_prealloc(struct mm_struct *src_mm,
 	new_folio = vma_alloc_folio(GFP_HIGHUSER_MOVABLE, 0, vma, addr, false);
 	if (!new_folio)
 		return NULL;
-	// check_private_debug(new_folio);
 
 	if (mem_cgroup_charge(new_folio, src_mm, GFP_KERNEL)) {
 		folio_put(new_folio);
@@ -1451,14 +1450,14 @@ again:
 			if (!should_zap_cows(details))
 				continue;
 			rss[MM_SWAPENTS]--;
-			if (unlikely(!free_swap_and_cache(entry))){
+			if (unlikely(!free_swap_and_cache(entry, true))){
 				swp_entry_t migentry;
 				migentry = entry_get_migentry(entry);
 				if (!migentry.val || non_swap_entry(migentry)){
 					pr_err("mig lost entry[%lx]", entry.val);
 					goto fail_unmap_mig_entry;
 				}
-				if (unlikely(!free_swap_and_cache(migentry)))
+				if (unlikely(!free_swap_and_cache(migentry, false)))
 					print_bad_pte(vma, addr, ptent, NULL);
 				goto success_unmap_mig_entry;
 fail_unmap_mig_entry:
@@ -1485,7 +1484,7 @@ after_unmap_mig_entry:
 						(unsigned long)swp_entry_test_special(migentry));
 
 					if (0 == (swp_entry_test_ext(migentry) & 0x3)){
-						if (unlikely(!free_swap_and_cache(migentry)))
+						if (unlikely(!free_swap_and_cache(migentry, false)))
 							print_bad_pte(vma, addr, ptent, NULL);
 						pr_info("zap_pte_range entry[%lx][%d]->migentry[%lx][%d]v[%lu] enabled in cache clear", 
 							entry.val, __swap_count(entry), migentry.val, __swap_count(migentry),
@@ -3124,7 +3123,7 @@ static vm_fault_t wp_page_copy(struct vm_fault *vmf)
 				vmf->address, false);
 		if (!new_folio)
 			goto oom;
-		// check_private_debug(new_folio);
+
 		ret = __wp_page_copy_user(&new_folio->page, vmf->page, vmf);
 		if (ret) {
 			/*
@@ -3680,7 +3679,7 @@ static inline bool should_try_to_free_swap(struct folio *folio,
 		return (fault_flags & FAULT_FLAG_WRITE) && !folio_test_ksm(folio) && 
 			folio_ref_count(folio) == 2;
 	return (fault_flags & FAULT_FLAG_WRITE) && !folio_test_ksm(folio) && 
-			folio_ref_count(folio) == 3;
+			folio_ref_count(folio) == 2;
 }
 
 static vm_fault_t pte_marker_clear(struct vm_fault *vmf)

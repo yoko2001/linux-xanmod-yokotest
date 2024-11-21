@@ -3585,7 +3585,6 @@ void free_unref_page_list(struct list_head *list)
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 		struct shadow_entry* shadow;
 		folio = page_folio(page);
-		// check_private_debug(folio);
 		shadow = folio_remove_shadow_entry(folio);
 		if (shadow){
 			if (unlikely(entry_is_entry_ext_debug(shadow) == 1)){
