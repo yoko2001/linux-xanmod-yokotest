@@ -4598,15 +4598,19 @@ out_nomap:
 // #endif
 	pte_unmap_unlock(vmf->pte, vmf->ptl);
 	if (migentry.val && need_unlock){ 
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 		pr_info("retry ckpt0 folio[%p]ref[%d]pri[%lx]uptodate[%d]", 
 				folio, folio_ref_count(folio), folio_swap_entry(folio).val, folio_test_uptodate(folio));
+#endif
 		folio_set_swappriolow(folio);
 	}
 out_page:
 	folio_unlock(folio);
 	if (migentry.val && need_unlock){ 
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 		pr_info("retry ckpt1 folio[%p]ref[%d]pri[%lx]", 
 				folio, folio_ref_count(folio), folio_swap_entry(folio).val);
+#endif
 		folio_set_swappriolow(folio);
 	}
 out_release:
@@ -4621,14 +4625,18 @@ out_release:
 	if (migentry.val && need_unlock){ 
 		entry_get_migentry_unlock(orientry, migentry);
 		folio_get(folio);
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 		pr_info("retry do_swap unlock reamp ori[%lx]cnt[%d]->mig[%lx]cnt[%d]", 
 					orientry.val, __swp_swapcount(orientry),
 					migentry.val, __swp_swapcount(migentry));
+#endif
 		if (folio){
 			// folio_get(folio);
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 			pr_info("retry do_swap unlock reamp folio[%p]st[%d]ref[%d]pri[%lx] $[%d]d[%d]", 
 					folio, folio_test_stalesaved(folio), folio_ref_count(folio), 
 					folio_swap_entry(folio).val, folio_test_swapcache(folio), folio_test_dirty(folio));
+#endif
 			folio_set_swappriohigh(folio);
 		}
 	}
