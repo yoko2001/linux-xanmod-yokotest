@@ -1417,7 +1417,7 @@ static int shmem_writepage(struct page *page, struct writeback_control *wbc)
 		folio_mark_uptodate(folio);
 	}
 
-	swap = folio_alloc_swap(folio, NULL, false);
+	swap = folio_alloc_swap(folio, NULL, false, true);
 	if (!swap.val)
 		goto redirty;
 

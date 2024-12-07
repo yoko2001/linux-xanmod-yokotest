@@ -1090,7 +1090,7 @@ bool add_to_swap(struct folio *folio, long* left_space)
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 	VM_BUG_ON_FOLIO(!folio_test_uptodate(folio), folio);
 
-	entry = folio_alloc_swap(folio, left_space, false);
+	entry = folio_alloc_swap(folio, left_space, false, true);
 			//folio_alloc_swap(folio, left_space, false);
 	if (!entry.val)
 		return false;
@@ -1194,7 +1194,7 @@ static void __clear_swap_remap_range(swp_entry_t entry_start, int order)
 				else{
 					pr_info("__clear_swap_remap_range[%lx]->[%lx]", 
 							swp_entry(swp_type(entry_start), idx++).val,  tmp.val);					
-					swap_free(tmp);
+					swap_free_mig(tmp);
 				}
 			}
 			address_space->nrpages -= 1;
@@ -1362,12 +1362,12 @@ void delete_from_swap_cache_mig(struct folio* folio, swp_entry_t entry, bool dec
 		// BUG();	
 	}
 	folio_ref_sub(folio, folio_nr_pages(folio));
-	if (folio_test_swappriohigh(folio)){
-		pr_err("delete_from_swap_cache_mig folio[%p] pri[%lx]ref[%d] a[%d]d[%d]st[%d]$[%d] subbed", 
-				folio, folio_swap_entry(folio).val, folio_ref_count(folio), folio_test_active(folio), 
-				folio_test_dirty(folio), folio_test_stalesaved(folio), folio_test_swapcache(folio));
-		// dump_stack();
-	}
+	// if (folio_test_swappriohigh(folio)){
+	// 	pr_err("delete_from_swap_cache_mig folio[%p] pri[%lx]ref[%d] a[%d]d[%d]st[%d]$[%d] subbed", 
+	// 			folio, folio_swap_entry(folio).val, folio_ref_count(folio), folio_test_active(folio), 
+	// 			folio_test_dirty(folio), folio_test_stalesaved(folio), folio_test_swapcache(folio));
+	// 	// dump_stack();
+	// }
 }
 
 
@@ -1427,10 +1427,10 @@ void free_swap_cache(struct page *page)
 	if (folio_test_swapcache(folio) && !folio_mapped(folio) &&
 	    folio_trylock(folio)) {
 		if(unlikely(folio_test_swappriohigh(folio) || folio_test_swappriolow(folio))){
-			folio_clear_swappriohigh(folio);
-			folio_clear_swappriolow(folio);
+			// folio_clear_swappriohigh(folio);
+			// folio_clear_swappriolow(folio);
 			pr_err("free_swap_cache folio[%p]wb[%d]$[%d] pri[%lx] force frees_swap pass", 
-					folio, folio_test_writeback(folio), folio_test_swapcache(folio), folio_swap_entry(folio).val);			
+					folio, folio_test_writeback(folio), folio_test_swapcache(folio), folio_swap_entry(folio).val);
 		}
 		folio_free_swap(folio);
 		folio_unlock(folio);
@@ -1984,8 +1984,9 @@ struct page *read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 	if (page_was_allocated)
 		swap_readpage(retpage, do_poll, plug);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-	else if (!retpage)
+	else if (!retpage){
 		pr_info("read_swap_cache_async alloc fail entry[%lx]", entry.val);
+	}
 #endif
 	/*DJL ADD BEGIN*/
 	if (count && page_was_allocated){
@@ -2138,8 +2139,6 @@ struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t gfp_mask,
 	unsigned long addr = vmf->address;
 	unsigned long real_addr = vmf->real_address;
 	int try_free;
-	// pr_err("swap_cluster_readahead");
-	// BUG();
 
 	mask = swapin_nr_pages(offset) - 1;
 	if (!mask)
@@ -2550,7 +2549,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				BUG();
 			}
 
-			mig_entry = folio_alloc_swap(folio, &tmp, true);
+			mig_entry = folio_alloc_swap(folio, &tmp, true, false);
 			if (!mig_entry.val || (mig_entry.val > LONG_MAX) 
 					|| !data_race(p->flags & SWP_SYNCHRONOUS_IO) 
 					|| (swp_swap_info(mig_entry)->flags & SWP_SYNCHRONOUS_IO)){ //have to xa_mk_value
@@ -2681,7 +2680,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 						folio_list_wb[num_folio_list_wb++] = folio; 	
 						//check later in vmscan
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-						pr_info("folio_test_writeback[%d] folio[%p]",folio_test_writeback(folio), folio);
+						pr_info("folio[%p] wb[%d] folio add to list",folio, folio_test_writeback(folio));
 #endif
 					}
 					else{ //A synchronous write - probably a ramdisk.
@@ -2705,7 +2704,7 @@ fail_delete_saved_cache:
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 				pr_err("fail_delete_saved_cache folio[%p] ref[%d]", folio, folio_ref_count(folio));
 #endif
-				swap_free(mig_entry);
+				swap_free_mig(mig_entry);
 fail_page_out:
 				folio_clear_dirty(folio);
 				folio_clear_stalesaved(folio);

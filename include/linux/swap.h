@@ -670,7 +670,7 @@ static inline long get_nr_swap_pages(void)
 }
 
 extern void si_swapinfo(struct sysinfo *);
-swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_slow);
+swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_slow, bool skip_charge);
 void check_swap_scan_active(struct swap_info_struct *si, long left, long total);
 bool folio_free_swap(struct folio *folio);
 bool folio_free_swap_debug(struct folio *folio);
@@ -686,6 +686,7 @@ extern void swap_shmem_alloc(swp_entry_t);
 extern int swap_duplicate(swp_entry_t);
 extern int swapcache_prepare(swp_entry_t);
 extern void swap_free(swp_entry_t);
+extern void swap_free_mig(swp_entry_t);
 extern void swapcache_free_entries(swp_entry_t *entries, int n,  int free);
 extern void swap_scan_save_entries(swp_entry_t *entries, int n);
 extern int free_swap_and_cache(swp_entry_t entry, bool allow_unused);
@@ -784,7 +785,7 @@ static inline int swp_swapcount(swp_entry_t entry)
 	return 0;
 }
 
-static inline swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_slow)
+static inline swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_slow, bool skip_charge)
 {
 	swp_entry_t entry;
 	entry.val = 0;

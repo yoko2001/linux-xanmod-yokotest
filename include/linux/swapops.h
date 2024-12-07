@@ -27,7 +27,7 @@
 #define SWP_TYPE_SHIFT	(BITS_PER_XA_VALUE - MAX_SWAPFILES_SHIFT)
 #define SWP_RESERVE_MARK 10 //for safety
 #define SWP_RESERVE_SHIFT (SWP_TYPE_SHIFT - SWP_RESERVE_MARK)
-#define SWP_EXT_MARK 2    //used to mark if swp_entry is mapping a real out-mem page
+#define SWP_EXT_MARK 3    //used to mark if swp_entry is mapping a real out-mem page
 #define SWP_EXT_SHIFT (SWP_RESERVE_SHIFT - SWP_EXT_MARK)
 // #define SWP_SPECIAL_MARK 5 //used to mark version 0-32
 #define SWP_SPECIAL_MARK 4 //used to mark version 0-32

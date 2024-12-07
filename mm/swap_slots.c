@@ -405,7 +405,7 @@ direct_free:
 
 int is_first = 1;
 
-swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_slow)
+swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_slow, bool skip_charge)
 {
 	swp_entry_t entry;
 	struct swap_slots_cache *cache;
@@ -453,39 +453,45 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 		shadow_ext = (struct shadow_entry*)folio->shadow_ext;
 		gen0 = shadow_ext->hist_ts[0];
 		gen1 = shadow_ext->hist_ts[1];
-		unsigned short maxgen = gen0;
-		if (gen1 > 0) maxgen = max(gen1, maxgen);
+		unsigned short avggen = gen0;
+		if (gen1 > 0) avggen = max(gen1, avggen);
 
-		if (maxgen >= 36){
-			if (fast_left > 4096)
-				dec_tree_result = 1;
-			else
-				dec_tree_result = 0;
-		}
-		else{ // maxgen < 60
-			if (maxgen >= 16){
-				if (fast_left > 2048)
+		if (avggen >= 16 || (avggen >= 14 && gen1 > 0)){
+			dec_tree_result = 0;
+			count_memcg_folio_events(folio, LEAF2, 1);
+		} else if (avggen <= 6){
+			dec_tree_result = 1;
+			count_memcg_folio_events(folio, LEAF1, 1);
+		} else {
+			if (avggen <= 10){
+				if (fast_left >= 8){
 					dec_tree_result = 1;
-				else
-					dec_tree_result = 0;
-			}
-			else if (maxgen < 5) { // 0 -9
-				dec_tree_result = 1;
-			}
-			else{ // 10-44
-				if (fast_left > 1024)
+					count_memcg_folio_events(folio, LEAF3, 1);
+				}
+				else{
 					dec_tree_result = 1;
-				else
+					count_memcg_folio_events(folio, LEAF4, 1);
+				}
+			}
+			else{
+				if (fast_left >= 16){
+					dec_tree_result = 1;
+					count_memcg_folio_events(folio, LEAF5, 1);
+				}
+				else{
 					dec_tree_result = 0;
+					count_memcg_folio_events(folio, LEAF6, 1);
+				}
 			}
 		}
 		count_memcg_folio_events(folio, WI_TREE, 1);
 	}else{
-		if (fast_left > 1024){
+		if (fast_left > 64){
 			dec_tree_result = 1;
+			count_memcg_folio_events(folio, LEAF7, 1);
 		}
 		else{
-			dec_tree_result = 0;
+			dec_tree_result = 1;
 		}
 		count_memcg_folio_events(folio, WO_TREE, 1);
 	}
@@ -604,9 +610,11 @@ repeat:
 		count_memcg_folio_events(folio, SWAPOUT_RAW, 1);
  	}
 out:
-	if (mem_cgroup_try_charge_swap(folio, entry)) {
-		put_swap_folio(folio, entry);
-		entry.val = 0;
+	if (likely(!skip_charge)){
+		if (mem_cgroup_try_charge_swap(folio, entry)) {
+			put_swap_folio(folio, entry);
+			entry.val = 0;
+		}
 	}
 	return entry;
 }

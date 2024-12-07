@@ -1332,6 +1332,13 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 		res = mapping->a_ops->writepage(&folio->page, &wbc);
 		if (res < 0)
 			handle_write_error(mapping, folio, res);
+		else{
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+			if (folio_test_swappriohigh(folio)){
+				pr_info("folio[%p] writesubmit pri[%lx]", folio, folio_swap_entry(folio));
+			}
+#endif
+		}
 		if (res == AOP_WRITEPAGE_ACTIVATE) {
 			folio_clear_reclaim(folio);
 			return PAGE_ACTIVATE;
@@ -1947,6 +1954,7 @@ unsigned int check_saved_folios_wb(struct lruvec *lruvec,
 	struct lru_gen_folio *lrugen = &lruvec->lrugen;
 	struct list_head *saved_folios = &lrugen->saved_folios;
 	int scanned = 0, fail_locked = 0;
+	bool skip_retry = false;
 	LIST_HEAD(ret_folios);
 	LIST_HEAD(folio_list);
 	LIST_HEAD(folio_list_fail_lock);
@@ -1954,6 +1962,8 @@ unsigned int check_saved_folios_wb(struct lruvec *lruvec,
 //load out pages
 	spin_lock_irq(&lruvec->lru_lock);
 	while (!list_empty_careful(saved_folios)) {
+		if (skip_retry)
+			break;
 		struct folio *folio;
 		scanned++;
 		if (scanned >= check_saved_scanmax) break;
@@ -1974,6 +1984,7 @@ collect_fail_lock_keep:
 		pr_info("check fail lock folio[%p] st[%d]", folio, folio_test_stalesaved(folio));
 #endif
 		list_add(&folio->lru, saved_folios);
+		skip_retry = false;
 		fail_locked += 1;
 	}
 	list_splice_init(&folio_list_fail_lock, saved_folios); //return back, check next time
@@ -2078,23 +2089,27 @@ keep_next_time:
 				delete_from_swap_remap_get_mig(folio, entry, &migentry);
 				if (migentry.val){
 					delete_from_swap_cache_mig(folio, migentry, true, false);
-					swap_free(migentry);					
+					swap_free_mig(migentry);					
 				}
 				// if (!folio_test_ksm(folio) && folio_ref_count(folio) == 2){
 				// 	pr_err("do refree swap folio[%p]ref[%d] entry[%lx]cnt[%d] clear now", 
 				// 		folio,	folio_ref_count(folio), entry.val, __swap_count(entry));	
-				// 	swap_free(entry);
+				// 	swap_free_mig(entry);
 				// 	BUG();
 				// 	folio_clear_swappriohigh(folio);
 				// 	folio_clear_swappriolow(folio);
 				// 	folio_free_swap(folio);
 				// }
+				// folio_clear_swappriohigh(folio);
+				// folio_clear_swappriolow(folio);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-				pr_err("folio[%p]ref[%d]pri[%lx] entry[%lx]cnt[%d]migentry[%lx]cnt[%d] cleanned mig", 
-					folio,	folio_ref_count(folio), folio_swap_entry(folio).val, entry.val, __swap_count(entry),
-					migentry.val, __swap_count(migentry));	
+				pr_err("folio[%p]stale[%d] ref[%d]pri[%lx] entry[%lx]cnt[%d]migentry[%lx]cnt[%d] cleanned mig", 
+					folio,	folio_test_stalesaved(folio), folio_ref_count(folio), folio_swap_entry(folio).val, 
+					entry.val, __swap_count(entry), migentry.val, __swap_count(migentry));	
 #endif
 pass_cleanup:
+				list_del(&folio->lru);
+				folio_add_lru(folio);
 				folio_unlock(folio);
 				continue;
 			} 
@@ -2135,11 +2150,12 @@ pass_cleanup:
 				// BUG();			
 			}
 			count_memcg_events(lruvec_memcg(lruvec), SWAP_STALE_SAVE, folio_nr_pages(folio));
+			list_del(&folio->lru);
 			folio_add_lru(folio);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-			pr_info("folio[%p] succeed enable, lruadded ref[%d]stale[%d]d[%d]", 
+			pr_info("folio[%p] succeed enable, lruadded ref[%d]stale[%d]d[%d]ac[%d]", 
 					folio, folio_ref_count(folio), folio_test_stalesaved(folio), 
-					folio_test_dirty(folio));
+					folio_test_dirty(folio), folio_test_active(folio));
 #endif
 			folio_unlock(folio);
 		}
@@ -2601,7 +2617,8 @@ free_it:
 		nr_reclaimed += nr_pages;
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 		if (unlikely(folio_test_stalesaved(folio)) || folio_test_swappriohigh(folio)){
-			pr_info("folio[%p] add to free_folios", folio);
+			pr_info("folio[%p] add to free_folios wb[%d]d[%d]sb[%d]", 
+					folio, folio_test_writeback(folio), folio_test_dirty(folio), folio_test_swapbacked(folio));
 		}
 #endif
 		/*
@@ -2983,14 +3000,7 @@ static unsigned int move_folios_to_lru(struct lruvec *lruvec,
 			spin_lock_irq(&lruvec->lru_lock);
 			continue;
 		}
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-		if (folio_test_swappriohigh(folio)){
-			pr_info("folio[%p]ref[%d] move_folios_to_lru $[%d]act[%d]d[%d]", 
-						folio, folio_ref_count(folio), folio_test_swapcache(folio), 
-						folio_test_active(folio), folio_test_dirty(folio));
-			// dump_stack();
-		}
-#endif
+
 		/*
 		 * The folio_set_lru needs to be kept here for list integrity.
 		 * Otherwise:
@@ -3017,7 +3027,14 @@ static unsigned int move_folios_to_lru(struct lruvec *lruvec,
 
 			continue;
 		}
-
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+		if (folio_test_swappriohigh(folio)){
+			pr_info("folio[%p]ref[%d] lruvec_add_folio $[%d]act[%d]d[%d]", 
+						folio, folio_ref_count(folio), folio_test_swapcache(folio), 
+						folio_test_active(folio), folio_test_dirty(folio));
+			// dump_stack();
+		}
+#endif
 		/*
 		 * All pages were isolated from the same lruvec (and isolation
 		 * inhibits memcg migration).
@@ -5491,7 +5508,9 @@ static bool sort_folio(struct lruvec *lruvec, struct folio *folio, int tier_idx,
 		list_move(&folio->lru, &lrugen->folios[gen][type][zone]);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 		if (folio_test_stalesaved(folio)) {
-			pr_info("folio[%p] wb?? gen[%d] ", folio, gen);
+			pr_info("folio[%p]"" lk[%d]wb[%d]d[%d] gen[%d] ", 
+					folio,  folio_test_locked(folio), folio_test_writeback(folio), 
+					folio_test_dirty(folio), gen);
 		}
 #endif
 		*cause = 4;
@@ -5869,8 +5888,11 @@ retry:
 
 		/* retry folios that may have missed folio_rotate_reclaimable() */
 		list_move(&folio->lru, &clean);
-		if (folio_test_stalesaved(folio))
-			pr_info("folio[%p] add to clean", folio);
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+		if (folio_test_stalesaved(folio)|| folio_test_swappriohigh(folio))
+			pr_info("folio[%p] add to clean d[%d]a[%d]wb[%d]", folio, 
+				folio_test_dirty(folio), folio_test_active(folio), folio_test_writeback(folio));
+#endif
 		sc->nr_scanned -= folio_nr_pages(folio);
 	}
 	spin_lock_irq(&lruvec->lru_lock);

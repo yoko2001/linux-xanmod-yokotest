@@ -898,7 +898,7 @@ static bool swap_offset_any_version_occupied(struct swap_info_struct* si,
 				}
 				else{
 					pr_err("swap_offset_occupied err type[%d] offset[%lx] occupied", si->type, offset);
-					// BUG();
+					BUG();
 				}
 			}
 		}
@@ -1676,8 +1676,8 @@ static void swap_entry_free(struct swap_info_struct *p, swp_entry_t entry, int f
 	p->swap_map[offset_v] = 0;
 	dec_cluster_info_page(p, p->cluster_info, offset);
 	unlock_cluster(ci);
-
-	mem_cgroup_uncharge_swap(entry, 1);
+	if (likely(0 == swp_entry_test_ext(entry) & 0x4))
+		mem_cgroup_uncharge_swap(entry, 1);
 	swap_range_free(p, offset, 1, free_shadow, version);
 }
 static int swap_swapcount(struct swap_info_struct *si, swp_entry_t entry);
@@ -1685,6 +1685,20 @@ static int swap_swapcount(struct swap_info_struct *si, swp_entry_t entry);
  * Caller has made sure that the swap device corresponding to entry
  * is still around or has not been recycled.
  */
+void swap_free_mig(swp_entry_t entry)
+{
+	struct swap_info_struct *p;
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+		// if (swp_entry_test_special(entry) > 0){
+		// 	pr_info("swap_free entry[%lx]v[%d] cnt[%d]", entry.val, swp_entry_test_special(entry), __swap_count(entry));
+		// }
+#endif
+	p = _swap_info_get(entry, false);
+	if (p){
+		swp_entry_set_ext(&entry, 0x4 | swp_entry_test_ext(entry));
+		__swap_entry_free(p, entry);
+	}
+}
 void swap_free(swp_entry_t entry)
 {
 	struct swap_info_struct *p;
@@ -1969,12 +1983,14 @@ bool folio_swapped(struct folio *folio)
 bool folio_free_swap(struct folio *folio)
 {
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
-	if (folio_test_swappriohigh(folio) || folio_test_swappriolow(folio)){
+	if (folio_test_swappriohigh(folio) ) { //|| folio_test_swappriolow(folio)){
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-		pr_info("folio_free_swap folio[%p]pri[%lx] blocked skip", folio, folio_swap_entry(folio).val);
+		pr_info("folio_free_swap folio[%p]pri[%lx]$[%d]wb[%d]swapped[%d]", 
+				folio, folio_swap_entry(folio).val, folio_test_swapcache(folio), 
+				folio_test_writeback(folio), folio_swapped(folio));
+// 		dump_stack();
 #endif
-		// dump_stack();
-		return false;
+//		return false;
 		// BUG();
 	}
 
@@ -2003,7 +2019,7 @@ bool folio_free_swap(struct folio *folio)
 	if (pm_suspended_storage())
 		return false;
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG	
-	if (folio_test_swappriolow(folio))
+	if (folio_test_swappriolow(folio) || folio_test_swappriohigh(folio))
 		pr_info("folio_free_swap folio[%p]pri[%lx]$[%d]", 
 				folio, folio_swap_entry(folio).val, folio_test_swapcache(folio));
 #endif
@@ -2041,9 +2057,9 @@ bool folio_free_swap_debug(struct folio *folio)
 	if (pm_suspended_storage())
 		return false;
 	swp_entry_t before_entry = folio_swap_entry(folio);
-	pr_info("folio_free_swap_debug folio[%p]$[%d]wb[%d]swapped[%d] pri[%lx]", 
-				folio, folio_test_swapcache(folio),folio_test_writeback(folio),
-				folio_swapped(folio), folio_swap_entry(folio).val);
+	// pr_info("folio_free_swap_debug folio[%p]$[%d]wb[%d]swapped[%d] pri[%lx]", 
+	// 			folio, folio_test_swapcache(folio),folio_test_writeback(folio),
+	// 			folio_swapped(folio), folio_swap_entry(folio).val);
 	swp_entry_t freed_entry = delete_from_swap_cache_debug(folio, before_entry);
 	VM_BUG_ON_FOLIO(freed_entry.val != before_entry.val, folio);
 	folio_set_dirty(folio);
@@ -2074,9 +2090,9 @@ int free_swap_and_cache(swp_entry_t entry, bool allowunused)
 			__try_to_reclaim_swap(p, swp_offset(entry),
 					      TTRS_UNMAPPED | TTRS_FULL);
 	}
-	// else {
-	// 	pr_info("free_s&$ err swap_info[%p], count[%d], entry[%lx]", p, count, entry.val);
-	// }
+	else {
+		pr_info("free_s&$ err swap_info[%p], count[%d], entry[%lx]", p, count, entry.val);
+	}
 	return p != NULL;
 }
 
@@ -2369,7 +2385,7 @@ static int unuse_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 					// pr_err("unuse_pte_range free migentry folio[%p]pri[%lx] entry[%lx]cnt[%d] mig[%lx]cnt[%d]", 
 					// 				folio, folio_swap_entry(folio),
 					// 				entry.val, swp_swapcount(entry), migentry.val, swp_swapcount(migentry));
-					// swap_free(migentry);
+					// swap_free_mig(migentry);
 					folio_lock(folio);
 					delete_from_swap_remap(folio, entry, migentry, false); //should come with no ref_sub
 					folio_unlock(folio);
