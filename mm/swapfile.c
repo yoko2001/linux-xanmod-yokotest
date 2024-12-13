@@ -1985,10 +1985,11 @@ bool folio_free_swap(struct folio *folio)
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 	if (folio_test_swappriohigh(folio) ) { //|| folio_test_swappriolow(folio)){
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-		pr_info("folio_free_swap folio[%p]pri[%lx]$[%d]wb[%d]swapped[%d]", 
-				folio, folio_swap_entry(folio).val, folio_test_swapcache(folio), 
-				folio_test_writeback(folio), folio_swapped(folio));
-// 		dump_stack();
+		if (folio_test_swapcache(folio) && !folio_test_writeback(folio) && !folio_swapped(folio))
+			dump_stack();		
+		// pr_info("folio_free_swap folio[%p]ref[%d] pri[%lx]$[%d]wb[%d]swapped[%d]", 
+		// 		folio, folio_ref_count(folio), folio_swap_entry(folio).val, 
+		// 		folio_test_swapcache(folio), folio_test_writeback(folio), folio_swapped(folio));
 #endif
 //		return false;
 		// BUG();

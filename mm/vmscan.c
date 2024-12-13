@@ -1953,7 +1953,7 @@ unsigned int check_saved_folios_wb(struct lruvec *lruvec,
 	unsigned int nr_reclaimed = 0;
 	struct lru_gen_folio *lrugen = &lruvec->lrugen;
 	struct list_head *saved_folios = &lrugen->saved_folios;
-	int scanned = 0, fail_locked = 0;
+	int scanned = 0, fail_locked = 0, err;
 	bool skip_retry = false;
 	LIST_HEAD(ret_folios);
 	LIST_HEAD(folio_list);
@@ -1977,13 +1977,10 @@ unsigned int check_saved_folios_wb(struct lruvec *lruvec,
 		list_add(&folio->lru, &folio_list);
 		continue;
 collect_fail_lock_keep:
-		// if (folio_test_stalesaved(folio)){ //cancelled by do_swap
-		// 	list_move(&folio->lru, &folio_list_fail_lock);
-		// }
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 		pr_info("check fail lock folio[%p] st[%d]", folio, folio_test_stalesaved(folio));
 #endif
-		list_add(&folio->lru, saved_folios);
+		list_add_tail(&folio->lru, saved_folios);
 		skip_retry = false;
 		fail_locked += 1;
 	}
@@ -2039,6 +2036,7 @@ collect_fail_lock_keep:
 		}
 		else{
 			nr_reclaimed += nr_pages;
+			VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 			list_add(&folio->lru, &saved_sb_complete_list);
 			continue;
 		}
@@ -2056,6 +2054,7 @@ keep_next_time:
 			swp_entry_t migentry, entry = {.val = folio_swap_entry(folio).val};
 			VM_BUG_ON_FOLIO(folio_nr_pages(folio) > 1, folio);
 			VM_BUG_ON_FOLIO(non_swap_entry(entry), folio);	
+			VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 			// VM_BUG_ON_FOLIO(folio_mapped(folio), folio);	
 			if (!folio_test_stalesaved(folio)){
 				// //we're interruped by do_swap_page turn this page into safe state
@@ -2102,6 +2101,11 @@ keep_next_time:
 				// }
 				// folio_clear_swappriohigh(folio);
 				// folio_clear_swappriolow(folio);
+				if ((err = swapcache_prepare(folio_swap_entry(folio)))) {
+					pr_err("folio orientry[%lx] reprepare fail [%d] [%d]", 
+							folio_swap_entry(folio).val, err, -EEXIST);
+					BUG();
+				}
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 				pr_err("folio[%p]stale[%d] ref[%d]pri[%lx] entry[%lx]cnt[%d]migentry[%lx]cnt[%d] cleanned mig", 
 					folio,	folio_test_stalesaved(folio), folio_ref_count(folio), folio_swap_entry(folio).val, 
@@ -2142,7 +2146,8 @@ pass_cleanup:
 						entry.val, __swp_swapcount(entry), migentry.val, __swp_swapcount(migentry));
 			swap_free(entry);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-			pr_info("folio[%p]after free entry[%lx]", folio, entry.val);
+			pr_info("folio[%p]lru[%px]prev[%px]next[%px] before del entry[%lx]", 
+						folio, &folio->lru, folio->lru.prev, folio->lru.next, entry.val);
 #endif
 			if (unlikely(__swp_swapcount(entry) != 0)){
 				pr_info("after swap_free ori_entry[%lx]cnt[%d], mig_entry[%lx]cnt[%d]", 
@@ -2153,8 +2158,8 @@ pass_cleanup:
 			list_del(&folio->lru);
 			folio_add_lru(folio);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-			pr_info("folio[%p] succeed enable, lruadded ref[%d]stale[%d]d[%d]ac[%d]", 
-					folio, folio_ref_count(folio), folio_test_stalesaved(folio), 
+			pr_info("folio[%p]lru[%px] succ enable, lruadded ref[%d]stale[%d]d[%d]ac[%d]", 
+					folio, &folio->lru, folio_ref_count(folio), folio_test_stalesaved(folio), 
 					folio_test_dirty(folio), folio_test_active(folio));
 #endif
 			folio_unlock(folio);
@@ -2209,6 +2214,12 @@ retry:
 		cond_resched();
 
 		folio = lru_to_folio(folio_list);
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+		if (folio_test_swappriohigh(folio) || folio_test_swappriolow(folio) || folio_test_stalesaved(folio)){
+			pr_info("shrink_folio_list folio[%p][%px], list_del from list[%px]prev[%px]next[%px]", 
+					folio, &folio->lru, folio_list, folio_list->prev, folio_list->next);
+		}
+#endif
 		list_del(&folio->lru);
 
 		if (!folio_trylock(folio))
@@ -2615,12 +2626,7 @@ free_it:
 		 * all pages in it.
 		 */
 		nr_reclaimed += nr_pages;
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-		if (unlikely(folio_test_stalesaved(folio)) || folio_test_swappriohigh(folio)){
-			pr_info("folio[%p] add to free_folios wb[%d]d[%d]sb[%d]", 
-					folio, folio_test_writeback(folio), folio_test_dirty(folio), folio_test_swapbacked(folio));
-		}
-#endif
+
 		/*
 		 * Is there need to periodically free_folio_list? It would
 		 * appear not as the counts should be low
@@ -2629,6 +2635,12 @@ free_it:
 			destroy_large_folio(folio);
 		else
 			list_add(&folio->lru, &free_folios);
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+		if (unlikely(folio_test_stalesaved(folio)) || folio_test_swappriohigh(folio)){
+			pr_info("folio[%p] after added to free_folios wb[%d]d[%d]sb[%d]", 
+					folio, folio_test_writeback(folio), folio_test_dirty(folio), folio_test_swapbacked(folio));
+		}
+#endif	
 		continue;
 
 activate_locked_split:
@@ -2992,6 +3004,13 @@ static unsigned int move_folios_to_lru(struct lruvec *lruvec,
 		struct folio *folio = lru_to_folio(list);
 
 		VM_BUG_ON_FOLIO(folio_test_lru(folio), folio);
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+		if (folio_test_swappriohigh(folio)){
+			pr_info("folio[%p]ref[%d] list_del $[%d]act[%d]d[%d]", 
+						folio, folio_ref_count(folio), folio_test_swapcache(folio), 
+						folio_test_active(folio), folio_test_dirty(folio));
+		}
+#endif
 		list_del(&folio->lru);
 		if (unlikely(!folio_evictable(folio))) {
 			spin_unlock_irq(&lruvec->lru_lock);

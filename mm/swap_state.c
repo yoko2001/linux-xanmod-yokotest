@@ -1291,8 +1291,8 @@ swp_entry_t delete_from_swap_cache(struct folio *folio)
 	swp_entry_t entry = folio_swap_entry(folio);
 	struct address_space *address_space = swap_address_space(entry);
 	if (folio_test_swappriohigh(folio) || folio_test_swappriolow(folio)){
-		pr_err("delete_s$ folio[%p]->ext[%p] pri[%lx], BUG", folio, folio->shadow_ext, entry.val);
-		BUG();
+		pr_err("delete_s$ folio[%p]->ext[%p] pri[%lx], WARN", folio, folio->shadow_ext, entry.val);
+		// BUG();
 	}
 	xa_lock_irq(&address_space->i_pages);
 	__delete_from_swap_cache(folio, entry, NULL);
@@ -1318,8 +1318,8 @@ swp_entry_t delete_from_swap_cache_debug(struct folio *folio, swp_entry_t expect
 	VM_BUG_ON(entry.val != expected_entry.val);
 	struct address_space *address_space = swap_address_space(entry);
 	if (folio_test_swappriohigh(folio) || folio_test_swappriolow(folio)){
-		pr_err("delete_s$ folio[%p]->ext[%p] pri[%lx], BUG", folio, folio->shadow_ext, entry.val);
-		BUG();
+		pr_err("delete_s$_debug folio[%p]->ext[%p] pri[%lx], WARN", folio, folio->shadow_ext, entry.val);
+		// BUG();
 	}
 	xa_lock_irq(&address_space->i_pages);
 	__delete_from_swap_cache(folio, entry, NULL);
@@ -1429,7 +1429,7 @@ void free_swap_cache(struct page *page)
 		if(unlikely(folio_test_swappriohigh(folio) || folio_test_swappriolow(folio))){
 			// folio_clear_swappriohigh(folio);
 			// folio_clear_swappriolow(folio);
-			pr_err("free_swap_cache folio[%p]wb[%d]$[%d] pri[%lx] force frees_swap pass", 
+			pr_info("free_swap_cache folio[%p]wb[%d]$[%d] pri[%lx] force frees_swap pass", 
 					folio, folio_test_writeback(folio), folio_test_swapcache(folio), folio_swap_entry(folio).val);
 		}
 		folio_free_swap(folio);
@@ -1831,8 +1831,8 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 		if (!err)
 			break;
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-		pr_info("swapcache_prepare fail[%d][%s] addr[%lx] entry[%lx]",
-					err, err == -EINVAL ? "EINVAL" : (err == -EEXIST ? "EEXIST" : "?"), addr, entry.val);
+		// pr_info("swapcache_prepare fail[%d][%s] addr[%lx] entry[%lx]",
+		// 			err, err == -EINVAL ? "EINVAL" : (err == -EEXIST ? "EEXIST" : "?"), addr, entry.val);
 #endif
 		folio_put(folio);
 		if (err != -EEXIST)
@@ -1985,7 +1985,7 @@ struct page *read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 		swap_readpage(retpage, do_poll, plug);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 	else if (!retpage){
-		pr_info("read_swap_cache_async alloc fail entry[%lx]", entry.val);
+		// pr_info("read_swap_cache_async alloc fail entry[%lx]", entry.val);
 	}
 #endif
 	/*DJL ADD BEGIN*/
@@ -2587,8 +2587,8 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				// }
 			}
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-			pr_info("folio[%p] saved[%lx]cnt[%d] ref[%d] add_to_swap_cache_save_check success ", 
-					folio, saved_entry.val, __swp_swapcount(saved_entry), folio_ref_count(folio));	
+			// pr_info("folio[%p] saved[%lx]cnt[%d] ref[%d] add_to_swap_cache_save_check success ", 
+			// 		folio, saved_entry.val, __swp_swapcount(saved_entry), folio_ref_count(folio));	
 #endif
 			_err = add_to_swap_cache_save_check(folio, mig_entry, gfp_mask & (__GFP_HIGH|__GFP_NOMEMALLOC|__GFP_NOWARN), false);
 			if (_err) {
@@ -2679,9 +2679,6 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 					if (folio_test_writeback(folio)){//sync, under wb	
 						folio_list_wb[num_folio_list_wb++] = folio; 	
 						//check later in vmscan
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-						pr_info("folio[%p] wb[%d] folio add to list",folio, folio_test_writeback(folio));
-#endif
 					}
 					else{ //A synchronous write - probably a ramdisk.
 						; //should remove mapping and clean & free it
@@ -2797,6 +2794,7 @@ skip_this_save:
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 				pr_info("folio[%p] => saved_folios ref[%d]", folio, folio_ref_count(folio));
 #endif
+				// VM_WARN_ON_FOLIO(folio_ref_count(folio) != 3, folio);
 				list_add(&folio->lru, &lrugen->saved_folios);
 				trace_add_to_lruvec_saved_folios(lruvec, folio, num_moved);	
 			}
@@ -2813,7 +2811,7 @@ skip_this_save:
 		}
 	}
 #endif
-
+	lru_add_drain();
 skip:
 	/* The page was likely read above, so no need for plugging here */
 	return read_swap_cache_async(fentry, gfp_mask, vma, vmf->address,

@@ -3929,6 +3929,9 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 			goto out;
 		}
 		else{
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+			pr_info("ori[%lx] -> mig[%lx]", orientry.val, migentry.val);
+#endif
 			need_unlock = true;
 		}	
 	}	
@@ -4061,6 +4064,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 					ASSERT_FOLIO_NO_SE(folio, __FILE__, __LINE__);
 				}
 				/*DJL ADD END*/
+				VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 				folio_add_lru(folio);
 
 				/* To provide entry to swap_readpage() */
@@ -4124,8 +4128,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 							vmf->address, &page_allocated, false, &try_free_entry, false);
 				if (page_allocated){
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-					pr_info("__read_swap_cache_async_save folio[%p] remapped entry[%lx] refcount[%d]", 
-								page_folio(page), entry.val, folio_ref_count(page_folio(page)));
+					// pr_info("__read_swap_cache_async_save folio[%p] remapped entry[%lx] refcount[%d]", 
+					// 			page_folio(page), entry.val, folio_ref_count(page_folio(page)));
 #endif
 					swap_readpage(page, true, plug);
 				}
@@ -4446,7 +4450,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 						folio_test_ksm(folio), folio_test_swapcache(folio), folio_test_writeback(folio));
 #endif
 				// folio_set_swappriohigh(folio);
-				folio_add_lru_save(folio);
+				// folio_add_lru(folio);
 			}
 		}else{ //invalid remap case
 			if (should_try_to_free_swap(folio, vma, vmf->flags, 2)){ //invalid

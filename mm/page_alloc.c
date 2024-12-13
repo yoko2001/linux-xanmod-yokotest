@@ -1296,8 +1296,8 @@ static inline bool free_page_is_bad(struct page *page)
 {
 	if (likely(page_expected_state(page, PAGE_FLAGS_CHECK_AT_FREE)))
 		return false;
-	pr_err("free_page_is_bad[%p], lru[%d]lock[%d]pr[%d]pr2[%d]wb[%d]res[%d]slab[%d]ev[%d]mlock[%d]", page, 
-			PageLRU(page), PageLocked(page), PagePrivate(page), PagePrivate2(page),
+	pr_info("free_page_is_bad[%p], count[%d] lru[%d]lock[%d]pr[%d]pr2[%d]wb[%d]res[%d]slab[%d]ev[%d]mlock[%d]", page, 
+			atomic_read(&page->_mapcount), PageLRU(page), PageLocked(page), PagePrivate(page), PagePrivate2(page),
 			PageWriteback(page), PageReserved(page), PageSlab(page), PageUnevictable(page),
 			PageMlocked(page)
 			);
@@ -3590,9 +3590,9 @@ void free_unref_page_list(struct list_head *list)
 			if (unlikely(entry_is_entry_ext_debug(shadow) == 1)){
 				shadow_entry_free(shadow);
 				// trace_shadow_entry_free(shadow, 4);	
-				pr_info("[FREE]free_unref_list normal shadow[%p]folio[%p]pri[%lx]ref[%d]$[%d]priolow[%d]",
-						shadow, folio, folio_swap_entry(folio).val, 
-						folio_ref_count(folio), folio_test_swapcache(folio), folio_test_swappriolow(folio));
+				// pr_info("[FREE]free_unref_list normal shadow[%p]folio[%p]pri[%lx]ref[%d]$[%d]priolow[%d]",
+				// 		shadow, folio, folio_swap_entry(folio).val, 
+				// 		folio_ref_count(folio), folio_test_swapcache(folio), folio_test_swappriolow(folio));
 				if (folio_test_swapcache(folio) && folio_swap_entry(folio).val != 0){
 					__delete_from_swap_cache(folio, folio_swap_entry(folio), shadow);
 					pr_info("folio[%p] delete from swapcache", folio);
