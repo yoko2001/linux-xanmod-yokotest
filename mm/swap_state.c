@@ -2368,7 +2368,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 	lruvec = NULL;
 	lrugen = NULL;
 	if (ra_info.win == 1)
-		goto skip;
+		goto skip_ra_try_save;
 // 	if (swp_entry_test_special(fentry)){
 // #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 // 		pr_info("vma_readahead saved entry[%lx], skip", fentry.val);
@@ -2386,11 +2386,11 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 		if (unlikely(non_swap_entry(entry)))
 			continue;
 		// // fast swap device IO-through
-		si = swp_swap_info(entry);
-		if (data_race(si->flags & SWP_SYNCHRONOUS_IO)){ // block all IOs
-			count_memcg_event_mm(vma->vm_mm, SWAPIN_FAST_RA_SKIP);
-			continue;
-		}
+		// si = swp_swap_info(entry);
+		// if (data_race(si->flags & SWP_SYNCHRONOUS_IO)){ // block all IOs
+		// 	count_memcg_event_mm(vma->vm_mm, SWAPIN_FAST_RA_SKIP);
+		// 	continue;
+		// }
 		/*DJL ADD BEGIN*/
 		page = __read_swap_cache_async(entry, gfp_mask, vma,
 					       vmf->address, vmf->real_address, &page_allocated, (!enable_ra_fast_evict) || (i == ra_info.offset), 
@@ -2434,6 +2434,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 	blk_finish_plug(&plug);
 	swap_read_unplug(splug);
 	lru_add_drain();
+skip_ra_try_save:
 	// pr_err("swap_vma_readahead fentry[%lx]", fentry.val);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
 	//try do serveral stale entry save here
