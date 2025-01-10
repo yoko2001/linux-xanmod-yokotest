@@ -2576,10 +2576,6 @@ static unsigned int find_next_to_unuse(struct swap_info_struct *si,
 			cond_resched();
 		if ((i % si->max) == 0 && i > 0)
 			i = 0;
-		if (i == 16384){
-			pr_info("i[%d] max[%d] i mod si->max[%d]", i, si->max, (i % si->max) );
-			BUG();
-		}
 	}
 	else{
 		for (i = prev + 1; i < si->max; i++) {
