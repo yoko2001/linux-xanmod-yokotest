@@ -1445,6 +1445,8 @@ const char * const vmstat_text[] = {
 	"workingset_refault_dist_fast_4",
 	"refault_free_from_slow",
 	"refault_free_from_fast",
+	"refault_free_attempt",
+	"refault_free_skip",
 	"leaf1",
 	"leaf2",
 	"leaf3",

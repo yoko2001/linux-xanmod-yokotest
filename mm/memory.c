@@ -3679,8 +3679,9 @@ static inline bool should_try_to_free_swap(struct folio *folio,
 // #endif
 	/*DJL ADD END*/
 	if (likely(0==status))
-		return (fault_flags & FAULT_FLAG_WRITE) && !folio_test_ksm(folio) && 
-			folio_ref_count(folio) == 2;
+		return  !folio_test_ksm(folio) && folio_ref_count(folio) == 2;
+		// return (fault_flags & FAULT_FLAG_WRITE) && !folio_test_ksm(folio) && 
+		// 	folio_ref_count(folio) == 2;
 	else if (1==status)
 		return (fault_flags & FAULT_FLAG_WRITE) && !folio_test_ksm(folio) && 
 			folio_ref_count(folio) == 2;
@@ -3747,29 +3748,23 @@ static vm_fault_t handle_pte_marker(struct vm_fault *vmf)
 }
 
 static inline int should_try_change_swap_entry(int rf_dist, int swap_level, bool loop){
+#ifdef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
 	if (loop){
 		if (swap_level == 1){ //refault from fast
-#ifdef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
 			if (rf_dist > 1) return 1;
-#endif
 		}else if (swap_level == -1){ //refault from slow
-#ifdef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
 			if (rf_dist == 0) return 1;
-#endif
 		}
 	}
 	else{
 		if (swap_level == 1){ //refault from fast
-#ifdef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
 			if (rf_dist > 3) return 1;
-#endif
 		}
 		else if (swap_level == -1){	//refault from slow
-#ifdef CONFIG_LRU_GEN_FALSE_FAST_ASSIGN_PUNISHMENT
 			if (rf_dist < 2) return 1;
-#endif
 		}
 	}
+#endif
 	return 0;
 } 
 
@@ -4084,12 +4079,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 							folio_swapped(folio), migentry.val);
 				}
 				swap_readpage(page, true, NULL);
-				struct swap_info_struct* info = page_swap_info((folio_page(folio, 0)));
-				if (info->prio >= 100){ // -2 1005
-					count_memcg_folio_events(folio ,SWAP_FREE_FAST, folio_nr_pages(folio));
-				}else{
-					count_memcg_folio_events(folio ,SWAP_FREE_SLOW, folio_nr_pages(folio));
-				}
+
 				if (migentry.val){
 					pr_info("pf4 swap_readpage entry[%lx]->folio[%p]wb[%d]$[%d]swped[%d] migentry[%lx]", 
 							entry.val, page, folio_test_writeback(folio), folio_test_swapcache(folio), 
@@ -4492,8 +4482,10 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		if (should_try_to_free_swap(folio, vma, vmf->flags, 0)){ // normal
 			VM_BUG_ON_FOLIO(orientry.val != entry.val, folio);
 			folio_free_swap_debug(folio);
+			count_memcg_event_mm(vma->vm_mm, SWAP_FREE_ATTEMPT_NORMAL);
 		}
 		else{
+			count_memcg_event_mm(vma->vm_mm, SWAP_FREE_SKIP_NORMAL);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 			if (swp_entry_test_special(entry) > 1 && folio_test_swapcache(folio)){
 				pr_info("do_swap SKIP folio_free_swap[%lx] vmf[%d] vmaflag[%lx] folio[%p] $[%d] ref[%d] cnt[%d] ksm[%d] write[%d]wb[%d]", 

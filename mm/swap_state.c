@@ -541,7 +541,7 @@ static int add_to_swap_cache_save_check(struct folio *folio, swp_entry_t entry,
 				}
 				else{
 					pr_err("add_to_swap_cache_save_check [%lx]->[%p] got freed entry_ext",
-								entry,  _entry);
+								entry.val,  _entry);
 				}
 			}
 
@@ -1212,7 +1212,7 @@ static void clear_swap_remap_range(struct swap_info_struct *si, int start, int e
 	swp_entry_t entry_start = swp_entry(si->type, start);
 	struct address_space *address_space = swap_address_space_remap(entry_start);
 	__clear_swap_remap_range(entry_start, SWAP_ADDRESS_SPACE_REMAP_SHIFT);
-	pr_info("clear_swap_remap_range type[%d][%d-%d] left[%d]", 
+	pr_info("clear_swap_remap_range type[%d][%d-%d] left[%ld]", 
 			si->type, start, end, address_space->nrpages);
 }
 
@@ -1289,6 +1289,7 @@ void delete_from_swap_remap_get_mig(struct folio* folio, swp_entry_t entry_from,
 swp_entry_t delete_from_swap_cache(struct folio *folio)
 {
 	swp_entry_t entry = folio_swap_entry(folio);
+	struct swap_info_struct *si;
 	struct address_space *address_space = swap_address_space(entry);
 	if (folio_test_swappriohigh(folio) || folio_test_swappriolow(folio)){
 		pr_err("delete_s$ folio[%p]->ext[%p] pri[%lx], WARN", folio, folio->shadow_ext, entry.val);
@@ -1297,6 +1298,14 @@ swp_entry_t delete_from_swap_cache(struct folio *folio)
 	xa_lock_irq(&address_space->i_pages);
 	__delete_from_swap_cache(folio, entry, NULL);
 	xa_unlock_irq(&address_space->i_pages);
+
+	si = get_swap_device(entry);
+	if (si->prio >= 100){ // -2 1005
+		count_memcg_folio_events(folio ,SWAP_FREE_FAST, folio_nr_pages(folio));
+	}else{
+		count_memcg_folio_events(folio ,SWAP_FREE_SLOW, folio_nr_pages(folio));
+	}
+	put_swap_device(si);
 
 	put_swap_folio(folio, entry);
 	// if (swp_entry_test_special(entry) > 0){
@@ -1315,6 +1324,7 @@ swp_entry_t delete_from_swap_cache(struct folio *folio)
 swp_entry_t delete_from_swap_cache_debug(struct folio *folio, swp_entry_t expected_entry)
 {
 	swp_entry_t entry = folio_swap_entry(folio);
+	struct swap_info_struct *si;
 	VM_BUG_ON(entry.val != expected_entry.val);
 	struct address_space *address_space = swap_address_space(entry);
 	if (folio_test_swappriohigh(folio) || folio_test_swappriolow(folio)){
@@ -1324,6 +1334,14 @@ swp_entry_t delete_from_swap_cache_debug(struct folio *folio, swp_entry_t expect
 	xa_lock_irq(&address_space->i_pages);
 	__delete_from_swap_cache(folio, entry, NULL);
 	xa_unlock_irq(&address_space->i_pages);
+
+	si = get_swap_device(entry);
+	if (si->prio >= 100){ // -2 1005
+		count_memcg_folio_events(folio ,SWAP_FREE_FAST, folio_nr_pages(folio));
+	}else{
+		count_memcg_folio_events(folio ,SWAP_FREE_SLOW, folio_nr_pages(folio));
+	}
+	put_swap_device(si);
 
 	put_swap_folio(folio, entry);
 	// if (swp_entry_test_special(entry) > 0){
