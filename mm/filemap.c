@@ -2189,6 +2189,7 @@ unsigned swap_scan_entries_savior(struct address_space *mapping,
 		}
 	}
 	rcu_read_unlock();
+	count_memcg_events(lruvec_memcg(target_lruvec), SWAP_STALE_SCAN, end - start);
 
 	return count_choosed;
 }

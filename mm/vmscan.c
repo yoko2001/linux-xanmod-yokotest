@@ -6368,14 +6368,13 @@ static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *
 
 	blk_finish_plug(&plug);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
+	if (likely(swap_scan_savior_delays++ < swap_scan_savior_delay_max))
+		goto done;
 	if (current_is_kswapd()){
 		if (pgdat->prio_lruvec){
-			if (swap_scan_savior_delays++ < swap_scan_savior_delay_max){
-				goto done;
-			}
-			swap_scan_savior_delays = 0;
 			swap_scan_savior(sc, pgdat->prio_lruvec);
 		}
+		swap_scan_savior_delays = 0;
 	}
 #endif
 done:
