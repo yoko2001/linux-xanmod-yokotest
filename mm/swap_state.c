@@ -2541,15 +2541,15 @@ skip_ra_try_save:
 			SetPageStaleSaved(page);
 			__folio_set_swapbacked(folio);
 			// if (mem_cgroup_charge(folio, vma->vm_mm, gfp_mask)) {
-			if (mem_cgroup_swapin_charge_folio(folio,
-						NULL, gfp_mask,
-						saved_entry)) {
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-				pr_info("mem_cgroup_swapin_charge_folio fail folio[%p] ref[%d]", folio, folio_ref_count(folio));
-#endif
-				no_space_force_stop = true;
-				goto fail_page_out;
-			}
+// 			if (mem_cgroup_swapin_charge_folio(folio,
+// 						NULL, gfp_mask,
+// 						saved_entry)) {
+// #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+// 				pr_info("mem_cgroup_swapin_charge_folio fail folio[%p] ref[%d]", folio, folio_ref_count(folio));
+// #endif
+// 				no_space_force_stop = true;
+// 				goto fail_page_out;
+// 			}
 			//don't mem_cgroup_swapin_uncharge_swap(entry);
 			folio_set_swap_entry(folio, saved_entry);			
 			swap_readpage(page, true, &splug_save);

@@ -4443,6 +4443,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				// folio_add_lru(folio);
 			}
 		}else{ //invalid remap case
+			mem_cgroup_charge(folio, vma->vm_mm, GFP_KERNEL);
 			if (should_try_to_free_swap(folio, vma, vmf->flags, 2)){ //invalid
 				swap_free(entry);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG

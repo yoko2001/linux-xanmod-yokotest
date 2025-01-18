@@ -131,9 +131,7 @@ static inline unsigned char swap_count(unsigned char ent)
 #define TTRS_FULL		0x4
 
 int __si_can_version(struct swap_info_struct *si){
-	if (si && (si->flags & SWP_SYNCHRONOUS_IO))
-		return 1;
-	return 0;
+	return si && (si->flags & SWP_SYNCHRONOUS_IO);
 }
 /* returns 1 if swap entry is freed */
 static int __try_to_reclaim_swap(struct swap_info_struct *si,
@@ -884,11 +882,10 @@ static bool swap_offset_any_version_occupied(struct swap_info_struct* si,
 						 unsigned long offset)
 {
 	int v;
-	unsigned long offset_v;
+	unsigned long offset_v = offset;
 	bool ret = false;
 	if (__si_can_version(si)){ //FAST, we support multiversion
 		for (v = 0; v <= SWP_ENTRY_ALIVE_VERSION_SPEC; v++){
-			offset_v = offset + v * si->max;
 			if (data_race(si->swap_map[offset_v])) {
 				// pr_err("swap_offset_occupied prio[%d]offset[%lx]v[%d]=[%d] occupied", 
 				// 	si->prio, offset, v, data_race(si->swap_map[offset_v]));
@@ -901,6 +898,7 @@ static bool swap_offset_any_version_occupied(struct swap_info_struct* si,
 					BUG();
 				}
 			}
+			offset_v += si->max;
 		}
 		// pr_err("swap_offset_occupied offset[%lx]=[0x%x] all vfree", 
 		// 			offset, data_race(si->swap_map[offset]));
