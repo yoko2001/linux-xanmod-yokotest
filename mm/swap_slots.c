@@ -462,7 +462,7 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 
 		// if (avggen >= 25 || (avggen >= 15 && gen1 > 0)){
 		dec_tree_result = 1;
-		if ((avggen > 12 && gen1 > 12 && gen0 > 12) || gen0 > 40){
+		if ((avggen > 10 && gen1 > 10 && gen0 > 10) || gen0 > 35){
 			dec_tree_result = 0;
 			count_memcg_folio_events(folio, LEAF2, 1);
 		} else if (avggen <= 8 || gen0 <= 6 || gen1 <= 6){
@@ -480,7 +480,7 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 				}
 			}
 			else{
-				if (fast_left >= 128){
+				if (fast_left >= 64){
 					dec_tree_result = 1;
 				}
 				else{
@@ -507,7 +507,7 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 	// else if (folio_test_swappriolow(folio))
 	// 	dec_tree_result = 0;
 	// //stale-saved page force goto slow
-	dec_tree_result = 1;
+	// dec_tree_result = 1;
 	if (force_slow)
 		dec_tree_result = 0;
 	if (dec_tree_result == 0){
