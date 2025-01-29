@@ -3843,6 +3843,13 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	struct address_space *address_space;
 	bool need_unlock= false, valid_remap = false, invalid_remap = false, filemaphit = false;
 	static int privatebug = 1000;
+#ifdef CONFIG_LRU_GEN_SWAP_IN_LOCK_STAT
+	ktime_t start_time, end_time;
+	unsigned long wait_time_ns = 0;
+	bool timerecord = false;
+	static int recorddelay = 0;
+	int cpu = smp_processor_id();
+#endif
 	/*DJL ADD END*/
 	if (!pte_unmap_same(vmf))
 		goto out;
@@ -4000,6 +4007,14 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 #endif
 	//from this point, whether if folio is the ready or NULL
 	if (!folio) {
+#ifdef CONFIG_LRU_GEN_SWAP_IN_LOCK_STAT
+		start_time = ktime_get();
+		if (recorddelay >= 10){
+			timerecord = true;
+			recorddelay = 0;
+		} 
+		recorddelay++;
+#endif
 		address_space = swap_address_space(entry);
 		if (data_race(si->flags & SWP_SYNCHRONOUS_IO) && __swap_count(entry) == 1 && !invalid_remap)
 		{
@@ -4201,11 +4216,25 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	//if success lock, stale save has to complete
 	locked = folio_lock_or_retry(folio, vma->vm_mm, vmf->flags);
 	if (!locked) {
+#ifdef CONFIG_LRU_GEN_SWAP_IN_LOCK_STAT
+		if (timerecord){
+			end_time = ktime_get();
+			wait_time_ns = ktime_to_ns(ktime_sub(end_time, start_time));
+			trace_folio_fail_lock_timer(orientry.val ,cpu, wait_time_ns);	
+		}
+#endif
 		if (unlikely(folio_test_stalesaved(folio) || valid_remap || invalid_remap))
 			pr_info("folio[%p] entry[%lx] st[%d] retry locked", folio, orientry.val, folio_test_stalesaved(folio));
 		ret |= VM_FAULT_RETRY;
 		goto out_release;
 	}
+#ifdef CONFIG_LRU_GEN_SWAP_IN_LOCK_STAT
+	if (timerecord){
+		end_time = ktime_get();
+		wait_time_ns = ktime_to_ns(ktime_sub(end_time, start_time));
+		trace_folio_lock_timer(orientry.val ,cpu, wait_time_ns);
+	}
+#endif
 	if (unlikely(!folio_test_uptodate(folio))){
 		pr_err("unlocked folio[%p] uptodate[%d] private[%lx]", 
 					folio, folio_test_uptodate(folio), folio_swap_entry(folio).val);

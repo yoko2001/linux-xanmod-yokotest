@@ -1247,6 +1247,12 @@ config LRU_GEN_STATS
 
 	  This option has a per-memcg and per-node memory overhead.
 
+config LRU_GEN_SWAP_IN_LOCK_STAT
+	bool "record swap in locking time."
+	depends on LRU_GEN
+	help
+	  This option enables swap in locking time record.
+
 config LRU_GEN_STALE_SWP_ENTRY_SAVIOR
 	bool "scan & free stale fast swap entries"
 	depends on LRU_GEN_KEEP_REFAULT_HISTORY

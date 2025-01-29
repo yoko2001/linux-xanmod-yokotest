@@ -8,7 +8,7 @@
 #include <linux/tracepoint.h>
 #include <linux/mm.h>
 #include <linux/mm_inline.h>
-
+#include <linux/ktime.h>
 #define	PAGEMAP_MAPPED		0x0001u
 #define PAGEMAP_ANONYMOUS	0x0002u
 #define PAGEMAP_FILE		0x0004u
@@ -472,6 +472,39 @@ TRACE_EVENT(folio_delete_from_swap_cache,
                 __entry->folio, folio_test_readahead(__entry->folio), __entry->prio, folio_lru_gen(__entry->folio), __entry->refs)
 );
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
+TRACE_EVENT(folio_lock_timer,
+    TP_PROTO(unsigned long swap_entry, int cpu, unsigned long wait_time_ns),
+    TP_ARGS(swap_entry, cpu, wait_time_ns),
+    TP_STRUCT__entry(
+		__field(unsigned long, swap_entry)
+        __field(int, cpu)
+        __field(unsigned long, wait_time_ns)
+    ),
+    TP_fast_assign(
+		__entry->swap_entry	= swap_entry;
+        __entry->cpu = cpu;
+        __entry->wait_time_ns = wait_time_ns;
+    ),
+    TP_printk("entry=[%lx] cpu=%d wait_time_ns=%lu", __entry->swap_entry, __entry->cpu, __entry->wait_time_ns)
+);
+
+TRACE_EVENT(folio_fail_lock_timer,
+    TP_PROTO(unsigned long swap_entry, int cpu, unsigned long wait_time_ns),
+    TP_ARGS(swap_entry, cpu, wait_time_ns),
+    TP_STRUCT__entry(
+		__field(unsigned long, swap_entry)
+        __field(int, cpu)
+        __field(unsigned long, wait_time_ns)
+    ),
+    TP_fast_assign(
+		__entry->swap_entry	= swap_entry;
+        __entry->cpu = cpu;
+        __entry->wait_time_ns = wait_time_ns;
+    ),
+    TP_printk("fail entry=[%lx] cpu=%d wait_time_ns=%lu", __entry->swap_entry, __entry->cpu, __entry->wait_time_ns)
+);
+
+
 TRACE_EVENT(shadow_ext_transfer,
 
 	TP_PROTO(struct folio* folio, 

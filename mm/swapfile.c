@@ -1674,7 +1674,7 @@ static void swap_entry_free(struct swap_info_struct *p, swp_entry_t entry, int f
 	p->swap_map[offset_v] = 0;
 	dec_cluster_info_page(p, p->cluster_info, offset);
 	unlock_cluster(ci);
-	if (likely(0 == swp_entry_test_ext(entry) & 0x4))
+	if (likely(0 == (swp_entry_test_ext(entry) & 0x4)))
 		mem_cgroup_uncharge_swap(entry, 1);
 	swap_range_free(p, offset, 1, free_shadow, version);
 }
