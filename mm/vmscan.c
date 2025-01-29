@@ -6371,7 +6371,7 @@ static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *
 	if (likely(swap_scan_savior_delays++ < swap_scan_savior_delay_max))
 		goto done;
 	if (current_is_kswapd()){
-		if (pgdat->prio_lruvec){
+		if (swap_scan_savior_enabled && pgdat->prio_lruvec){
 			swap_scan_savior(sc, pgdat->prio_lruvec);
 		}
 		swap_scan_savior_delays = 0;
@@ -6381,6 +6381,39 @@ done:
 	/* kswapd should never fail */
 	pgdat->kswapd_failures = 0;
 }
+
+static struct dentry *swap_scan_savior__debugfs_file;
+
+static ssize_t swap_scan_savior_enabled_enable_read(struct file *file, char __user *buf, size_t count, loff_t *pos) {
+    return simple_read_from_buffer(buf, count, pos, &swap_scan_savior_enabled, sizeof(swap_scan_savior_enabled));
+}
+
+static ssize_t swap_scan_savior_enabled_enable_write(struct file *file, const char __user *src, size_t count, loff_t *pos) {
+	char* buf;
+	
+	buf = kvmalloc(count + 1, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	if (copy_from_user(buf, src, count)) {
+		kvfree(buf);
+		return -EFAULT;
+	}
+
+    if (buf[0] == '1') {
+        swap_scan_savior_enabled = 1; // 开启代码
+    } else {
+        swap_scan_savior_enabled = 0; // 关闭代码
+    }
+	pr_err("swaswap_scan_savior_enabled [%u]", swap_scan_savior_enabled);
+	kvfree(buf);
+    return count;
+}
+
+static const struct file_operations swap_scan_savior_enabled_fops = {
+    .read = swap_scan_savior_enabled_enable_read,
+    .write = swap_scan_savior_enabled_enable_write,
+};
 
 /******************************************************************************
  *                          state change
@@ -7044,7 +7077,8 @@ static int __init init_lru_gen(void)
 
 	debugfs_create_file("lru_gen", 0644, NULL, NULL, &lru_gen_rw_fops);
 	debugfs_create_file("lru_gen_full", 0444, NULL, NULL, &lru_gen_ro_fops);
-		
+	swap_scan_savior__debugfs_file = debugfs_create_file("swap_scan_savior_enabled", 0666, NULL, NULL, &swap_scan_savior_enabled_fops);	
+
 	return 0;
 };
 late_initcall(init_lru_gen);
