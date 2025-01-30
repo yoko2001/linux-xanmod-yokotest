@@ -6323,6 +6323,7 @@ static void swap_scan_savior(struct scan_control *sc, struct lruvec * lruvec)
 static unsigned int swap_scan_savior_delays = 0;
 static const unsigned int swap_scan_savior_delay_max = 256;
 static unsigned int swap_scan_savior_enabled = 0;
+unsigned int clever_swap_alloc = 0;
 // static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *sc)
 static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *sc, int force)
 {
@@ -6383,13 +6384,16 @@ done:
 	pgdat->kswapd_failures = 0;
 }
 
-static struct dentry *swap_scan_savior__debugfs_file;
-
-static ssize_t swap_scan_savior_enabled_enable_read(struct file *file, char __user *buf, size_t count, loff_t *pos) {
+static struct dentry *swap_scan_savior_debugfs_file;
+static struct dentry * clever_swap_alloc_debugfs_file;
+static ssize_t swap_scan_savior_enable_read(struct file *file, char __user *buf, size_t count, loff_t *pos) {
     return simple_read_from_buffer(buf, count, pos, &swap_scan_savior_enabled, sizeof(swap_scan_savior_enabled));
 }
+static ssize_t clever_swap_alloc_enable_read(struct file *file, char __user *buf, size_t count, loff_t *pos) {
+    return simple_read_from_buffer(buf, count, pos, &clever_swap_alloc, sizeof(clever_swap_alloc));
+}
 
-static ssize_t swap_scan_savior_enabled_enable_write(struct file *file, const char __user *src, size_t count, loff_t *pos) {
+static ssize_t swap_scan_savior_enable_write(struct file *file, const char __user *src, size_t count, loff_t *pos) {
 	char* buf;
 	
 	buf = kvmalloc(count + 1, GFP_KERNEL);
@@ -6411,11 +6415,36 @@ static ssize_t swap_scan_savior_enabled_enable_write(struct file *file, const ch
     return count;
 }
 
-static const struct file_operations swap_scan_savior_enabled_fops = {
-    .read = swap_scan_savior_enabled_enable_read,
-    .write = swap_scan_savior_enabled_enable_write,
-};
+static ssize_t clever_swap_alloc_enable_write(struct file *file, const char __user *src, size_t count, loff_t *pos) {
+	char* buf;
+	
+	buf = kvmalloc(count + 1, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
 
+	if (copy_from_user(buf, src, count)) {
+		kvfree(buf);
+		return -EFAULT;
+	}
+
+    if (buf[0] == '1') {
+        clever_swap_alloc = 1; // 开启代码
+    } else {
+        clever_swap_alloc = 0; // 关闭代码
+    }
+	pr_err("clever_swap_alloc [%u]", clever_swap_alloc);
+	kvfree(buf);
+    return count;
+}
+
+static const struct file_operations swap_scan_savior_enabled_fops = {
+    .read = swap_scan_savior_enable_read,
+    .write = swap_scan_savior_enable_write,
+};
+static const struct file_operations clever_swap_alloc_fops = {
+    .read = clever_swap_alloc_enable_read,
+    .write = clever_swap_alloc_enable_write,
+};
 /******************************************************************************
  *                          state change
  ******************************************************************************/
@@ -7078,8 +7107,8 @@ static int __init init_lru_gen(void)
 
 	debugfs_create_file("lru_gen", 0644, NULL, NULL, &lru_gen_rw_fops);
 	debugfs_create_file("lru_gen_full", 0444, NULL, NULL, &lru_gen_ro_fops);
-	swap_scan_savior__debugfs_file = debugfs_create_file("swap_scan_savior_enabled", 0666, NULL, NULL, &swap_scan_savior_enabled_fops);	
-
+	swap_scan_savior_debugfs_file = debugfs_create_file("swap_scan_savior_enabled", 0666, NULL, NULL, &swap_scan_savior_enabled_fops);	
+	clever_swap_alloc_debugfs_file = debugfs_create_file("clever_swap_alloc", 0666, NULL, NULL, &clever_swap_alloc_fops);	
 	return 0;
 };
 late_initcall(init_lru_gen);
