@@ -3912,8 +3912,10 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	swapcache = folio;
 	orientry.val = entry.val; //save origin
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
-	migentry = entry_get_migentry_lock(entry); //this will only lock on existed migentry
-
+	if (__si_can_version(si))
+		migentry = entry_get_migentry_lock(entry); //this will only lock on existed migentry
+	else
+		migentry.val = 0;
 	//this avoid multiple do_swap_page enter critical section
 	if (unlikely(migentry.val)) {
 		if (swp_entry_test_ext(migentry) & 0x2) //locked, wait for the other to finish

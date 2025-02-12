@@ -236,10 +236,10 @@ int entry_is_entry_ext_debug(const void *entry){
 			pr_err("entry_is_entry_ext_debug ext[%p] has been freed", entry);
 			return -1;
 		}else if (((struct shadow_entry*)entry)->magic != (unsigned short)((unsigned long)entry & 0xFFFF)) { // other stuff
-			pr_err("entry was magic invalid ext[%p] magic[%lx]",entry, ((struct shadow_entry*)entry)->magic);
+			pr_err("entry was magic invalid ext[%p] magic[%x]",entry, ((struct shadow_entry*)entry)->magic);
 			return 0;
 		}else {
-			pr_err("entry was poisoned ext[%p] magic[%lx]",entry, ((struct shadow_entry*)entry)->magic);
+			pr_err("entry was poisoned ext[%p] magic[%x]",entry, ((struct shadow_entry*)entry)->magic);
 			return 0;
 		}
 	}
@@ -561,43 +561,75 @@ static void lru_gen_refault(struct folio *folio, void *shadow, int* try_free_ent
 		pr_err("entry[%lx] err folio[%p]", temp_entry.val, folio);
 		goto skip_count;
 	}
-
 	switch(dist){
-		case 0: 
-			count_memcg_events(memcg, WORKINGSET_REFAULT_DIST0, 1);
-			if (info->prio >= 100){ // -2 1005
-				count_memcg_events(memcg ,WORKINGSET_REFAULT_FAST_DIST0, 1);
-			}
-			break;
-		case 1: 
-			count_memcg_events(memcg, WORKINGSET_REFAULT_DIST1, 1);
-			if (info->prio >= 100){ // -2 1005
-				count_memcg_events(memcg ,WORKINGSET_REFAULT_FAST_DIST1, 1);
-			}
-			break;
-		case 2: 
-		case 3: 
-			count_memcg_events(memcg, WORKINGSET_REFAULT_DIST2, 1);
-			if (info->prio >= 100){ // -2 1005
-				count_memcg_events(memcg ,WORKINGSET_REFAULT_FAST_DIST2, 1);
-			}
-			break;
-		case 4: 
-		case 5: 
-		case 6: 
-		case 7: 
-			count_memcg_events(memcg, WORKINGSET_REFAULT_DIST3, 1);
-			if (info->prio >= 100){ // -2 1005
-				count_memcg_events(memcg ,WORKINGSET_REFAULT_FAST_DIST3, 1);
-			}
-			break;
-		default:
-			count_memcg_events(memcg, WORKINGSET_REFAULT_DIST4, 1);
-			if (info->prio >= 100){ // -2 1005
-				count_memcg_events(memcg ,WORKINGSET_REFAULT_FAST_DIST4, 1);
-			}
-			break;
-	};
+		case 0: count_memcg_events(memcg, FRE0, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST0, 1); break;
+		case 1: count_memcg_events(memcg, FRE1, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST1, 1); break;
+		case 2: count_memcg_events(memcg, FRE2, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST2, 1); break;
+		case 3: count_memcg_events(memcg, FRE3, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST3, 1); break;
+		case 4: count_memcg_events(memcg, FRE4, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST4, 1); break;
+		case 5: count_memcg_events(memcg, FRE5, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST5, 1); break;
+		case 6: count_memcg_events(memcg, FRE6, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST6, 1); break;
+		case 7: count_memcg_events(memcg, FRE7, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST7, 1); break;
+		case 8: count_memcg_events(memcg, FRE8, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST8, 1); break;
+		case 9: count_memcg_events(memcg, FRE9, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST9, 1); break;
+		case 10: count_memcg_events(memcg, FRE10, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST10, 1); break;
+		case 11: count_memcg_events(memcg, FRE11, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST11, 1); break;
+		case 12: count_memcg_events(memcg, FRE12, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST12, 1); break;
+		case 13: count_memcg_events(memcg, FRE13, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST13, 1); break;
+		case 14: count_memcg_events(memcg, FRE14, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST14, 1); break;
+		case 15: count_memcg_events(memcg, FRE15, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST15, 1); break;
+		case 16: count_memcg_events(memcg, FRE16, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST16, 1); break;
+		case 17: count_memcg_events(memcg, FRE17, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST17, 1); break;
+		case 18: count_memcg_events(memcg, FRE18, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST18, 1); break;
+		case 19: count_memcg_events(memcg, FRE19, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST19, 1); break;
+		case 20: count_memcg_events(memcg, FRE20, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST20, 1); break;
+		case 21: count_memcg_events(memcg, FRE21, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST21, 1); break;
+		case 22: count_memcg_events(memcg, FRE22, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST22, 1); break;
+		case 23: count_memcg_events(memcg, FRE23, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST23, 1); break;
+		case 24: count_memcg_events(memcg, FRE24, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST24, 1); break;
+		case 25: count_memcg_events(memcg, FRE25, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST25, 1); break;
+		case 26: count_memcg_events(memcg, FRE26, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST26, 1); break;
+		case 27: count_memcg_events(memcg, FRE27, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST27, 1); break;
+		case 28: count_memcg_events(memcg, FRE28, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST28, 1); break;
+		case 29: count_memcg_events(memcg, FRE29, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST29, 1); break;
+		case 30: count_memcg_events(memcg, FRE30, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FAST30, 1); break;
+		default: count_memcg_events(memcg, FREX, 1); if (info->prio >= 100) count_memcg_events(memcg, FRE_FASTX, 1); break;
+	}
+	// switch(dist){
+	// 	case 0: 
+	// 		if (info->prio >= 100){ // -2 1005
+	// 			count_memcg_events(memcg ,WORKINGSET_REFAULT_FAST_DIST0, 1);
+	// 		}
+	// 		break;
+	// 	case 1: 
+	// 		count_memcg_events(memcg, WORKINGSET_REFAULT_DIST1, 1);
+	// 		if (info->prio >= 100){ // -2 1005
+	// 			count_memcg_events(memcg ,WORKINGSET_REFAULT_FAST_DIST1, 1);
+	// 		}
+	// 		break;
+	// 	case 2: 
+	// 	case 3: 
+	// 		count_memcg_events(memcg, WORKINGSET_REFAULT_DIST2, 1);
+	// 		if (info->prio >= 100){ // -2 1005
+	// 			count_memcg_events(memcg ,WORKINGSET_REFAULT_FAST_DIST2, 1);
+	// 		}
+	// 		break;
+	// 	case 4: 
+	// 	case 5: 
+	// 	case 6: 
+	// 	case 7: 
+	// 		count_memcg_events(memcg, WORKINGSET_REFAULT_DIST3, 1);
+	// 		if (info->prio >= 100){ // -2 1005
+	// 			count_memcg_events(memcg ,WORKINGSET_REFAULT_FAST_DIST3, 1);
+	// 		}
+	// 		break;
+	// 	default:
+	// 		count_memcg_events(memcg, WORKINGSET_REFAULT_DIST4, 1);
+	// 		if (info->prio >= 100){ // -2 1005
+	// 			count_memcg_events(memcg ,WORKINGSET_REFAULT_FAST_DIST4, 1);
+	// 		}
+	// 		break;
+	// };
 	// if (dist >= 20){ //its time to give up on this page
 		// if (abandon_shadow)
 		// 	*abandon_shadow = true;
