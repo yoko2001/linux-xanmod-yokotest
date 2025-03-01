@@ -1611,8 +1611,8 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 				}
 				put_swap_folio(folio, mig_entry_phy);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-				pr_info("after clear folio[%p]ref[%d] memcg[%d]zone[%p] private[%lx]found mig_entry[%lx] count %d", 
-							folio, folio_ref_count(folio), mem_cgroup_id(folio_memcg(folio)), page_zone(folio_page(folio, 0)),
+				pr_info("after clear folio[%p]ref[%d] zone[%p] private[%lx]found mig_entry[%lx] count %d", 
+							folio, folio_ref_count(folio),  page_zone(folio_page(folio, 0)),
 							folio_swap_entry(folio).val, mig_entry_phy.val, __swp_swapcount(mig_entry_phy));
 #endif
 			}
@@ -1958,6 +1958,7 @@ unsigned int check_saved_folios_wb(struct lruvec *lruvec,
 	LIST_HEAD(ret_folios);
 	LIST_HEAD(folio_list);
 	LIST_HEAD(folio_list_fail_lock);
+	LIST_HEAD(free_folios);
 	LIST_HEAD(saved_sb_complete_list);
 //load out pages
 	spin_lock_irq(&lruvec->lru_lock);
@@ -2140,6 +2141,8 @@ pass_cleanup:
 				BUG();
 			
 			set_page_private(folio_page(folio, 0), migentry.val);
+			delete_from_swap_cache_mig(folio, migentry, true, true); //delete from origin entry
+			folio_ref_sub(folio, folio_nr_pages(folio));
 
 			if (unlikely(__swp_swapcount(entry) != 1))
 				pr_info("before swap_free ori_entry[%lx]cnt[%d], mig_entry[%lx]cnt[%d]", 
@@ -2156,7 +2159,8 @@ pass_cleanup:
 			}
 			count_memcg_events(lruvec_memcg(lruvec), SWAP_STALE_SAVE, folio_nr_pages(folio));
 			list_del(&folio->lru);
-			folio_add_lru(folio);
+			//folio_add_lru(folio);
+			list_add(&folio->lru, &free_folios);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 			pr_info("folio[%p]lru[%px] succ enable, lruadded ref[%d]stale[%d]d[%d]ac[%d]", 
 					folio, &folio->lru, folio_ref_count(folio), folio_test_stalesaved(folio), 
@@ -2168,6 +2172,8 @@ pass_cleanup:
 	lru_add_drain();
 
 //load out pages
+	free_unref_page_list(&free_folios);
+
 	spin_lock_irq(&lruvec->lru_lock);
 	list_splice(&ret_folios, saved_folios); //return back, check next time
 	spin_unlock_irq(&lruvec->lru_lock);
@@ -6321,7 +6327,7 @@ static void swap_scan_savior(struct scan_control *sc, struct lruvec * lruvec)
 }
 
 static unsigned int swap_scan_savior_delays = 0;
-static const unsigned int swap_scan_savior_delay_max = 256;
+static const unsigned int swap_scan_savior_delay_max = 1024;
 static unsigned int swap_scan_savior_enabled = 0;
 unsigned int clever_swap_alloc = 0;
 // static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *sc)

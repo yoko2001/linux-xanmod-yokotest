@@ -4222,7 +4222,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		if (timerecord){
 			end_time = ktime_get();
 			wait_time_ns = ktime_to_ns(ktime_sub(end_time, start_time));
-			trace_folio_fail_lock_timer(orientry.val ,cpu, wait_time_ns);	
+			trace_folio_fail_lock_timer(orientry.val , migentry.val, cpu, wait_time_ns);	
 		}
 #endif
 		if (unlikely(folio_test_stalesaved(folio) || valid_remap || invalid_remap))
@@ -4234,7 +4234,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	if (timerecord){
 		end_time = ktime_get();
 		wait_time_ns = ktime_to_ns(ktime_sub(end_time, start_time));
-		trace_folio_lock_timer(orientry.val ,cpu, wait_time_ns);
+		trace_folio_lock_timer(orientry.val, migentry.val, cpu, wait_time_ns);
 	}
 #endif
 	if (unlikely(!folio_test_uptodate(folio))){

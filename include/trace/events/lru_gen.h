@@ -473,35 +473,39 @@ TRACE_EVENT(folio_delete_from_swap_cache,
 );
 #ifdef CONFIG_LRU_GEN_KEEP_REFAULT_HISTORY
 TRACE_EVENT(folio_lock_timer,
-    TP_PROTO(unsigned long swap_entry, int cpu, unsigned long wait_time_ns),
-    TP_ARGS(swap_entry, cpu, wait_time_ns),
+    TP_PROTO(unsigned long swap_entry, unsigned long mig_entry, int cpu, unsigned long wait_time_ns),
+    TP_ARGS(swap_entry, mig_entry, cpu, wait_time_ns),
     TP_STRUCT__entry(
 		__field(unsigned long, swap_entry)
+		__field(unsigned long, mig_entry)
         __field(int, cpu)
         __field(unsigned long, wait_time_ns)
     ),
     TP_fast_assign(
 		__entry->swap_entry	= swap_entry;
-        __entry->cpu = cpu;
+		__entry->mig_entry  = mig_entry;
+		__entry->cpu = cpu;
         __entry->wait_time_ns = wait_time_ns;
     ),
-    TP_printk("entry=[%lx] cpu=%d wait_time_ns=%lu", __entry->swap_entry, __entry->cpu, __entry->wait_time_ns)
+    TP_printk("entry=[%lx] mig=[%lx] cpu=%d wait_time_ns=%lu", __entry->swap_entry, __entry->mig_entry, __entry->cpu, __entry->wait_time_ns)
 );
 
 TRACE_EVENT(folio_fail_lock_timer,
-    TP_PROTO(unsigned long swap_entry, int cpu, unsigned long wait_time_ns),
-    TP_ARGS(swap_entry, cpu, wait_time_ns),
+    TP_PROTO(unsigned long swap_entry, unsigned long mig_entry, int cpu, unsigned long wait_time_ns),
+    TP_ARGS(swap_entry, mig_entry, cpu, wait_time_ns),
     TP_STRUCT__entry(
 		__field(unsigned long, swap_entry)
+		__field(unsigned long, mig_entry)
         __field(int, cpu)
         __field(unsigned long, wait_time_ns)
     ),
     TP_fast_assign(
 		__entry->swap_entry	= swap_entry;
+		__entry->mig_entry  = mig_entry;
         __entry->cpu = cpu;
         __entry->wait_time_ns = wait_time_ns;
     ),
-    TP_printk("fail entry=[%lx] cpu=%d wait_time_ns=%lu", __entry->swap_entry, __entry->cpu, __entry->wait_time_ns)
+    TP_printk("fail entry=[%lx] mig=[%lx] cpu=%d wait_time_ns=%lu", __entry->swap_entry,  __entry->mig_entry, __entry->cpu, __entry->wait_time_ns)
 );
 
 

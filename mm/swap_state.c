@@ -2552,10 +2552,14 @@ skip_ra_try_save:
 // 			}
 			//don't mem_cgroup_swapin_uncharge_swap(entry);
 			folio_set_swap_entry(folio, saved_entry);			
+#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
+			pr_info("swap_readpage try read page[%p] ref[%d]", 
+			page, folio_ref_count(folio));
+#endif
 			swap_readpage(page, true, &splug_save);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-			pr_info("swap_readpage finished page[%p]memcg[%d] ref[%d]", 
-			page, mem_cgroup_id(folio_memcg(folio)), folio_ref_count(folio));
+			pr_info("swap_readpage finished page[%p] ref[%d]", 
+			page, folio_ref_count(folio));
 #endif
 			count_memcg_event_mm(vma->vm_mm, SWAPIN_FAST_SAVE);
 			
