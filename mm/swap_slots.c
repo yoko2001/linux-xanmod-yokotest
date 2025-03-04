@@ -462,25 +462,25 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 
 		// if (avggen >= 25 || (avggen >= 15 && gen1 > 0)){
 		dec_tree_result = 1;
-		if ((avggen > 10 && gen1 > 10 && gen0 > 10) || avggen > 20){
+		if ((avggen > 10 && gen1 > 10 && gen0 > 10) || avggen > 16){
 			dec_tree_result = 0;
 			count_memcg_folio_events(folio, LEAF2, 1);
 		} else if (avggen <= 8 || gen0 <= 6 || gen1 <= 6){
 			dec_tree_result = 1;
 			count_memcg_folio_events(folio, LEAF1, 1);
 		} else {
-			if (avggen <= 10){
-				if (fast_left >= 32){
+			if (avggen <= 8){
+				if (fast_left >= 128){
 					dec_tree_result = 1;
 					count_memcg_folio_events(folio, LEAF3, 1);
 				}
 				else{
 					dec_tree_result = 1;
-					count_memcg_folio_events(folio, LEAF4, 1);
+					count_memcg_folio_events(folio, LEAF4, 0);
 				}
 			}
 			else{
-				if (fast_left >= 64){
+				if (fast_left >= 512){
 					dec_tree_result = 1;
 				}
 				else{
@@ -491,11 +491,11 @@ swp_entry_t folio_alloc_swap(struct folio *folio, long* left_space, bool force_s
 		}
 		count_memcg_folio_events(folio, WI_TREE, 1);
 	}else{
-		if (fast_left > 8){
+		if (fast_left > 64){
 			dec_tree_result = 1;
 		}
 		else{
-			dec_tree_result = 1;
+			dec_tree_result = 0;
 		}
 		count_memcg_folio_events(folio, WO_TREE, 1);
 	}
