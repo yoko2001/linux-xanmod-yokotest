@@ -6,12 +6,12 @@
 #include <linux/spinlock.h>
 #include <linux/mutex.h>
 
-#define SWAP_SCAN_SLOT_SIZE			  SWAP_BATCH
+#define SWAP_SCAN_SLOT_SIZE			  SWAP_BATCH * 2
 #define SWAP_SLOTS_SCAN_MIN            SWAP_SCAN_SLOT_SIZE * 8
 #define SWAP_SLOTS_SCAN_SAVE_ONCE		16 
 //load 8 page to slow at most in one attempt
 
-#define SEQ_DIFF_THRESHOLD             40
+#define SEQ_DIFF_THRESHOLD             120
 
 #define THRESHOLD_ACTIVATE_SWAP_SCAN_SLOT  32  //when under 1/8
 #define THRESHOLD_DEACTIVATE_SWAP_SCAN_SLOT 16  //when more than 1/2
