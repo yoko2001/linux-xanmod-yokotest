@@ -585,7 +585,7 @@ extern struct swap_info_struct * global_fastest_swap_si(void);
 int add_to_scan_slot(swp_entry_t entry);
 unsigned swap_scan_entries_savior(struct address_space *mapping, 
          struct lruvec * lruvec, pgoff_t start, pgoff_t end, 
-		 int type, int threshold);
+		 int type, int version, int threshold, bool* full);
 static inline int swap_info_is_fastest(struct swap_info_struct *si){
 	return si->prio == get_fastest_swap_prio();
 }

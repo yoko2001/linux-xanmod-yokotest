@@ -6316,7 +6316,7 @@ static void swap_scan_savior(struct scan_control *sc, struct lruvec * lruvec)
 {
 	struct swap_info_struct * si;
 	unsigned long nr_entry_saved, nr_entry_scanned;
-
+	VM_BUG_ON(!current_is_kswapd());
 	nr_entry_scanned = nr_entry_saved = 0;
 	si = global_fastest_swap_si();
 	if (si){
@@ -6327,7 +6327,7 @@ static void swap_scan_savior(struct scan_control *sc, struct lruvec * lruvec)
 }
 
 static unsigned int swap_scan_savior_delays = 0;
-static const unsigned int swap_scan_savior_delay_max = 1024;
+static const unsigned int swap_scan_savior_delay_max = 256;
 static unsigned int swap_scan_savior_enabled = 0;
 unsigned int clever_swap_alloc = 0;
 // static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *sc)

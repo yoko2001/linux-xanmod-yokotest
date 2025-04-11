@@ -770,7 +770,7 @@ int entry_remap_usable_version(swp_entry_t entry)
 	VM_BUG_ON(swp_entry_test_ext(entry));
 	i = 0;
 	xa_lock_irq(&address_space_remap->i_pages); //lock
-	while (i <= SWP_ENTRY_ALIVE_VERSION_SPEC){
+	while (i < SWP_ENTRY_ALIVE_VERSION){
 		check_entry.val = entry.val;
 		swp_entry_set_special(&check_entry, i);
 		swp_entry_clear_ext(&check_entry, 0x3); //clear all ext
