@@ -3656,6 +3656,28 @@ static vm_fault_t remove_device_exclusive_entry(struct vm_fault *vmf)
 	return 0;
 }
 
+
+static inline int should_try_to_free_swap_reason(struct folio *folio,
+	struct vm_area_struct *vma,
+	unsigned int fault_flags,
+	int status) //0 normal; 1 valid; 2 invalid
+{
+	if (!folio_test_swapcache(folio))
+		return 0;
+	if (mem_cgroup_swap_full(folio) || (vma->vm_flags & VM_LOCKED) ||
+	    folio_test_mlocked(folio))
+		return 1;
+	if (likely(0==status)){
+		if (folio_test_ksm(folio)) return -1;
+		if (folio_ref_count(folio) != 2) return -2;
+		return !folio_test_ksm(folio) && folio_ref_count(folio) == 2;
+	}
+	else if (1==status)
+		return (fault_flags & FAULT_FLAG_WRITE) && !folio_test_ksm(folio) && 
+			folio_ref_count(folio) == 2;
+	return (fault_flags & FAULT_FLAG_WRITE) && !folio_test_ksm(folio) && 
+			folio_ref_count(folio) == 2;
+}
 static inline bool should_try_to_free_swap(struct folio *folio,
 					   struct vm_area_struct *vma,
 					   unsigned int fault_flags,
@@ -3680,8 +3702,6 @@ static inline bool should_try_to_free_swap(struct folio *folio,
 	/*DJL ADD END*/
 	if (likely(0==status))
 		return  !folio_test_ksm(folio) && folio_ref_count(folio) == 2;
-		// return (fault_flags & FAULT_FLAG_WRITE) && !folio_test_ksm(folio) && 
-		// 	folio_ref_count(folio) == 2;
 	else if (1==status)
 		return (fault_flags & FAULT_FLAG_WRITE) && !folio_test_ksm(folio) && 
 			folio_ref_count(folio) == 2;
@@ -4511,13 +4531,17 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		}
 	}
 	else{ //normal case
-		if (should_try_to_free_swap(folio, vma, vmf->flags, 0)){ // normal
+		int reason = should_try_to_free_swap_reason(folio, vma, vmf->flags, 0);
+		if (reason == 1){ // normal
 			VM_BUG_ON_FOLIO(orientry.val != entry.val, folio);
 			folio_free_swap_debug(folio);
-			count_memcg_event_mm(vma->vm_mm, SWAP_FREE_ATTEMPT_NORMAL);
+			// count_memcg_event_mm(vma->vm_mm, SWAP_FREE_ATTEMPT_NORMAL);
 		}
 		else{
-			count_memcg_event_mm(vma->vm_mm, SWAP_FREE_SKIP_NORMAL);
+			if (reason == -1)
+				count_memcg_event_mm(vma->vm_mm, SWAP_FREE_ATTEMPT_NORMAL);
+			else if (reason == -2)
+				count_memcg_event_mm(vma->vm_mm, SWAP_FREE_SKIP_NORMAL);
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 			if (swp_entry_test_special(entry) > 1 && folio_test_swapcache(folio)){
 				pr_info("do_swap SKIP folio_free_swap[%lx] vmf[%d] vmaflag[%lx] folio[%p] $[%d] ref[%d] cnt[%d] ksm[%d] write[%d]wb[%d]", 

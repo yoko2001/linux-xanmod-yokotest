@@ -2136,7 +2136,7 @@ reset:
 
 unsigned swap_scan_entries_savior(struct address_space *mapping, 
         struct lruvec * target_lruvec, pgoff_t start, pgoff_t end, 
-		int type, int threshold)
+		int type, int version, int threshold, bool* full)
 {
 	int scan_count, save_count;
 	struct folio *folio;
@@ -2168,7 +2168,7 @@ unsigned swap_scan_entries_savior(struct address_space *mapping,
 				if (min_seq - old_seq >= threshold){
 					trace_scan_entries_savior(memcg_id, old_seq, min_seq, threshold);
 					offset = xas.xa_index;
-					entry = swp_entry(type, offset);
+					entry = swp_entry_version(type, offset, version);
 					if (__swap_count(entry) != 1){
 						continue;
 					}
@@ -2176,6 +2176,7 @@ unsigned swap_scan_entries_savior(struct address_space *mapping,
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 						pr_info("add_to_scan_slot stoped");
 #endif
+						*full = true;
 						break;
 					}
 					entry_ext->processed = 1;

@@ -129,6 +129,10 @@ static inline unsigned char swap_count(unsigned char ent)
 #define TTRS_UNMAPPED		0x2
 /* Reclaim the swap entry if swap is getting full*/
 #define TTRS_FULL		0x4
+#define SWAPVMAX (SWP_ENTRY_ALIVE_VERSION)
+#define VMAXMASK (((1U << (SWAPVMAX * 8)) - 1) )
+#define VERSION_OFFSET(v, off, vmax) (vmax * off + v)
+#define VERSION_OFFSET_SI(v, off, vmax, si) (__si_can_version(si) ?  VERSION_OFFSET(v, off, vmax) : off)
 
 int __si_can_version(struct swap_info_struct *si){
 	return si && (si->flags & SWP_SYNCHRONOUS_IO);
@@ -842,20 +846,19 @@ static void swap_offset_assert_one_version_occupied(struct swap_info_struct* si,
 						 unsigned long offset)
 {
 	int v;
-	unsigned long offset_v;
+	unsigned long offset_v = VERSION_OFFSET(0, offset, SWAPVMAX);
 	bool find = false;
 	if (__si_can_version(si)){ //FAST, we support multiversion
-		for (v = 0; v <= SWP_ENTRY_ALIVE_VERSION_SPEC; v++){
-			offset_v = offset + v * si->max;
+		for (v = 0; v < SWAPVMAX; v++, offset_v++){
 			if (READ_ONCE(si->swap_map[offset_v]) & ~SWAP_HAS_CACHE) { //allow one occupy
 				if (!find) {
 					find = true;
 				}
 				else{
 					pr_err("assert_one_version err entry[%lx] occupied multi", swp_entry_version( si->type, offset, v).val);
-					for(int i = 0; i <= SWP_ENTRY_ALIVE_VERSION_SPEC; i++){
+					for(int i = 0; i < SWAPVMAX; i++){
 						unsigned long offset_i;
-						offset_i = offset + i * si->max;
+						offset_i = VERSION_OFFSET(i, offset, SWAPVMAX);
 						if (READ_ONCE(si->swap_map[offset_i]))
 							pr_err("entry[%lx] test[%x]", swp_entry_version( si->type, offset, i).val, si->swap_map[offset_i]);
 					}
@@ -884,28 +887,22 @@ static bool swap_offset_any_version_occupied(struct swap_info_struct* si,
 	int v;
 	unsigned long offset_v = offset;
 	bool ret = false;
+	unsigned long * mapint;
 	if (__si_can_version(si)){ //FAST, we support multiversion
-		for (v = 0; v <= SWP_ENTRY_ALIVE_VERSION_SPEC; v++){
-			if (data_race(si->swap_map[offset_v])) {
-				// pr_err("swap_offset_occupied prio[%d]offset[%lx]v[%d]=[%d] occupied", 
-				// 	si->prio, offset, v, data_race(si->swap_map[offset_v]));
-				if (!ret) {
-					ret = true;
-					break;
-				}
-				else{
-					pr_err("swap_offset_occupied err type[%d] offset[%lx] occupied", si->type, offset);
-					BUG();
-				}
-			}
-			offset_v += si->max;
+		offset_v = VERSION_OFFSET(0, offset, SWAPVMAX);
+		mapint = (unsigned long*)(&si->swap_map[offset_v]);
+		if (READ_ONCE(*mapint) & VMAXMASK){
+			return true;
+		}
+		else{
+			return false;
 		}
 		// pr_err("swap_offset_occupied offset[%lx]=[0x%x] all vfree", 
 		// 			offset, data_race(si->swap_map[offset]));
 		return ret;		
 	}
 	else{ //SLOW, we grants only one version
-		if (data_race(si->swap_map[offset])) {
+		if (READ_ONCE(si->swap_map[offset])) {
 			// pr_err("swap_offset_occupied offset[%lx]=[%d] async occupied", 
 			// 		offset, data_race(si->swap_map[offset]));
 			return true;			
@@ -1094,8 +1091,8 @@ checks:
 	ci = lock_cluster(si, offset); //relock
 
 	if 	(__si_can_version(si)){
-		if (version <= SWP_ENTRY_ALIVE_VERSION_SPEC) {//<= SWP_ENTRY_MAX_SPEC){ // 测试版我们只允许version=0,1 通过，测试正确性
-			offset_v = offset + si->max * version;
+		if (version < SWAPVMAX) {//<= SWP_ENTRY_MAX_SPEC){ // 测试版我们只允许version=0,1 通过，测试正确性
+			offset_v = VERSION_OFFSET(version, offset, SWAPVMAX);
 			// if (version > 0){
 			// 	// if (usage == SWAP_HAS_CACHE)
 			// 	// 	pr_err("entry[%lx] ver[%d] offset_v[%lx] allocated SWAP_HAS_CACHE", 
@@ -1460,12 +1457,12 @@ static struct swap_info_struct *_swap_info_get(swp_entry_t entry, bool allow_unu
 		goto bad_device;
 	offset = swp_raw_offset(entry); //use raw
 	version = (unsigned long)swp_entry_test_special(entry);
-	offset_v = offset + version * p->max* __si_can_version(p);
+	offset_v = VERSION_OFFSET_SI(version, offset, SWAPVMAX, p);
 	if (offset >= p->max)
 		goto bad_offset;
 	if (__si_can_version(p)){
-		for (int v = 0; v <= SWP_ENTRY_ALIVE_VERSION_SPEC; v++){
-			__offset_v = offset + v * p->max;
+		__offset_v = VERSION_OFFSET(0, offset, SWAPVMAX);
+		for (int v = 0; v < SWAPVMAX; v++, __offset_v++){
 			if (p->swap_map[__offset_v])
 				return p;
 		}
@@ -1526,7 +1523,7 @@ static unsigned char __swap_entry_free_locked(struct swap_info_struct *p,
 	unsigned char count, oricount;
 	unsigned char has_cache;
 	bool check_occupied = true;
-	unsigned long offset_v = offset + p->max * version* __si_can_version(p);
+	unsigned long offset_v = VERSION_OFFSET_SI(version, offset, SWAPVMAX, p);
 	oricount = count = p->swap_map[offset_v];
 
 	has_cache = count & SWAP_HAS_CACHE;
@@ -1664,7 +1661,7 @@ static void swap_entry_free(struct swap_info_struct *p, swp_entry_t entry, int f
 	unsigned long offset = swp_raw_offset(entry);
 	unsigned long version = (unsigned long)swp_entry_test_special(entry);
 	unsigned char count;
-	unsigned long offset_v = offset + version * p->max* __si_can_version(p);
+	unsigned long offset_v = VERSION_OFFSET_SI(version, offset, SWAPVMAX, p);
 	ci = lock_cluster(p, offset);
 	count = p->swap_map[offset_v];
 	if (!(count == SWAP_HAS_CACHE)){
@@ -1734,7 +1731,7 @@ void put_swap_folio(struct folio *folio, swp_entry_t entry)
 	}
 	if (!__si_can_version(si) && version)
 		BUG();
-	offset_v = offset + si->max * version* __si_can_version(si);
+	offset_v = VERSION_OFFSET_SI(version, offset, SWAPVMAX, si);
 	// if (version)
 	// 	pr_err("put_swap_folio si[%d]max[%lx]entry[%lx]v[%lu] offset_v[%lx]", 
 	// 				si->prio, si->max, entry.val, version, offset_v);
@@ -1837,7 +1834,7 @@ int __swap_count(swp_entry_t entry)
 
 	si = get_swap_device(entry);
 	if (si) {
-		offset_v = offset + si->max * version * __si_can_version(si);
+		offset_v = VERSION_OFFSET_SI(version, offset, SWAPVMAX, si);
 		count = swap_count(si->swap_map[offset_v]);
 		put_swap_device(si);
 	}
@@ -1853,7 +1850,7 @@ static int swap_swapcount(struct swap_info_struct *si, swp_entry_t entry)
 {
 	pgoff_t offset = swp_raw_offset(entry);
 	unsigned long version = (unsigned long) swp_entry_test_special(entry);
-	pgoff_t offset_v = offset + si->max * version * __si_can_version(si);
+	pgoff_t offset_v = VERSION_OFFSET_SI(version, offset, SWAPVMAX, si);
 	struct swap_cluster_info *ci;
 	int count;
 
@@ -1900,7 +1897,7 @@ int swp_swapcount(swp_entry_t entry)
 
 	offset = swp_raw_offset(entry);
 	version = swp_entry_test_special(entry);
-	offset_v = offset + version * p->max * __si_can_version(p);
+	offset_v = VERSION_OFFSET_SI(version, offset, SWAPVMAX, p);
 	ci = lock_cluster_or_swap_info(p, offset);
 
 	count = swap_count(p->swap_map[offset_v]);
@@ -2353,7 +2350,7 @@ static int unuse_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 		si = swap_type_to_swap_info(type);
 		offset = swp_raw_offset(entry);
 		version = (unsigned long) swp_entry_test_special(entry);
-		offset_v = offset + si->max * version * __si_can_version(si);
+		offset_v = VERSION_OFFSET_SI(version, offset, SWAPVMAX, si);
 		pte_unmap(pte);
 		folio = swap_cache_get_folio(si, entry, vma, addr);
 		if (!folio) {
@@ -2558,8 +2555,8 @@ static unsigned int find_next_to_unuse(struct swap_info_struct *si,
 		int v;
 		bool found = false;
 		for (i = prev + 1; i < si->max; i++) {
-			for (v = 0; v <= SWP_ENTRY_ALIVE_VERSION_SPEC; v++){
-				offset_v =  i + v * si->max;
+			offset_v =  VERSION_OFFSET(0, i, SWAPVMAX);
+			for (v = 0; v < SWAPVMAX; v++, offset_v++){
 				count = READ_ONCE(si->swap_map[offset_v]);
 				if (count && swap_count(count) != SWAP_MAP_BAD){
 					found = true;
@@ -2596,8 +2593,10 @@ void swap_shadow_scan_next(struct swap_info_struct * si, struct lruvec * lruvec,
 	unsigned int type;
 	unsigned int start, end;
 	struct address_space *mapping;
+	int found;
 	swp_entry_t entry;
 	int threshold;
+	bool fullstop = false;
 
 	if (!si || !lruvec)
 		return;
@@ -2611,10 +2610,15 @@ void swap_shadow_scan_next(struct swap_info_struct * si, struct lruvec * lruvec,
 	if (start > end)
 		return;
 
-	entry = swp_entry(type, start);
-	mapping = swap_address_space(entry);
 
-	*scanned = swap_scan_entries_savior(mapping, lruvec, start, end, type, threshold);
+
+	for(int v = 0; !fullstop && v <= 1; v++){
+		entry = swp_entry_version(type, start, v);
+		mapping = swap_address_space(entry);
+		found = swap_scan_entries_savior(mapping, lruvec, start, end, type, v, threshold, &fullstop);
+		*scanned += found;
+		pr_info("swap_scan_entries_savior scanned[%d],v[%d] [%u-%u]", found, v, start, end);
+	}
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 	if (*scanned)
 		pr_info("swap_scan_entries_savior called scanned[%lu]->memcg[%d]", 
@@ -2697,11 +2701,11 @@ retry:
 	       !signal_pending(current) &&
 	       (i = find_next_to_unuse(si, i)) != 0) {
 		if (__si_can_version(si)){
-			int version = i / si->max;
+			int version = i % SWAPVMAX;
 			if (version > 0){
 				pr_info("try_to_unuse test v[%d]i[%d]", version, i);
 			}
-			i = i - version * si->max;
+			i = (i - version) / SWAPVMAX;
 			entry = swp_entry_version(type, i, version);
 			if (version > 0){
 				pr_info("try_to_unuse test entry[%lx] v[%d]i[%d]", entry.val, version, i);
@@ -3558,36 +3562,33 @@ static int setup_swap_map_and_extents(struct swap_info_struct *p,
 
 	cluster_list_init(&p->free_clusters);
 	cluster_list_init(&p->discard_clusters);
-	if (__si_can_version(p))
-		v_max = (1 << SWP_SPECIAL_MARK);
-	else
-		v_max = 1;
+	v_max = __si_can_version(p) ? SWAPVMAX : 1;
 	pr_err("setup_swap_map_and_extents init swap_map[0x0..0x%lx] version[0..%lu]", 
 						maxpages, v_max);
-	for (v = 0; v < v_max; v++){
-		for (i = 0; i < maxpages; i++){
-			swap_map[i + v * maxpages] = 0;
+	for (i = 0; i < maxpages; i++){
+		for (v = 0; v < v_max; v++) {
+			swap_map[VERSION_OFFSET(v, i, v_max)] = 0;
 		}
 	}
 	pr_err("setup_swap_map_and_extents init pass swap_map[0x0..0x%lx] version[0..%lu]", 
 						maxpages, v_max);
-	for (v = 0; v < v_max; v++){
-		for (i = 0; i < swap_header->info.nr_badpages; i++) {
-			unsigned int page_nr = swap_header->info.badpages[i];
-			if (page_nr == 0 || page_nr > swap_header->info.last_page)
-				return -EINVAL;
-			if (page_nr < maxpages) {
-				swap_map[page_nr + v * maxpages] = SWAP_MAP_BAD;
-				nr_good_pages--;
-				/*
-				* Haven't marked the cluster free yet, no list
-				* operation involved
-				*/
-				if (0 == v) //only add physical once
-					inc_cluster_info_page(p, cluster_info, page_nr);
-			}
-		}		
+	for (i = 0; i < swap_header->info.nr_badpages; i++) {
+		unsigned int page_nr = swap_header->info.badpages[i];
+		if (page_nr == 0 || page_nr > swap_header->info.last_page)
+			return -EINVAL;
+		if (page_nr < maxpages) {
+			for (v = 0; v < v_max; v++){
+				swap_map[VERSION_OFFSET(v, page_nr, v_max)] = SWAP_MAP_BAD;
+			}	
+			/*
+			* Haven't marked the cluster free yet, no list
+			* operation involved
+			*/
+			nr_good_pages--;
+			inc_cluster_info_page(p, cluster_info, page_nr);			
+		}
 	}
+
 
 	/* Haven't marked the cluster free yet, no list operation involved */
 	for (i = maxpages; i < round_up(maxpages, SWAPFILE_CLUSTER); i++)
@@ -3974,7 +3975,7 @@ static int __swap_duplicate(swp_entry_t entry, unsigned char usage)
 
 	offset = swp_raw_offset(entry); //use raw
 	version = swp_entry_test_special(entry);
-	offset_v = offset + version * data_race(p->max) * __si_can_version(p);
+	offset_v = VERSION_OFFSET_SI(version, offset, SWAPVMAX, p);
 	ci = lock_cluster_or_swap_info(p, offset);
 
 	count = p->swap_map[offset_v];
@@ -4149,7 +4150,7 @@ int add_swap_count_continuation(swp_entry_t entry, gfp_t gfp_mask)
 
 	offset = swp_raw_offset(entry);
 	version = swp_entry_test_special(entry);
-	offset_v = offset + version * si->max * __si_can_version(si);
+	offset_v = VERSION_OFFSET_SI(version, offset, SWAPVMAX, si);
 	ci = lock_cluster(si, offset);
 
 	count = swap_count(si->swap_map[offset_v]);
@@ -4241,7 +4242,7 @@ static bool swap_count_continued(struct swap_info_struct *si,
 	struct page *page;
 	unsigned char *map;
 	bool ret;
-	pgoff_t offset_v = offset + si->max * version * __si_can_version(si);
+	pgoff_t offset_v = VERSION_OFFSET_SI(version, offset, SWAPVMAX, si);
 
 	head = vmalloc_to_page(si->swap_map + offset_v);
 	if (page_private(head) != SWP_CONTINUED) {
@@ -4323,21 +4324,19 @@ static void free_swap_count_continuations(struct swap_info_struct *si)
 {
 	pgoff_t offset, offset_v;
 	int v;
-	int v_max = __si_can_version(si) ? SWP_ENTRY_ALIVE_VERSION_SPEC+1 : 1;
-	for (v = 0; v < v_max; v++){
-		for (offset = 0; offset < si->max; offset += PAGE_SIZE) {
-			struct page *head;
-			offset_v = offset + v * si->max;
-			head = vmalloc_to_page(si->swap_map + offset_v);
-			if (page_private(head)) {
-				struct page *page, *next;
+	int v_max = __si_can_version(si) ? SWAPVMAX: 1;
+	for (offset = 0; offset < si->max; offset += PAGE_SIZE) {
+		struct page *head;
+		offset_v = VERSION_OFFSET(0, offset, SWAPVMAX);
+		head = vmalloc_to_page(si->swap_map + offset_v);
+		if (page_private(head)) {
+			struct page *page, *next;
 
-				list_for_each_entry_safe(page, next, &head->lru, lru) {
-					list_del(&page->lru);
-					__free_page(page);
-				}
+			list_for_each_entry_safe(page, next, &head->lru, lru) {
+				list_del(&page->lru);
+				__free_page(page);
 			}
-		}		
+		}
 	}
 }
 

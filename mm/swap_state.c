@@ -770,7 +770,7 @@ int entry_remap_usable_version(swp_entry_t entry)
 	VM_BUG_ON(swp_entry_test_ext(entry));
 	i = 0;
 	xa_lock_irq(&address_space_remap->i_pages); //lock
-	while (i <= SWP_ENTRY_ALIVE_VERSION_SPEC){
+	while (i < SWP_ENTRY_ALIVE_VERSION){
 		check_entry.val = entry.val;
 		swp_entry_set_special(&check_entry, i);
 		swp_entry_clear_ext(&check_entry, 0x3); //clear all ext
@@ -2482,9 +2482,7 @@ skip_ra_try_save:
 			reset_private = false;
 			folio = next = NULL;
 	
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-			pr_info("start dealing with saved entry[%lx]", saved_entry.val);
-#endif
+			MULTISWAP_MIG_INFO("start dealing with saved entry[%lx]", saved_entry.val);
 			if (unlikely(non_swap_entry(saved_entry))){
 				goto skip_this_save;
 			}
@@ -2496,10 +2494,8 @@ skip_ra_try_save:
 			}
 			if (!data_race(p->flags & SWP_SYNCHRONOUS_IO) ||
 		    	!(__swap_count(saved_entry) == 1)) {
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-				pr_info("entry[%lx] sync[%d] cnt[%d] abandoned", 
-							saved_entry.val, data_race(p->flags & SWP_SYNCHRONOUS_IO) > 0, __swap_count(saved_entry));
-#endif
+				MULTISWAP_MIG_INFO("entry[%lx] sync[%d] cnt[%d] abandoned", 
+					saved_entry.val, data_race(p->flags & SWP_SYNCHRONOUS_IO) > 0, __swap_count(saved_entry));
 				goto skip_this_save;
 			}
 
@@ -2511,11 +2507,9 @@ skip_ra_try_save:
 			si = get_swap_device(saved_entry);
 			//test if folio is already in swapcache
 			folio = raw_swap_cache_get_folio(si, saved_entry);
-			if (folio) {
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-				pr_info("saved_entry[%lx] raw_swap_cache_get_folio folio[%p] already dealed with",
-						 saved_entry.val, folio);
-#endif				
+			if (folio) {	
+				MULTISWAP_MIG_INFO("saved_entry[%lx] raw_swap_cache_get_folio folio[%p] already dealed with",
+					saved_entry.val, folio);
 				put_swap_device(si);
 				si = NULL;
 				folio_ref_dec(folio);
@@ -2523,9 +2517,8 @@ skip_ra_try_save:
 			}
 			put_swap_device(si);
 			si = NULL;
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-			pr_info("saved_entry[%lx] dealed with",saved_entry.val);
-#endif
+
+			MULTISWAP_MIG_INFO("saved_entry[%lx] dealed with",saved_entry.val);
 			folio = vma_alloc_folio(gfp_mask, 0,
 						vma, vmf->address, false); //we don't support derect recalim so it may fail
 			if (!folio) {
@@ -2552,15 +2545,9 @@ skip_ra_try_save:
 // 			}
 			//don't mem_cgroup_swapin_uncharge_swap(entry);
 			folio_set_swap_entry(folio, saved_entry);			
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-			pr_info("swap_readpage try read page[%p] ref[%d]", 
-			page, folio_ref_count(folio));
-#endif
+			MULTISWAP_MIG_INFO("swap_readpage try read page[%p] ref[%d]", 	page, folio_ref_count(folio));
 			swap_readpage(page, true, &splug_save);
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-			pr_info("swap_readpage finished page[%p] ref[%d]", 
-			page, folio_ref_count(folio));
-#endif
+			MULTISWAP_MIG_INFO("swap_readpage finished page[%p] ref[%d]", page, folio_ref_count(folio));
 			count_memcg_event_mm(vma->vm_mm, SWAPIN_FAST_SAVE);
 			
 			if (!folio_trylock(folio))
@@ -2584,11 +2571,10 @@ skip_ra_try_save:
 				pr_err("fail dup mig_entry[%lx]", mig_entry.val);
 				goto fail_page_out;
 			}
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-			pr_info("folio_alloc_swap entry[%lx] v[%d] for folio[%p]ref[%d]cnt[%d]",
-				 mig_entry.val, swp_entry_test_special(mig_entry), 
-				 folio, folio_ref_count(folio), __swap_count(mig_entry));
-#endif
+			MULTISWAP_MIG_INFO("folio_alloc_swap entry[%lx] v[%d] for folio[%p]ref[%d]cnt[%d]",
+				mig_entry.val, swp_entry_test_special(mig_entry), 
+				folio, folio_ref_count(folio), __swap_count(mig_entry));
+
 			_err = add_to_swap_cache_save_check(folio, saved_entry, gfp_mask & (__GFP_HIGH|__GFP_NOMEMALLOC|__GFP_NOWARN), true);
 			if (unlikely(_err)) {
 				pr_err("folio[%p] add_to_sw fail [%d]", folio, _err);
@@ -2620,10 +2606,8 @@ skip_ra_try_save:
 				folio_unlock(folio);
 				goto fail_delete_saved_cache;
 			}
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-			pr_info("folio[%p] mig[%lx]cnt[%d] ref[%d] add_to_swap_cache_save_check success ", 
-					folio, mig_entry.val, __swp_swapcount(mig_entry), folio_ref_count(folio));		
-#endif	
+			MULTISWAP_MIG_INFO("folio[%p] mig[%lx]cnt[%d] ref[%d] add_to_swap_cache_save_check success ", 
+				folio, mig_entry.val, __swp_swapcount(mig_entry), folio_ref_count(folio));
 			//first mark entry as faked for now (currently under initialization)
 			swp_entry_set_ext(&mig_entry, 0x1);
 			//adding a remap from saved_entry -> mig_entry
@@ -2664,6 +2648,9 @@ skip_ra_try_save:
 						saved_entry.val, __swp_swapcount(saved_entry), 
 						mig_entry.val, __swp_swapcount(mig_entry));
 #endif
+			MULTISWAP_MIG_INFO("add_swp_remap folio[%p] ref[%d][%lx]cnt[%d]=>[%lx][%d]",
+				folio, folio_ref_count(folio), 	saved_entry.val, 
+				__swp_swapcount(saved_entry), mig_entry.val, __swp_swapcount(mig_entry));
 			swp_entry_clear_ext(&mig_entry, 0x3); // 局部变量无所谓
 			//now we add the real entry
 			VM_WARN_ON_FOLIO(!folio_test_locked(folio), folio);

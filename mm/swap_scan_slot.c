@@ -165,45 +165,44 @@ void putback_last_saved_entry(swp_entry_t last){
 	spin_unlock_irq(&cache->scan_lock);
 }
 
+
+/* 
+ * get_next_saved_entry 
+ * return one target from scan batch, 
+ * informs caller weather this batch has finished, 
+ * When the last victim has been consumed, re-
+ * activate migration swap scan 
+ * - paramter finished has to be valid 
+ */
+#define INVALID_SWP_ENTRY swp_entry(MAX_SWAPFILES, 0) 
 swp_entry_t get_next_saved_entry(bool* finished){
 	struct swap_scan_slot *cache;
 	swp_entry_t entry;
-	entry = swp_entry(MAX_SWAPFILES, 0); //invalid entry
-	cache = &global_swp_scan_slot;//raw_cpu_ptr(&swp_scan_slots);
+	entry = INVALID_SWP_ENTRY; 
+	cache = &global_swp_scan_slot;
 	if (unlikely(!cache)) {
 		*finished = true;
 		return entry;
 	}
-// #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-// 	pr_info("cache->scan_lock waiting");
-// #endif
+
 	spin_lock_irq(&cache->scan_lock);
-// #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-// 	pr_info("cache->scan_lock got");
-// #endif
 	if (!cache->scan_stop || !use_swap_scan_slot || !cache->slots){
-		if (finished)
-			*finished = true;	
+		*finished = true;	
 		spin_unlock_irq(&cache->scan_lock);
 		return entry;
 	}
 	//we start read
 	entry = cache->slots[cache->cur];
 	cache->cur++;
-	if (finished)
-		*finished = false;
-	if (cache->cur == cache->nr){
+	*finished = false;
+	if (unlikely(cache->cur == cache->nr)){
 		cache->cur = 0;
 		cache->nr = 0;
 		cache->scan_stop = false;
-		if (finished)
-			*finished = true;
+		*finished = true;
 	}
 	spin_unlock_irq(&cache->scan_lock);
-	if (non_swap_entry(entry)){
-		pr_err("returning bad entry [%d/%d]", cache->cur, cache->nr);
-		BUG();
-	}
+	VM_BUG_ON(non_swap_entry(entry));
 
 	return entry;
 } 

@@ -6,15 +6,46 @@
 #include <linux/spinlock.h>
 #include <linux/mutex.h>
 
-#define SWAP_SCAN_SLOT_SIZE			  SWAP_BATCH * 2
-#define SWAP_SLOTS_SCAN_MIN            SWAP_SCAN_SLOT_SIZE * 8
+/* 
+ * SWAP_SCAN_SLOT_SIZE
+ * migrate target batch size. When scanning batch is full, 
+ * stops scanning and start migration process
+ */
+#define SWAP_SCAN_SLOT_SIZE			  SWAP_BATCH	
+
+/* 
+ * SWAP_SLOTS_SCAN_MIN
+ * Minimum slot scan number at one attempt.
+ * If scanning batch hasn't fill up, scan will
+ * be triggered again at next kswapd awake.
+ */
+#define SWAP_SLOTS_SCAN_MIN            SWAP_SCAN_SLOT_SIZE * 16
+
+/*
+ * SWAP_SLOTS_SCAN_SAVE_ONCE
+ * When swap_vma_readahead is triggerd, 
+ * At most this much swap migration process will
+ * be triggerd at once. 
+ */
 #define SWAP_SLOTS_SCAN_SAVE_ONCE		16 
-//load 8 page to slow at most in one attempt
 
-#define SEQ_DIFF_THRESHOLD             120
 
-#define THRESHOLD_ACTIVATE_SWAP_SCAN_SLOT  32  //when under 1/8
-#define THRESHOLD_DEACTIVATE_SWAP_SCAN_SLOT 16  //when more than 1/2
+/*
+ * SEQ_DIFF_THRESHOLD
+ * When swap_vma_readahead is triggerd, 
+ * At most this much swap migration process will
+ * be triggerd at once. 
+ */
+#define SEQ_DIFF_THRESHOLD             2
+
+/*
+ * swap scanning watermark
+ * start scanning when fast swap is under 1/ACTIVATE
+ * stop scanning when fast swap is over 1/DEACTIVATE
+ */
+#define THRESHOLD_ACTIVATE_SWAP_SCAN_SLOT  32
+#define THRESHOLD_DEACTIVATE_SWAP_SCAN_SLOT 16
+
 struct swap_scan_slot {
 	bool		lock_initialized;
 	spinlock_t	scan_lock; /* protects slots, nr, cur */
