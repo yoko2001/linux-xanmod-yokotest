@@ -47,7 +47,7 @@
 #include <asm/pgalloc.h>
 #include <asm/tlbflush.h>
 #include "internal.h"
-
+#include "swap.h"
 #include <trace/events/lru_gen.h>
 
 #define CREATE_TRACE_POINTS
@@ -2173,9 +2173,7 @@ unsigned swap_scan_entries_savior(struct address_space *mapping,
 						continue;
 					}
 					if (add_to_scan_slot(entry) == -2){
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-						pr_info("add_to_scan_slot stoped");
-#endif
+						MULTISWAP_MIG_INFO("add_to_scan_slot stoped");
 						*full = true;
 						break;
 					}

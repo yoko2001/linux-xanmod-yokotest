@@ -48,11 +48,9 @@ static void __end_swap_bio_write_save(struct bio* bio){
 		ClearPageReclaim(page);
 	}
 	end_page_writeback(page);
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-	pr_info("called end_page_writeback page[%p]d[%d]wb[%d]rcl[%d]sv[%d] ref=%d",
-			page, PageDirty(page), PageWriteback(page), 
-			PageReclaim(page), PageStaleSaved(page), folio_ref_count(page_folio(page)));
-#endif
+	MULTISWAP_MIG_INFO("called end_page_writeback page[%p]d[%d]wb[%d]rcl[%d]sv[%d] ref=%d",
+		page, PageDirty(page), PageWriteback(page), PageReclaim(page), 
+		PageStaleSaved(page), folio_ref_count(page_folio(page)));
 }
 static void __end_swap_bio_write(struct bio *bio)
 {
@@ -215,10 +213,7 @@ int swap_writepage(struct page *page, struct writeback_control *wbc)
 	struct folio *folio = page_folio(page);
 	int ret;
 	if (unlikely(folio_test_stalesaved(folio))){//skip folio_free_swap for staled folio
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-		pr_info("swap_writepage on staled folio[%p]", folio);
-#endif
-		;
+		MULTISWAP_MIG_INFO("swap_writepage on staled folio[%p]", folio);
 	} 
 	else if (folio_free_swap(folio)) {
 		folio_unlock(folio);
@@ -407,12 +402,10 @@ static void swap_writepage_bdev_async(struct page *page,
 	count_swpout_vm_event(page);
 	set_page_writeback(page);
 	unlock_page(page);
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-	if (unlikely(folio_test_stalesaved(folio))){
-		pr_info("swap_writepage_bdev_async submit folio[%p] wb[%d]lock[%d]", 
-				folio, folio_test_writeback(folio), folio_test_locked(folio));
-	}
-#endif
+	
+	MULTISWAP_MIG_INFO_ON(unlikely(folio_test_stalesaved(folio)), 
+		"swap_writepage_bdev_async submit folio[%p] wb[%d]lock[%d]", 
+		folio, folio_test_writeback(folio), folio_test_locked(folio));
 	submit_bio(bio);
 }
 

@@ -240,9 +240,7 @@ int add_to_scan_slot(swp_entry_t entry)
 
 			cache->cur = 0; //read from start
 			cache->scan_stop = true;
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-			pr_info("scan_slot cache full [%d]", cache->nr);
-#endif
+			MULTISWAP_MIG_INFO("scan_slot cache full [%d]", cache->nr);
 			//this will block  use_swap_scan_slot
 			spin_unlock_irq(&cache->scan_lock);
 			return -2;

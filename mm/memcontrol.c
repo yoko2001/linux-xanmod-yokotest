@@ -7644,10 +7644,8 @@ static void uncharge_folio(struct folio *folio, struct uncharge_gather *ug)
 		if (!mem_cgroup_is_root(memcg)){
 			ug->nr_memory += nr_pages;
 			if (unlikely(folio_test_stalesaved(folio))){
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-				pr_info("folio[%p]->entry[%lx] nr[%ld] uncharged to memcg[%d]" ,
-						folio, folio_swap_entry(folio).val, nr_pages, mem_cgroup_id(memcg));
-#endif
+				MULTISWAP_MIG_INFO("folio[%p]->entry[%lx] nr[%ld] uncharged to memcg[%d]" ,
+					folio, folio_swap_entry(folio).val, nr_pages, mem_cgroup_id(memcg));
 				// folio_clear_stalesaved(folio);
 				count_memcg_folio_events(folio, SWAP_STALE_SAVE, folio_nr_pages(folio));
 			}

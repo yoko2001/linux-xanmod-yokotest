@@ -6,55 +6,8 @@
 #include <linux/blk_types.h> /* for bio_end_io_t */
 
 /* MULTISWAP DEBUG */
-/* INFO */
-/* MULTISWAP DEBUG */
-/* INFO */
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-#define MULTISWAP_MIG_INFO(fmt, ...) \
-    do {pr_info(pr_fmt(fmt), ##__VA_ARGS__);} while (0)
-#else
-#define MULTISWAP_MIG_INFO(fmt, ...) \
-    do {} while (0)
-#endif
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-#define MULTISWAP_MIG_INFO_ON(condition, fmt, ...) \
-	do { if (condition) pr_info(pr_fmt(fmt), ##__VA_ARGS__); } while (0)
-#else
-#define MULTISWAP_MIG_INFO_ON(condition, fmt, ...) \
-	do {} while (0)
-#endif
-
-/* WARN */
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-#define MULTISWAP_MIG_WARN(fmt, ...) \
-    do { pr_warn(pr_fmt(fmt), ##__VA_ARGS__);} while (0)
-#else
-#define MULTISWAP_MIG_WARN(fmt, ...) \
-    do {} while (0)
-#endif
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-#define MULTISWAP_MIG_WARN_ON(condition, fmt, ...) \
-	do { if (condition) pr_warn(pr_fmt(fmt), ##__VA_ARGS__); } while (0)
-#else
-#define MULTISWAP_MIG_WARN_ON(condition, fmt, ...) \
-	do {} while (0)
-#endif
-
-/* ERR */
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-#define MULTISWAP_MIG_ERR(fmt, ...) \
-    do { pr_err(pr_fmt(fmt), ##__VA_ARGS__);} while (0)
-#else
-#define MULTISWAP_MIG_ERR(fmt, ...) \
-    do {} while (0)
-#endif
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-#define MULTISWAP_MIG_ERR_ON(condition, fmt, ...) \
-	do { if (condition) pr_err(pr_fmt(fmt), ##__VA_ARGS__); } while (0)
-#else
-#define MULTISWAP_MIG_ERR_ON(condition, fmt, ...) \
-	do {} while (0)
-#endif
+#include "multiswap_debug.h"
+#include "multiswap.h"
 
 /* linux/mm/page_io.c */
 int sio_pool_init(void);
@@ -79,50 +32,21 @@ extern struct address_space *swapper_spaces[];
 	(&swapper_spaces[swp_type(entry)][(((swp_raw_offset(entry) \
 		>> SWAP_ADDRESS_SPACE_SHIFT) << SWP_SPECIAL_MARK) | (swp_entry_test_special(entry)))])
 
-/* One swap address space rmap for each 512M swap space */
-#define SWAP_ADDRESS_SPACE_REMAP_SHIFT	(SWAP_ADDRESS_SPACE_SHIFT + 3)
-#define SWAP_ADDRESS_SPACE_REMAP_PAGES	(1 << SWAP_ADDRESS_SPACE_REMAP_SHIFT)
-extern struct address_space *swapper_spaces_remap[];
-#define swap_address_space_remap(entry)			    \
-	(&swapper_spaces_remap[swp_type(entry)][(((swp_raw_offset(entry) \
-		>> SWAP_ADDRESS_SPACE_REMAP_SHIFT) << SWP_SPECIAL_MARK) | (swp_entry_test_special(entry)))])
-
 void show_swap_cache_info(void);
+/* MULTISWAP added left_space report */
 bool add_to_swap(struct folio *folio,  long* left_space);
-void *get_shadow_from_swap_cache(swp_entry_t entry);
-void *get_shadow_from_swap_cache_erase(swp_entry_t entry);
 int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 		      gfp_t gfp, void **shadowp);
-int add_swp_entry_remap(struct folio* folio, swp_entry_t from_entry, swp_entry_t to_entry, 
-			gfp_t gfp);
-int enable_swp_entry_remap(struct folio* folio, swp_entry_t from_entry, swp_entry_t* p_to_entry);
 void __delete_from_swap_cache(struct folio *folio,
 			      swp_entry_t entry, void *shadow);
-void delete_from_swap_remap(struct folio *folio, swp_entry_t entry_from, swp_entry_t entry_to, bool delete_unpepared);
-void delete_from_swap_remap_get_mig(struct folio* folio, swp_entry_t entry_from, swp_entry_t* entry_to);
-void delete_from_swap_remap_raw(swp_entry_t entry_from, swp_entry_t entry_to);
-void __delete_from_swap_cache_mig(struct folio *folio,
-			swp_entry_t entry, bool shadow_transfer);
-void swap_remap_unlock(struct folio *folio, swp_entry_t ori_swap, swp_entry_t mig_swap);
-void clear_swap_remap_entire(struct swap_info_struct *si);
 bool folio_swapped(struct folio *folio);
-swp_entry_t folio_get_migentry(struct folio* folio, swp_entry_t ori);
-int entry_remap_usable_version(swp_entry_t entry);
-swp_entry_t entry_get_migentry(swp_entry_t ori_swap);
-swp_entry_t entry_get_migentry_lock(swp_entry_t ori_swap);
-swp_entry_t entry_get_migentry_unlock(swp_entry_t ori_swap, swp_entry_t _mig_swap);
 swp_entry_t delete_from_swap_cache(struct folio *folio);
+/* MULTISWAP added debug interface */
 swp_entry_t delete_from_swap_cache_debug(struct folio *folio, swp_entry_t expected_entry);
-void delete_from_swap_cache_mig(struct folio* folio, swp_entry_t entry, bool sub_ref, bool transfer_shadow);
-void clear_shadow_from_swap_cache(int type, unsigned long begin,
-				  unsigned long end, int free);
 struct folio *swap_cache_get_folio(struct swap_info_struct * si, swp_entry_t entry,
 		struct vm_area_struct *vma, unsigned long addr);
 struct folio *filemap_get_incore_folio(struct address_space *mapping,
 		pgoff_t index);
-void swap_shadow_scan_next(struct swap_info_struct * si, struct lruvec * lruvec, 
-		unsigned long* scanned, unsigned long* saved);
-int __si_can_version(struct swap_info_struct *si);
 struct page *read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 				   struct vm_area_struct *vma,
 				   unsigned long addr,

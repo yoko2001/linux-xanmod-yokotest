@@ -1334,7 +1334,7 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 			handle_write_error(mapping, folio, res);
 		else
 			MULTISWAP_MIG_INFO_ON(folio_test_swappriohigh(folio), "folio[%p] writesubmit pri[%lx]", 
-									folio, folio_swap_entry(folio));
+									folio, folio_swap_entry(folio).val);
 		if (res == AOP_WRITEPAGE_ACTIVATE) {
 			folio_clear_reclaim(folio);
 			return PAGE_ACTIVATE;
@@ -2050,7 +2050,7 @@ keep_next_time:
 			VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 			// VM_BUG_ON_FOLIO(folio_mapped(folio), folio);	
 			if (!folio_test_stalesaved(folio)){
-				// //we're interruped by do_swap_page turn this page into safe state
+				// we're interruped by do_swap_page turn this page into safe state
 				// pr_err("intercepted before enable remap folio[%p]cnt[%d]$[%d]", 
 				// 		folio,	folio_ref_count(folio), folio_test_swapcache(folio));
 				// //we need to handle the remap & mig cache clean up part
@@ -2099,7 +2099,7 @@ keep_next_time:
 							folio_swap_entry(folio).val, err, -EEXIST);
 					BUG();
 				}
-				MULTISWAP_MIG_ERR("folio[%p]stale[%d] ref[%d]pri[%lx] entry[%lx]cnt[%d]migentry[%lx]cnt[%d] cleanned mig", 
+				MULTISWAP_MIG_INFO("folio[%p]stale[%d] ref[%d]pri[%lx] entry[%lx]cnt[%d]mig[%lx]cnt[%d] cleanned mig", 
 					folio,	folio_test_stalesaved(folio), folio_ref_count(folio), folio_swap_entry(folio).val, 
 					entry.val, __swap_count(entry), migentry.val, __swap_count(migentry));
 pass_cleanup:
@@ -2125,7 +2125,7 @@ pass_cleanup:
 				} //locked by do_swap_page, it will unlock it
 			}
 			//realloc entry 
-			VM_BUG_ON(!migentry.val)
+			VM_BUG_ON(!migentry.val);
 			
 			set_page_private(folio_page(folio, 0), migentry.val);
 			delete_from_swap_cache_mig(folio, migentry, true, true); //delete from origin entry
@@ -5414,7 +5414,7 @@ static int lru_gen_memcg_seg(struct lruvec *lruvec)
  *                          the eviction
  ******************************************************************************/
 
-static bool sort_folio(struct lruvec *lruvec, struct folio *folio, int tier_idx, int* cause)
+static bool sort_folio(struct lruvec *lruvec, struct folio *folio, int tier_idx)
 {
 	bool success;
 	int gen = folio_lru_gen(folio);
@@ -5436,7 +5436,6 @@ static bool sort_folio(struct lruvec *lruvec, struct folio *folio, int tier_idx,
 		__count_vm_events(UNEVICTABLE_PGCULLED, delta);
 		MULTISWAP_MIG_INFO_ON(folio_test_stalesaved(folio), 
 			"folio[%p] unevictable?? gen[%d] ", folio, gen);
-		*cause = 0;
 		return true;
 	}
 
@@ -5448,7 +5447,6 @@ static bool sort_folio(struct lruvec *lruvec, struct folio *folio, int tier_idx,
 		lruvec_add_folio_tail(lruvec, folio);
 		MULTISWAP_MIG_INFO_ON(folio_test_stalesaved(folio), 
 			"folio[%p] lazyfree?? gen[%d] ", folio, gen);
-		*cause = 1;
 		return true;
 	}
 
@@ -5462,7 +5460,6 @@ static bool sort_folio(struct lruvec *lruvec, struct folio *folio, int tier_idx,
 			// gen, type, zone);
 		// }
 #endif
-		*cause = 2;
 		return true;
 	}
 
@@ -5478,7 +5475,6 @@ static bool sort_folio(struct lruvec *lruvec, struct folio *folio, int tier_idx,
 		__mod_lruvec_state(lruvec, WORKINGSET_ACTIVATE_BASE + type, delta);
 		MULTISWAP_MIG_INFO_ON(folio_test_stalesaved(folio), 
 			"folio[%p] proteced?? gen[%d] ", folio, gen);
-		*cause = 3;
 		return true;
 	}
 
@@ -5490,10 +5486,8 @@ static bool sort_folio(struct lruvec *lruvec, struct folio *folio, int tier_idx,
 		MULTISWAP_MIG_INFO_ON(folio_test_stalesaved(folio), 
 			"folio[%p]"" lk[%d]wb[%d]d[%d] gen[%d]", folio, folio_test_locked(folio), 
 			folio_test_writeback(folio), folio_test_dirty(folio), gen);
-		*cause = 4;
 		return true;
 	}
-	*cause = 100;
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 	// if (folio_test_stalesaved(folio)) {
 	// 	pr_info("folio[%p] sort pass ", folio);
@@ -5612,7 +5606,6 @@ static int scan_folios(struct lruvec *lruvec, struct scan_control *sc,
 		while (!list_empty(head)) {
 			struct folio *folio = lru_to_folio(head);
 			int delta = folio_nr_pages(folio);
-			int cause = -1;
 			VM_WARN_ON_ONCE_FOLIO(folio_test_unevictable(folio), folio);
 			VM_WARN_ON_ONCE_FOLIO(folio_test_active(folio), folio);
 			VM_WARN_ON_ONCE_FOLIO(folio_is_file_lru(folio) != type, folio);
@@ -5622,7 +5615,7 @@ static int scan_folios(struct lruvec *lruvec, struct scan_control *sc,
 			// }
 			scanned += delta;
 
-			if (sort_folio(lruvec, folio, tier, &cause))
+			if (sort_folio(lruvec, folio, tier))
 				sorted += delta;
 			else if (isolate_folio(lruvec, folio, sc)) {
 				list_add(&folio->lru, list);
@@ -5631,28 +5624,7 @@ static int scan_folios(struct lruvec *lruvec, struct scan_control *sc,
 				list_move(&folio->lru, &moved);
 				skipped += delta;
 			}
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-			if (debug-- && cause != 100 && cause != 2 && cause != 4){
-				pr_info("scan_folios sorting [%p] cause[%d]", folio, cause);
-			}
-			switch(cause) {
-				case 0:
-					nUnev+=1; break;
-				case 1:
-					nLzfree+=1; break;
-				case 2:
-					nPromoted+=1; break;
-				case 3:
-					nProteced+=1; break;
-				case 4:
-					nWB+=1; break;
-				case 100:
-					break;
-				default:
-					pr_err("cause %d ERR", cause);
-					dump_stack();
-			}
-#endif
+
 			if (!--remaining || max(isolated, skipped) >= MIN_LRU_BATCH)
 				break;
 		}

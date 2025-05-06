@@ -129,10 +129,6 @@ static inline unsigned char swap_count(unsigned char ent)
 #define TTRS_UNMAPPED		0x2
 /* Reclaim the swap entry if swap is getting full*/
 #define TTRS_FULL		0x4
-#define SWAPVMAX (SWP_ENTRY_ALIVE_VERSION)
-#define VMAXMASK (((1U << (SWAPVMAX * 8)) - 1) )
-#define VERSION_OFFSET(v, off, vmax) (vmax * off + v)
-#define VERSION_OFFSET_SI(v, off, vmax, si) (__si_can_version(si) ?  VERSION_OFFSET(v, off, vmax) : off)
 
 int __si_can_version(struct swap_info_struct *si){
 	return si && (si->flags & SWP_SYNCHRONOUS_IO);
@@ -4323,8 +4319,6 @@ out:
 static void free_swap_count_continuations(struct swap_info_struct *si)
 {
 	pgoff_t offset, offset_v;
-	int v;
-	int v_max = __si_can_version(si) ? SWAPVMAX: 1;
 	for (offset = 0; offset < si->max; offset += PAGE_SIZE) {
 		struct page *head;
 		offset_v = VERSION_OFFSET(0, offset, SWAPVMAX);
