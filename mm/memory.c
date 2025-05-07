@@ -3862,6 +3862,9 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	bool need_unlock= false, valid_remap = false, invalid_remap = false, filemaphit = false;
 	static int privatebug = 1000;
 #ifdef CONFIG_LRU_GEN_SWAP_IN_LOCK_STAT
+	/*
+	 * Used for tats swapin page locked periods. 
+	 */
 	ktime_t start_time, end_time;
 	unsigned long wait_time_ns = 0;
 	bool timerecord = false;
@@ -3914,8 +3917,11 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		goto out;
 
 	folio = swap_cache_get_folio(si, entry, vma, vmf->address);
-	/*DJL ADD BEGIN*/
 	if (folio){
+		/*
+		 * MULTISWAP: add this to count swapcache hit that happens
+		 * on SLOW and FAST swap devices
+		 */
  		page = folio_file_page(folio, swp_offset(entry));
 		count_memcg_event_mm(vma->vm_mm, SWAPIN_FROM_SWAPCACHE);
 		if (!(si->flags & SWP_SYNCHRONOUS_IO)){
@@ -3926,18 +3932,18 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		swp_entry_clear_ext(&pri_entry, 0x3);
 		filemaphit = true;
 	}
-	/*DJL ADD END*/
 	swapcache = folio;
 	orientry.val = entry.val; //save origin
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
+	/* return a NULL or migentry (might be unready), lock the remap */
 	if (__si_can_version(si))
-		migentry = entry_get_migentry_lock(entry); //this will only lock on existed migentry
+		migentry = entry_get_migentry_lock(entry);
 	else
 		migentry.val = 0;
-	//this avoid multiple do_swap_page enter critical section
 	if (unlikely(migentry.val)) {
-		if (swp_entry_test_ext(migentry) & 0x2) //locked, wait for the other to finish
+		if (swp_entry_test_locked(&migentry))
 		{
+			/* if the migentry we got is a locked one, retry */
 			ret |= VM_FAULT_RETRY;
 
 			if (unlikely(folio && folio_test_stalesaved(folio))){
@@ -3949,17 +3955,22 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 			goto out;
 		}
 		else{
+			/* we hold the lock, now keep on proceeding */
 			MULTISWAP_MIG_INFO("do_swap_page ori[%lx] -> mig[%lx]", orientry.val, migentry.val);
 			need_unlock = true;
 		}	
 	}	
 
-	//at most one do_swap_page and one stale save process enter this place
-	if (swapcache){ //we do nothing in this case
+	/* 
+	 * we can assert that at most one process among those sharing 
+	 * the same remap enters this part. 
+	 */
+	if (swapcache){
+		/* we do nothing in this case, the migrator will clean up */
 		if (unlikely(migentry.val && !non_swap_entry(migentry))){ //got a migentry, test if its valid
 			MULTISWAP_MIG_INFO("swapcache caught, used orientry[%lx], not migentry[%lx], folio[%p]", 
 				orientry.val, migentry.val, swapcache);
-			if (swp_entry_test_ext(migentry)){
+			if (swp_entry_test_unready(&migentry)){
 				MULTISWAP_MIG_INFO("swapcache migentry[%lx] before enable, inval", migentry.val);
 				invalid_remap = true;
 				ref_sub = true;
@@ -3978,7 +3989,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				migentry.val = 0;
 				BUG();
 			} else { //is_swap_entry(migentry), good case
-				if (swp_entry_test_ext(migentry) & 0X1){ //UNDER MIGRATION
+				if (swp_entry_test_unready(&migentry)){ //UNDER MIGRATION
 					//in this case we can only assume that the savedentry has not been freed
 					//we have to keep it from freed
 					invalid_remap = true;
@@ -4089,12 +4100,14 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 
 				/* To provide entry to swap_readpage() */
 				folio_set_swap_entry(folio, entry);
-				/*DJL ADD BEGIN*/
-				if (get_fastest_swap_prio() == si->prio){
+				/* count SWAPIN from each swap backends*/
+				if (swap_info_is_fastest(si)){
 					count_memcg_event_mm(vma->vm_mm, SWAPIN_FAST);
-				} else if (get_slowest_swap_prio() == si->prio){
+				} 
+				else if (swap_info_is_slowest(si)){
 					count_memcg_event_mm(vma->vm_mm, SWAPIN_SLOW);
-				} else{
+				} 
+				else{
 					count_memcg_event_mm(vma->vm_mm, SWAPIN_MID);
 				}
 				swap_readpage(page, true, NULL);
@@ -4508,14 +4521,14 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		}
 	}
 
-	// if (folio)
-	// 	VM_BUG_ON_FOLIO(folio_test_stalesaved(folio), folio);
-	if (unlikely(folio_test_stalesaved(folio))){
-		// folio_clear_stalesaved(folio);
-		MULTISWAP_MIG_ERR("do_swap still STALESAVED entry[%lx] folio[%p] $[%d]ref[%d]cnt[%d]wb[%d]", 
-			entry.val, folio,  folio_test_swapcache(folio),  folio_ref_count(folio), 
-			__swp_swapcount(entry), folio_test_writeback(folio));
-	}
+	if (likely(folio))
+		VM_BUG_ON_FOLIO(folio_test_stalesaved(folio), folio);
+	// if (unlikely(folio_test_stalesaved(folio))){
+	// 	// folio_clear_stalesaved(folio);
+	// 	MULTISWAP_MIG_ERR("do_swap still STALESAVED entry[%lx] folio[%p] $[%d]ref[%d]cnt[%d]wb[%d]", 
+	// 		entry.val, folio,  folio_test_swapcache(folio),  folio_ref_count(folio), 
+	// 		__swp_swapcount(entry), folio_test_writeback(folio));
+	// }
 
 	if (unlikely(migentry.val && need_unlock)){ 
 		entry_get_migentry_unlock(orientry, migentry);

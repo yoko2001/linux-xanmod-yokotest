@@ -315,7 +315,12 @@ out_unlock:
 	mutex_unlock(&swap_slots_cache_enable_mutex);
 }
 
-/* called with swap slot cache's alloc lock held */
+/*
+ * MULTISWAP: 
+ * refill swap slotes cache using swap at cache->prio, 
+ * then update swap slot cache's stat. 
+ * - called with swap slot cache's alloc lock held
+ */
 static int refill_swap_slots_cache(struct swap_slots_cache *cache)
 {
 	if (!use_swap_slot_cache)
@@ -332,9 +337,13 @@ static int refill_swap_slots_cache(struct swap_slots_cache *cache)
 	return cache->nr;
 }
 
-/*DJL ADD BEGIN*/
-/* called with swap slot cache's alloc lock held */
-static int refill_swap_slots_slow_cache(struct swap_slots_cache *cache)
+/*
+ * MULTISWAP: 
+ * refill swap slotes cache using swap at cache->prio_slow, 
+ * then update swap slot cache's stat. 
+ * - called with swap slot cache's alloc lock held
+ */
+ static int refill_swap_slots_slow_cache(struct swap_slots_cache *cache)
 {
 	if (!use_swap_slot_cache)
 		return 0;
@@ -347,6 +356,13 @@ static int refill_swap_slots_slow_cache(struct swap_slots_cache *cache)
 	trace_refill_swap_slots(1, cache->nr_slow, cache->prio_slow);
 	return cache->nr_slow;
 }
+
+/*
+ * MULTISWAP: 
+ * refill swap slotes cache using swap at cache->prio_fast, 
+ * then update swap slot cache's stat. 
+ * - called with swap slot cache's alloc lock held
+ */
 static int refill_swap_slots_fast_cache(struct swap_slots_cache *cache)
 {
 	long left = 0;
@@ -371,7 +387,6 @@ static int refill_swap_slots_fast_cache(struct swap_slots_cache *cache)
 	trace_refill_swap_slots(2, cache->nr_fast, cache->prio_fast);
 	return cache->nr_fast;
 }
-/*DJL ADD END*/
 
 void free_swap_slot(swp_entry_t entry)
 {

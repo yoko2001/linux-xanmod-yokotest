@@ -354,7 +354,7 @@ int enable_swp_entry_remap(struct folio* folio, swp_entry_t from_entry, swp_entr
 				}
 				to_entry_enabled.val = to_entry.val;
 				swp_entry_clear_ext(&to_entry_enabled, 0x1); //we cannot use 0x3 to test if locked
-				if (swp_entry_test_ext(to_entry_enabled) & 0x2){ // 0x2 locket this should be returned
+				if (swp_entry_test_locked(&to_entry_enabled)){ // 0x2 locket this should be returned
 					// pr_err("enable_swp_entry_remap fail locked [%p] $[%d] entry[%lx]->migentry[%lx]", 
 					// 		folio, folio_test_swapcache(folio), 
 					// 		from_entry.val, to_entry.val);
@@ -617,7 +617,7 @@ swp_entry_t entry_get_migentry_lock(swp_entry_t ori_swap)
 				BUG();
 			}
 			locked_mig.val = mig_swap.val;
-			swp_entry_set_ext(&locked_mig, swp_entry_test_ext(locked_mig)| 0x2);
+			swp_entry_set_locked(&locked_mig);
 			xas_store(&xas, xa_mk_value(locked_mig.val));
 		}
 		else if (entry){
@@ -631,7 +631,12 @@ swp_entry_t entry_get_migentry_lock(swp_entry_t ori_swap)
 	return mig_swap;
 }
 
-//returns unlocked migentry
+/* 
+ * MULTISWAP:
+ * Find mig_entry of original swap entry
+ * This function will LOCK the entry->mig_entry[LOCK],
+ * for multi-thread protection. 
+ */
 swp_entry_t entry_get_migentry_unlock(swp_entry_t ori_swap, swp_entry_t _mig_swap)
 {
 	swp_entry_t mig_swap, locked_mig;
@@ -651,7 +656,7 @@ swp_entry_t entry_get_migentry_unlock(swp_entry_t ori_swap, swp_entry_t _mig_swa
 			mig_swap.val = xa_to_value(entry);
 			if (mig_swap.val && non_swap_entry(mig_swap) 
 				|| !swp_entry_physical_same(mig_swap, _mig_swap)
-				|| !(swp_entry_test_ext(mig_swap)& 0x2))
+				|| !(swp_entry_test_locked(&mig_swap)))
 			{
 				pr_err("remap err [%lx]->[%lx] <> [%lx]", ori_swap.val, mig_swap.val, _mig_swap.val);
 				BUG();
@@ -1846,10 +1851,10 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 	// 	folio_swapprio_promote(folio);
 	// }
 #endif
-	if (si->prio == get_fastest_swap_prio()){
+	if (swap_info_is_fastest(si)){
 		swap_level = 1;
 	}
-	else if (si->prio == get_slowest_swap_prio()){
+	else if (swap_info_is_slowest(si)){
 		swap_level = -1;
 	}
 	else
@@ -1859,10 +1864,10 @@ struct page *__read_swap_cache_async(swp_entry_t entry,
 	if (shadow){
 		workingset_refault(folio, shadow, &rf_dist_ts, real_addr, swap_level, entry, &abandon_shadow);
 		if (vma && vma->vm_mm){
-			if (get_fastest_swap_prio() == si->prio){
+			if (swap_info_is_fastest(si)){
 				count_memcg_event_mm(vma->vm_mm, WORKINGSET_REFAULT_FAST);
 			}
-			else if (get_slowest_swap_prio() == si->prio){
+			else if (swap_info_is_slowest(si)){
 				count_memcg_event_mm(vma->vm_mm, WORKINGSET_REFAULT_SLOW);
 			}
 			*try_free_entry = should_try_change_swap_entry(
@@ -1960,12 +1965,14 @@ struct page *read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 	/*DJL ADD BEGIN*/
 	if (count && page_was_allocated){
 		si = get_swap_device(entry);
-		if (get_fastest_swap_prio() == si->prio){
+		if (swap_info_is_fastest(si)){
 			count_memcg_event_mm(vma->vm_mm, SWAPIN_FAST);
 			// pr_err("read_swap_cache_async entry[%lx]", entry.val);
-		} else if (get_slowest_swap_prio() == si->prio){
+		} 
+		else if (swap_info_is_slowest(si)){
 			count_memcg_event_mm(vma->vm_mm, SWAPIN_SLOW);
-		} else{
+		} 
+		else{
 			count_memcg_event_mm(vma->vm_mm, SWAPIN_MID);
 		}
 		put_swap_device(si);
@@ -2383,11 +2390,13 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 			/*DJL ADD BEGIN*/
 			si = get_swap_device(entry);
 			trace_readahead_swap_readpage(page_folio(page), si);
-			if (get_fastest_swap_prio() == si->prio){
+			if (swap_info_is_fastest(si)){
 				count_memcg_event_mm(vma->vm_mm, SWAPIN_FAST);
-			} else if (get_slowest_swap_prio() == si->prio){
+			} 
+			else if (swap_info_is_slowest(si)){
 				count_memcg_event_mm(vma->vm_mm, SWAPIN_SLOW);
-			} else{
+			} 
+			else{
 				count_memcg_event_mm(vma->vm_mm, SWAPIN_MID);
 			}
 			put_swap_device(si);
@@ -2484,19 +2493,17 @@ skip_ra_try_save:
 			__folio_set_locked(folio);
 			SetPageStaleSaved(page);
 			__folio_set_swapbacked(folio);
-			// if (mem_cgroup_charge(folio, vma->vm_mm, gfp_mask)) {
-// 			if (mem_cgroup_swapin_charge_folio(folio,
-// 						NULL, gfp_mask,
-// 						saved_entry)) {
-// #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-// 				pr_info("mem_cgroup_swapin_charge_folio fail folio[%p] ref[%d]", folio, folio_ref_count(folio));
-// #endif
-// 				no_space_force_stop = true;
-// 				goto fail_page_out;
-// 			}
-			//don't mem_cgroup_swapin_uncharge_swap(entry);
+
+			/* MULTISWAP:
+			 * We DONT mem_cgroup_swapin_charge_swap HERE. 
+			 * We just borrow some pages from system, for
+			 * swap-page migration. These pages (at most XXX)
+			 * will be freed soon after migration completion.
+			 */
+			
+			/* MULTISWAP: reset page->private and trigger swap_readpage */
 			folio_set_swap_entry(folio, saved_entry);			
-			MULTISWAP_MIG_INFO("swap_readpage try read page[%p] ref[%d]", 	page, folio_ref_count(folio));
+			MULTISWAP_MIG_INFO("swap_readpage start read page[%p] ref[%d]", page, folio_ref_count(folio));
 			swap_readpage(page, true, &splug_save);
 			MULTISWAP_MIG_INFO("swap_readpage finished page[%p] ref[%d]", page, folio_ref_count(folio));
 			count_memcg_event_mm(vma->vm_mm, SWAPIN_FAST_SAVE);
@@ -2504,12 +2511,14 @@ skip_ra_try_save:
 			if (!folio_trylock(folio))
 				goto fail_page_out;
 
-			//deal with page private
-			if (!(page_private(folio_page(folio, 0)) == saved_entry.val)){
-				pr_err("page pri mismatch");
-				BUG();
-			}
+			VM_BUG_ON_FOLIO(!(page_private(folio_page(folio, 0)) == saved_entry.val), folio);
 
+			/* 
+			 * MULTISWAP: 
+			 * Alloc migration destination swap page. 
+			 * The swap-migration should be a transfer attempt:
+			 * FROM a SWP_SYNCHRONOUS_IO swap TO a ASYNC_IO swap.
+			 */
 			mig_entry = folio_alloc_swap(folio, &tmp, true, false);
 			if (!mig_entry.val || (mig_entry.val > LONG_MAX) 
 					|| !data_race(p->flags & SWP_SYNCHRONOUS_IO) 
@@ -2518,23 +2527,30 @@ skip_ra_try_save:
 				goto fail_page_out;
 			}
 
-			if (swap_duplicate(mig_entry) < 0){
-				pr_err("fail dup mig_entry[%lx]", mig_entry.val);
-				goto fail_page_out;
-			}
+			// if (swap_duplicate(mig_entry) < 0){
+			// 	pr_err("fail dup mig_entry[%lx]", mig_entry.val);
+			// 	goto fail_page_out;
+			// }
+			VM_BUG_ON_FOLIO(swap_duplicate(mig_entry) < 0, folio);
+
 			MULTISWAP_MIG_INFO("folio_alloc_swap entry[%lx] v[%d] for folio[%p]ref[%d]cnt[%d]",
 				mig_entry.val, swp_entry_test_special(mig_entry), 
 				folio, folio_ref_count(folio), __swap_count(mig_entry));
 
+			/* MULTISWAP:
+			 * We just loaded in the saved page and locked it.
+			 * So this page is now considered "in swap cache"
+			 * We added this page to swap cache of saved swap_entry
+			 */
 			_err = add_to_swap_cache_save_check(folio, saved_entry, gfp_mask & (__GFP_HIGH|__GFP_NOMEMALLOC|__GFP_NOWARN), true);
 			if (unlikely(_err)) {
-				pr_err("folio[%p] add_to_sw fail [%d]", folio, _err);
-				if (_err){
-					pr_err("folio[%p] add_to_sw$_save_check interupted [%d]", folio, _err);
-					folio_ref_sub(folio, folio_nr_pages(folio));
-					//this page was already in swap $
-					goto fail_page_out;
-				}
+				MULTISWAP_MIG_ERR("folio[%p] add_to_sw$_sc fail [%d] interupted", folio, _err);
+				// if (_err){
+				// 	pr_err("folio[%p] add_to_sw$_save_check interupted [%d]", folio, _err);
+				// 	folio_ref_sub(folio, folio_nr_pages(folio));
+				// 	//this page was already in swap $
+				// 	goto fail_page_out;
+				// }
 				BUG();
 				// if (__swp_swapcount(saved_entry)){
 				// 	put_swap_folio(folio, saved_entry);
@@ -2546,51 +2562,56 @@ skip_ra_try_save:
 				// 	goto fail_delete_saved_cache; //delete saved cache again
 				// }
 			}
-#ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
-			// pr_info("folio[%p] saved[%lx]cnt[%d] ref[%d] add_to_swap_cache_save_check success ", 
-			// 		folio, saved_entry.val, __swp_swapcount(saved_entry), folio_ref_count(folio));	
-#endif
+			MULTISWAP_MIG_INFO("folio[%p] saved[%lx]cnt[%d] ref[%d] add_to_sw$_sc success ", 
+				folio, saved_entry.val, __swp_swapcount(saved_entry), folio_ref_count(folio));
+
+			/* MULTISWAP:
+			 * Need move this page to the target swap, which is
+			 * supposed to be a ASYNC_IO swap. ASYNC_IO swaps
+			 * has to used swap cache for ASYNC writeback management. 
+			 * Add this page to target swap cache.
+			 */
 			_err = add_to_swap_cache_save_check(folio, mig_entry, gfp_mask & (__GFP_HIGH|__GFP_NOMEMALLOC|__GFP_NOWARN), false);
 			if (_err) {
-				pr_err("folio[%p] add_to_swap_cache_save fail", folio);
+				MULTISWAP_MIG_ERR("folio[%p] add_to_sw$_sc fail", folio);
 				put_swap_folio(folio, mig_entry);
 				folio_unlock(folio);
 				goto fail_delete_saved_cache;
 			}
-			MULTISWAP_MIG_INFO("folio[%p] mig[%lx]cnt[%d] ref[%d] add_to_swap_cache_save_check success ", 
+			MULTISWAP_MIG_INFO("folio[%p] mig[%lx]cnt[%d] ref[%d] add_to_sw$_sc success ", 
 				folio, mig_entry.val, __swp_swapcount(mig_entry), folio_ref_count(folio));
 			//first mark entry as faked for now (currently under initialization)
-			swp_entry_set_ext(&mig_entry, 0x1);
+			swp_entry_set_unready(&mig_entry);
 			//adding a remap from saved_entry -> mig_entry
 			//this is the first time mig_entry got into remap, and its irq locked
 			//we don't care about if it is locked
 			err = add_swp_entry_remap(folio, saved_entry, mig_entry, gfp_mask & (__GFP_HIGH|__GFP_NOMEMALLOC|__GFP_NOWARN));
 			if (err){
-				pr_err("folio[%p] add_swp_entry_remap fail", folio);
+				MULTISWAP_MIG_ERR("folio[%p] add_swp_entry_remap fail", folio);
 				// folio_unlock(folio);
 				goto fail_delete_mig_cache;
 			}
 			if (unlikely(!__swp_swapcount(saved_entry))){
-				pr_err("[rare] folio[%p] __swp_swapcount fail", folio);
+				MULTISWAP_MIG_ERR("[rare] folio[%p] __swp_swapcount fail", folio);
 				swp_entry_t __mig_entry;
 				__mig_entry.val = mig_entry.val;
 				swp_entry_clear_ext(&__mig_entry, 0x3); // 局部变量无所谓
 				delete_from_swap_remap(folio, saved_entry, __mig_entry, false);
 				swp_entry_clear_ext(&mig_entry, 0x3);
 				delete_from_swap_cache_mig(folio, mig_entry, true, false); //page private is also cleared
-				pr_err("fail_delete_mig_cache folio[%p] ref[%d]", folio, folio_ref_count(folio));
+				MULTISWAP_MIG_ERR("fail_delete_mig_cache folio[%p] ref[%d]", folio, folio_ref_count(folio));
 				goto fail_page_out;
 				goto fail_delete_mig_cache;
 			}
 			if (unlikely(!folio_test_stalesaved(folio))){
-				pr_err("folio[%p] got intercepted before remap init", folio);
+				MULTISWAP_MIG_ERR("folio[%p] got intercepted before remap init", folio);
 				swp_entry_t __mig_entry;
 				__mig_entry.val = mig_entry.val;
 				swp_entry_clear_ext(&__mig_entry, 0x3); // 局部变量无所谓
 				delete_from_swap_remap(folio, saved_entry, __mig_entry, false);
 				swp_entry_clear_ext(&mig_entry, 0x3);
 				delete_from_swap_cache_mig(folio, mig_entry, true, false); //page private is also cleared
-				pr_err("fail_delete_mig_cache folio[%p] ref[%d]", folio, folio_ref_count(folio));
+				MULTISWAP_MIG_ERR("fail_delete_mig_cache folio[%p] ref[%d]", folio, folio_ref_count(folio));
 				goto fail_page_out;
 			}
 			MULTISWAP_MIG_INFO("add_swp_remap folio[%p] ref[%d][%lx]cnt[%d]=>[%lx][%d]",
@@ -2616,19 +2637,19 @@ skip_ra_try_save:
 			if (folio_mapping(folio)){
 				switch (pageout_save(folio, folio_mapping(folio), &plug_save_wb)) {
 				case 0: //PAGE_KEEP
-					pr_err("pageout returns PAGE_KEEP folio[%p] ref[%d]",folio, folio_ref_count(folio));
+					MULTISWAP_MIG_INFO("pageout returns PAGE_KEEP folio[%p] ref[%d]",folio, folio_ref_count(folio));
 					folio_unlock(folio);
 					folio_put(folio);
 					reset_private = true;
 					goto skip_this_save;
 				case 1: //PAGE_ACTIVATE
-					pr_err("pageout returns PAGE_ACTIVATE");
+					MULTISWAP_MIG_INFO("pageout returns PAGE_ACTIVATE");
 					BUG();
 					goto fail_page_out;
 				case 2: //PAGE_SUCCESS
 					//check if sync io
 					if (folio_test_dirty(folio)){ //unexpected
-						pr_err("PAGE_SUCCESS dirty folio[%p]", folio);
+						MULTISWAP_MIG_INFO("PAGE_SUCCESS dirty folio[%p]", folio);
 						BUG();
 					}					
 					if (folio_test_writeback(folio)){//sync, under wb	
@@ -2637,13 +2658,13 @@ skip_ra_try_save:
 					}
 					else{ //A synchronous write - probably a ramdisk.
 						; //should remove mapping and clean & free it
-						pr_err("not inplemented [%s:%d] folio[%p] -> pageout -> entry[%lx]",
+						MULTISWAP_MIG_INFO("not inplemented [%s:%d] folio[%p] -> pageout -> entry[%lx]",
 								 __FILE__, __LINE__, folio, mig_entry.val);
 						BUG();
 					}
 					goto scceed_pageout;
 				case 3: //PAGE_CLEAN
-					pr_err("pageout returns PAGE_CLEAN");
+					MULTISWAP_MIG_INFO("pageout returns PAGE_CLEAN");
 				}
 fail_delete_mig_cache:
 				swp_entry_clear_ext(&mig_entry, 0x3);
@@ -2682,7 +2703,7 @@ scceed_pageout:
 			entry_saved ++ ;
 			folio_set_stalesaved(folio);
 			if (folio_test_locked(folio)){
-				pr_err("folio[%p] unlock after pageout_save", folio);
+				MULTISWAP_MIG_INFO("folio[%p] unlock after pageout_save", folio);
 				folio_unlock(folio);
 			}
 skip_this_save:
@@ -2696,7 +2717,7 @@ skip_this_save:
 			}
 			if (entry_retry_putback){
 				putback_last_saved_entry(saved_entry);
-				pr_err("putback entry[%lx]", saved_entry.val);
+				MULTISWAP_MIG_ERR("putback entry[%lx]", saved_entry.val);
 			}
 
 			if (p)
@@ -2706,7 +2727,7 @@ skip_this_save:
 			if (entry_saved >= SWAP_SLOTS_SCAN_SAVE_ONCE)
 				break;
 			if (no_space_force_stop){
-				pr_info("stopped by no_space_force_stop");
+				MULTISWAP_MIG_INFO("stopped by no_space_force_stop");
 				break;		
 			}
 			saved_entry = get_next_saved_entry(&save_slot_finish);

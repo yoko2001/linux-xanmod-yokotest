@@ -1522,11 +1522,13 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		if (swap_space_left < -10)
 			swap_space_left = si->pages - si->inuse_pages;
 		if (reclaimed && !mapping_exiting(mapping)){
-			if (get_fastest_swap_prio() == si->prio){
+			if (swap_info_is_fastest(si)){
 				swap_level = 1;
-			}else if (get_slowest_swap_prio() == si->prio){
+			}
+			else if (swap_info_is_slowest(si)){
 				swap_level = -1;
-			}else {
+			}
+			else {
 				swap_level = 0;
 			}
 			if (folio_test_stalesaved(folio)){
