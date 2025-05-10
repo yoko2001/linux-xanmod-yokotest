@@ -8018,7 +8018,7 @@ int __mem_cgroup_try_charge_swap(struct folio *folio, swp_entry_t entry)
 
 	memcg = folio_memcg(folio);
 
-	VM_WARN_ON_ONCE_FOLIO(!memcg, folio);
+	// VM_WARN_ON_ONCE_FOLIO(!memcg, folio);
 	if (!memcg)
 		return 0;
 

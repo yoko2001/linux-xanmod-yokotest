@@ -607,7 +607,11 @@ static void dec_cluster_info_page(struct swap_info_struct *p,
 	if (!cluster_info)
 		return;
 
-	VM_WARN_ON(cluster_count(&cluster_info[idx]) == 0);
+	VM_WARN_ON_ONCE(cluster_count(&cluster_info[idx]) == 0);
+	if (cluster_count(&cluster_info[idx]) == 0){
+		pr_err("offset[%lx] bad dec from 0", page_nr);
+		return;
+	}
 	cluster_set_count(&cluster_info[idx],
 		cluster_count(&cluster_info[idx]) - 1 >= 0 ? cluster_count(&cluster_info[idx]) - 1 : 0);
 
@@ -791,11 +795,11 @@ static void swap_range_free(struct swap_info_struct *si, unsigned long offset,
 			add_to_avail_list(si);
 	}
 	atomic_long_add(nr_entries, &nr_swap_pages);
-	// if (si->type == 1 && version > 0){
-	// 	swp_entry_t swap = swp_entry_version(si->type, offset , version);
-	// 	pr_info("swap type[%d]entry[%lx] dec [%d]->[%d]", 
-	// 			si->type, swap.val, si->inuse_pages, si->inuse_pages-nr_entries);
-	// }	
+	if (si->flags & SWP_SYNCHRONOUS_IO && si->inuse_pages-nr_entries <= 0){
+		swp_entry_t swap = swp_entry_version(si->type, offset , version);
+		pr_info("swap_range_free entry[%lx] dec [%d]->[%d], nr_swap[%d]", 
+				 swap.val, si->inuse_pages, si->inuse_pages-nr_entries, nr_swap_pages);
+	}	
 	WRITE_ONCE(si->inuse_pages, si->inuse_pages - nr_entries);
 	if (si->flags & SWP_BLKDEV)
 		swap_slot_free_notify =
@@ -1660,9 +1664,6 @@ static void swap_entry_free(struct swap_info_struct *p, swp_entry_t entry, int f
 	unsigned long offset_v = VERSION_OFFSET_SI(version, offset, SWAPVMAX, p);
 	ci = lock_cluster(p, offset);
 	count = p->swap_map[offset_v];
-	if (!(count == SWAP_HAS_CACHE)){
-		pr_err("entry[%lx] should be at least SWAP_HAS_CACHE, but %d", entry.val, count);
-	}
 	VM_BUG_ON(count != SWAP_HAS_CACHE);
 	p->swap_map[offset_v] = 0;
 	dec_cluster_info_page(p, p->cluster_info, offset);

@@ -1471,6 +1471,7 @@ fail_unmap_mig_entry:
 success_unmap_mig_entry:
 				;
 				delete_from_swap_remap_raw(entry, migentry);
+				swap_free(entry);
 				MULTISWAP_MIG_INFO("zap_pte_range after free_sw&$ entry[%lx][%d]->migentry[%lx][%d]v[%lu]", 
 					entry.val, __swap_count(entry), migentry.val, 
 					__swap_count(migentry), (unsigned long)swp_entry_test_special(migentry));
@@ -3956,7 +3957,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		}
 		else{
 			/* we hold the lock, now keep on proceeding */
-			MULTISWAP_MIG_INFO("do_swap_page ori[%lx] -> mig[%lx]", orientry.val, migentry.val);
+			MULTISWAP_MIG_INFO("do_swap_page hold lock ori[%lx] -> mig[%lx]", orientry.val, migentry.val);
 			need_unlock = true;
 		}	
 	}	
@@ -4493,6 +4494,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 						folio_test_swapcache(folio),folio_test_writeback(folio), folio_test_lru(folio));			
 				migentry.val = 0;
 				need_unlock = false;
+				folio_clear_stalesaved(folio);	
 			}
 			else{
 				MULTISWAP_MIG_INFO("do_swap skip folio_free_swap inval vmf[%d] folio[%p]ref[%d]entry[%lx]migen[%lx]ksm[%d]$[%d]wb[%d]", 

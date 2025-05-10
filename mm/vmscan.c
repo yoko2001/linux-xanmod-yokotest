@@ -1601,7 +1601,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 				xa_unlock_irq(&address_space->i_pages);
 
 				if (folio->shadow_ext && !shadow_ext
-					&& entry_is_entry_ext(folio->shadow_ext) )
+					&& entry_is_entry_ext(folio->shadow_ext))
 				{
 					shadow_entry_free(folio->shadow_ext);
 					folio->shadow_ext = NULL;
@@ -1938,6 +1938,13 @@ static bool may_enter_fs(struct folio *folio, gfp_t gfp_mask)
 
 #ifdef CONFIG_LRU_GEN
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR
+/*
+ * MULTISWAP:
+ * check_saved_folios_wb is used for checking write-back status
+ * of pages under migration. If pages have finished Async-IO, 
+ * They will be freed and cleaned from temp swap cache indexing, 
+ * as well as swap-remap will be established. 
+ */
 const int check_saved_scanmax = 1024;
 unsigned int check_saved_folios_wb(struct lruvec *lruvec, 
 		struct pglist_data *pgdat, struct scan_control *sc)
@@ -1952,7 +1959,8 @@ unsigned int check_saved_folios_wb(struct lruvec *lruvec,
 	LIST_HEAD(folio_list_fail_lock);
 	LIST_HEAD(free_folios);
 	LIST_HEAD(saved_sb_complete_list);
-//load out pages
+	
+	/* load folios from lruvec , make sure all folios are locked*/
 	spin_lock_irq(&lruvec->lru_lock);
 	while (!list_empty_careful(saved_folios)) {
 		if (skip_retry)
@@ -1981,7 +1989,8 @@ collect_fail_lock_keep:
 	spin_unlock_irq(&lruvec->lru_lock);
 	/* 
 	 * Now all folio in folio_list have locked, acquire lru_lock
-	 * to make sure only one migrator enters this part.
+	 * to make sure only one migrator enters this part. So that
+	 * rechecking a same page will not happen. 
 	 */
 
 	MULTISWAP_MIG_WARN_ON(fail_locked, "check_saved_folios_wb lruvec[%p] fail_lock:%d", lruvec, fail_locked);
@@ -1994,7 +2003,7 @@ collect_fail_lock_keep:
 
 	MULTISWAP_MIG_INFO("check_saved_folios_wb, do check [%d] folios", scanned);
 	VM_BUG_ON(!list_empty(&folio_list_fail_lock));
-	while (!list_empty(&folio_list)) { //all folio in folio_list are locked
+	while (!list_empty(&folio_list)) {
 		struct folio *folio;
 		unsigned int nr_pages;
 		bool dirty, writeback;
@@ -2010,7 +2019,7 @@ collect_fail_lock_keep:
 		VM_BUG_ON_FOLIO(!folio_evictable(folio), folio);
 		// VM_BUG_ON_FOLIO(!folio_test_anon(folio), folio);
 		VM_BUG_ON_FOLIO(!folio_test_swapbacked(folio), folio);
-		// VM_WARN_ON_FOLIO(!folio_test_swapcache(folio), folio); //do_swap_page after folio_free_swap cleanup (invalid)
+		VM_WARN_ON_FOLIO(!folio_test_swapcache(folio), folio); //do_swap_page after folio_free_swap cleanup (invalid)
 		VM_BUG_ON_FOLIO(folio_test_large(folio), folio);
 		// VM_BUG_ON_FOLIO(folio_mapped(folio), folio);
 		VM_BUG_ON_FOLIO(folio_is_file_lru(folio), folio);
@@ -2052,11 +2061,7 @@ keep_next_time:
 			VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 			// VM_BUG_ON_FOLIO(folio_mapped(folio), folio);	
 			if (!folio_test_stalesaved(folio)){
-				// we're interruped by do_swap_page turn this page into safe state
-				// pr_err("intercepted before enable remap folio[%p]cnt[%d]$[%d]", 
-				// 		folio,	folio_ref_count(folio), folio_test_swapcache(folio));
-				// //we need to handle the remap & mig cache clean up part
-
+				/* MULTISWAP: interruped by do_swap_page*/
 #ifdef CONFIG_LRU_GEN_STALE_SWP_ENTRY_SAVIOR_DEBUG
 				// if (__swap_count(migentry) != 0){
 				// 	pr_err("folio[%p]ref[%d]$[%d]pri[%lx] mig[%lx]cnt[%d] remap deleted add to lru, swap freed", 
@@ -2085,17 +2090,7 @@ keep_next_time:
 					delete_from_swap_cache_mig(folio, migentry, true, false);
 					swap_free_mig(migentry);					
 				}
-				// if (!folio_test_ksm(folio) && folio_ref_count(folio) == 2){
-				// 	pr_err("do refree swap folio[%p]ref[%d] entry[%lx]cnt[%d] clear now", 
-				// 		folio,	folio_ref_count(folio), entry.val, __swap_count(entry));	
-				// 	swap_free_mig(entry);
-				// 	BUG();
-				// 	folio_clear_swappriohigh(folio);
-				// 	folio_clear_swappriolow(folio);
-				// 	folio_free_swap(folio);
-				// }
-				// folio_clear_swappriohigh(folio);
-				// folio_clear_swappriolow(folio);
+
 				if ((err = swapcache_prepare(folio_swap_entry(folio)))) {
 					pr_err("folio orientry[%lx] reprepare fail [%d] [%d]", 
 							folio_swap_entry(folio).val, err, -EEXIST);
@@ -2111,20 +2106,25 @@ pass_cleanup:
 				continue;
 			} 
 
-			delete_from_swap_cache_mig(folio, entry, false, false); //delete from origin entry
+			/* MULTISWAP: No interruption, try to enable the remap */
+			
+			/* MULTISWAP: delete from origin entry */
+			delete_from_swap_cache_mig(folio, entry, false, false); 
 			MULTISWAP_MIG_INFO("folio[%p]->ext[%p] delete_from_swap_cache_mig ref[%d] origin[%lx]cnt[%d]", 
 				folio, folio->shadow_ext, folio_ref_count(folio), entry.val, __swp_swapcount(entry));
+
+			/* MULTISWAP: Enable reamp from original entry to migentry */
 			ret = enable_swp_entry_remap(folio, entry, &migentry);
 			if (ret){
-				pr_info("folio[%p] enable_swp_entry_remap fail[%d] migentry[%lx]", folio, ret, migentry.val);
 				if (ret == 1){
-					// folio_clear_stalesaved(folio); 
-					//we wait for it to get useless, when we get it, it'll be freed
-					// swap_free(entry); //should free by do_swap
+					pr_info("folio[%p] enable_swp_entry_remap fail[%d] migentry[%lx]", folio, ret, migentry.val);
 					set_page_private(folio_page(folio, 0), migentry.val);
+					// delete_from_swap_cache_mig(folio, migentry, true, true); //delete from origin entry
+					list_del(&folio->lru);
 					folio_unlock(folio);
 					continue;
-				} //locked by do_swap_page, it will unlock it
+				}
+				BUG();
 			}
 			//realloc entry 
 			VM_BUG_ON(!migentry.val);
@@ -2201,7 +2201,7 @@ retry:
 		cond_resched();
 
 		folio = lru_to_folio(folio_list);
-		MULTISWAP_MIG_INFO_ON(folio_test_swappriohigh(folio) || folio_test_swappriolow(folio) || folio_test_stalesaved(folio), 
+		MULTISWAP_MIG_INFO_ON(folio_test_stalesaved(folio), 
 			"shrink_folio_list folio[%p][%px], list_del from list[%px]prev[%px]next[%px]", 
 			folio, &folio->lru, folio_list, folio_list->prev, folio_list->next);
 		list_del(&folio->lru);
